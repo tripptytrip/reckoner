@@ -111,8 +111,11 @@ class ModelConfig:
     n_heads: int = 8
     d_ff: int = 1024
     dropout: float = 0.1
-    # [provisional — chunk 1/6] Sequence length depends on the token spec chunk 1
-    # writes (goal prefix tokens + compositional [NUM, d1, d0] numerals).
+    # [provisional — chunk 6] Sequence length. Chunk 1 fixed the encoding, so
+    # the cost is now known rather than guessed: a numeral is 3 + ndigits tokens
+    # (marker, parens, digits), a variable is 1, an operator node is 3 + the
+    # cost of its children. `3x + 6 = 21` is 22 tokens. Chunk 5 measures the
+    # real distribution over generated problems and chunk 6 sets this against it.
     seq_len: int = 128
     # [provisional — chunk 6] Bilinear projection dim for the factorized
     # rule x site policy head — the (from, to) factorization transplanted.

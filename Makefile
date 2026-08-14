@@ -1,4 +1,4 @@
-.PHONY: install lint format test env clean
+.PHONY: install lint format test env docs clean
 
 # uv is the only Python tool chain on this box (AGENTS.md §5). Resolve it rather
 # than assume PATH: a Makefile invoked from a stripped environment must not
@@ -35,6 +35,12 @@ test:
 # must never depend on GPU availability (AGENTS.md §5).
 env:
 	$(PYTHON) scripts/check_env.py
+
+# Generated reference docs. docs/vocab.md is regenerated and compared by
+# tests/test_vocab.py, so a vocabulary change that forgets this target fails the
+# build instead of leaving a plausible, wrong reference behind.
+docs:
+	$(PYTHON) scripts/dump_vocab.py
 
 clean:
 	rm -rf .pytest_cache .ruff_cache src/*.egg-info

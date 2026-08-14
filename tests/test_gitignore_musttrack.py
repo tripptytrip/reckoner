@@ -41,6 +41,7 @@ MUST_TRACK: list[str] = [
     "Makefile",
     "pyproject.toml",
     "configs/*.yaml",
+    "docs/*.md",  # generated reference (docs/vocab.md) — regenerable, but cited
     "src/reckoner/*.py",
     "tests/*.py",
     "scripts/*.py",
