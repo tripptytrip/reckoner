@@ -1,0 +1,248 @@
+# AGENTS.md — reckoner: law, machine, and build conventions
+
+Drop-in briefing for coding agents working on this repository. Read fully before
+writing code, installing packages, or running anything GPU-related. When these
+conventions conflict with an agent's defaults, these win.
+
+Companion documents: `experiment2_math_base625_spec.md` (what is being built and
+why) and `experiment2_agent_plan.md` (the chunk plan, with DONE-WHEN gates).
+
+---
+
+## 1. Inherited law
+
+Reproduced **verbatim** from `experiment2_agent_plan.md`. It is in force from
+chunk 0 — the point of writing it down before the first line of code is that it
+is not adopted incident-by-incident, which is how it was learned the first time.
+
+> **Inherited law (in force from chunk 0, not adopted incident-by-incident):**
+> strict config loader with unknown-key hard errors; `.gitignore`
+> MUST_REACH/MUST_IGNORE guard test; `logschema.py` as single schema definition
+> with `role` fields and absence-carries-a-reason notes; `pair_scores` persisted
+> from the first ladder row; PREREG files carry the amendment-policy header from
+> day one; paired-difference bootstrap is the test of record for pass-vs-pass
+> comparisons; every detector that gates automation is validated on both
+> polarities before live use; instrument the trigger, never trust identical
+> numbers; external processes are context managers; one shared identity
+> normalizer for any dedup key; `git -C` in multi-command shells; waiters
+> reference PIDs, never patterns; provenance (`git_sha` via
+> `git -C <repo_root>`, config fingerprint) in every checkpoint and dataset
+> `meta.json`.
+
+And the execution law, also verbatim:
+
+> Execute chunks in order, one chunk per session unless stated. Every chunk ends
+> with its DONE-WHEN gates green, committed, **pushed**, and reported with
+> verbatim numbers and a tree-state block (merged? pushed? test count?). If a
+> gate can't pass after 3 distinct attempts: stop, write
+> `BLOCKED-<date>-<topic>.md` (cause, attempts, options), commit it, halt.
+> **Never weaken a gate to pass it.**
+
+Where each clause lives in this repo, as of chunk 0:
+
+| Clause | Enforced by |
+|---|---|
+| Strict config loader, unknown-key hard errors | `src/reckoner/config.py::_assert_known_keys`, `tests/test_config.py` |
+| `.gitignore` MUST_REACH / MUST_IGNORE guard | `tests/test_gitignore_musttrack.py` |
+| Detectors validated on both polarities | Every guard in `tests/` has its accepting case beside its rejecting one, including a self-check that the gitignore probe itself can return both answers |
+| `git -C` in multi-command shells | `tests/test_gitignore_musttrack.py::_check_ignored` |
+| Provenance in every checkpoint / `meta.json` | `config_fingerprint()` exists from chunk 0; the writers arrive in chunks 5–6 |
+| `logschema.py`, `pair_scores`, PREREG headers, paired bootstrap | Chunks 9–11 — the negations that let them into git are already in `.gitignore` |
+
+## 2. Decisions already made (do not silently revisit)
+
+From the plan's §8 block and amendment v1.1. Several are enforced by
+`config.py::validate()` rather than left to memory:
+
+1. **Value head = 3-class W/D/L vs par + steps-to-solve regression.** Amendment
+   v1.1 reversed the original 2-class solved/timed-out decision. `validate()`
+   rejects `model.value_classes != 3`.
+2. **Rule set v1 is the minimal closed set:** `eval_add, eval_sub, eval_mul,
+   combine_like_terms, add_both_sides, sub_both_sides, div_both_sides`, exact
+   integer division only. No fractions, no distribution — extensions are later
+   one-lever rounds.
+3. **Goal representation = prefix tokens in the state** (`[GOAL_SOLVE, VAR, x,
+   SEP, …]`). No architecture change.
+4. **Phase-3 generator is a standalone model**, not weight-shared. Registered as
+   the funnel treatment; not built in this plan.
+5. **Single-agent search: there is no opponent, so backup does NOT negate per
+   ply.** This is the sharpest porting hazard in the project. It is a config key
+   (`search.perspective: single`) and `validate()` rejects anything else.
+6. **The par opponent enters the label, never the search.** z ∈ {+1 under par, 0
+   equal, −1 over par or step cap}.
+7. **sympy is a ladder rung, never par** — unless a future chunk compiles its
+   derivations into our rule vocabulary.
+
+## 3. The machine
+
+| Item | Value | Verified |
+|------|-------|----------|
+| Box | GMKtec NucBox EVO-X2 (mini PC) | — |
+| APU | AMD Ryzen AI Max+ 395 "Strix Halo", 16C/32T | `lscpu` |
+| GPU | Integrated Radeon 8060S — **gfx1151**, RDNA 3.5 | `rocm-smi` |
+| VRAM | **96 GiB** dedicated (BIOS UMA carveout) | `rocm-smi --showmeminfo vram` → 103079215104 B |
+| Host RAM | **~30 GiB** visible to the OS; 8 GiB swap | `free -h` |
+| OS | Ubuntu 24.04.4 LTS, ROCm 7.1.0 userspace | `/opt/rocm/.info/version` |
+| GPU stack | **ROCm — there is no NVIDIA hardware here. CUDA wheels will never work.** | — |
+
+Implications you must internalize:
+
+- PyTorch on ROCm masquerades as CUDA: `torch.cuda.is_available()`,
+  `device="cuda"`, `torch.cuda.get_device_name()` are the correct API calls.
+  Do not write ROCm-specific device strings.
+- `nvidia-smi` does not exist. Use `rocminfo | grep gfx` (expect `gfx1151`) and
+  `rocm-smi` for utilization.
+- **The two memory pools have opposite pressure profiles.** GPU-side: 96 GiB —
+  enormous for this class of hardware, though a running local-LLM server can be
+  holding most of it; check `rocm-smi` before assuming it is free. Host-side:
+  ~30 GiB, of which the OS, browser and file cache routinely consume half —
+  **host RAM is the scarce resource on this box.** Size replay buffers, dataset
+  loads and worker pools against ~15 GiB of realistically free host memory, not
+  against "128GB". Prefer streaming/memmap over loading datasets into host RAM;
+  swap is small, so an OOM-adjacent allocation thrashes or dies rather than
+  degrading gracefully.
+- gfx1151 support is recent (ROCm 7.1+). If GPU code misbehaves, suspect the
+  wheel/stack version before the code. History on this box: the `amdgpu` driver
+  was once blacklisted and silently forced CPU-only operation — if the GPU
+  vanishes, check `lsmod | grep amdgpu` and `/etc/modprobe.d/` first.
+
+## 4. PyTorch installation — the #1 recurring failure
+
+A bare `pip install torch` pulls CUDA wheels from PyPI, which import fine and
+then run CPU-only forever. This has burned real time more than once.
+
+1. **This project is CPU-first through chunk 6.** The domain is CPU-heavy
+   (pattern-matching movegen), GPU-light, and the model is 2–7M parameters.
+   `pyproject.toml` pins the **CPU** index explicitly, so a bare `uv sync` can
+   never resolve to CUDA:
+
+   ```toml
+   [tool.uv.sources]
+   torch = { index = "pytorch-cpu" }
+
+   [[tool.uv.index]]
+   name = "pytorch-cpu"
+   url = "https://download.pytorch.org/whl/cpu"
+   explicit = true
+   ```
+
+2. **ROCm variant (optional until chunk 7).** Change that URL to
+   `https://download.pytorch.org/whl/rocm7.2` (any index ≥ rocm7.1 works for
+   gfx1151; AMD's own `https://repo.amd.com/rocm/whl/gfx1151/` is the fallback)
+   and rebuild the venv from scratch — `rm -rf .venv && make install`. Do not
+   perform surgery on an existing venv.
+
+3. **Verify after any environment change:** `make env` runs
+   `scripts/check_env.py`, which prints the torch build, the device, and a
+   matmul throughput number, and **exits non-zero on a CUDA wheel**.
+
+4. No `HSA_OVERRIDE_GFX_VERSION` hacks. On ROCm 7.x gfx1151 is natively
+   supported; needing the override means an old wheel snuck in.
+
+5. GPU numerics, when the GPU is in play: bf16 autocast for training/inference,
+   fp32 master weights. `torch.compile` is opt-in behind a flag, default off,
+   and only after benchmarking eager vs compiled on this box.
+
+## 5. Python tooling
+
+- **`uv` for everything**: `uv venv`, `uv pip`, `uv lock`, `uv run`. Not conda,
+  not poetry, not bare pip. Python 3.12.
+- Projects are installable packages: `src/` layout, `pyproject.toml`, installed
+  with `uv pip install -e ".[dev]"`. **`sys.path` mutation is banned** — if an
+  import needs a path hack, the packaging is wrong; fix the packaging.
+- Lint/format with `ruff` before every commit (`make lint`). Type-hint all
+  public interfaces.
+- Tests: `pytest`, with `hypothesis` for property-based testing of codecs,
+  invariants and round-trips (chunk 1's parser/printer is the first customer).
+  **All tests must pass on CPU only** — GPU availability is never a test
+  dependency. GPU-dependent checks live in benchmark scripts.
+- The `Makefile` carries at least `make lint` and `make test`; `make bench`
+  arrives with the first benchmark script (chunk 7).
+
+## 6. Project conventions
+
+- **One config system**: the nested dataclass tree in `src/reckoner/config.py`,
+  loadable from YAML, with `config_fingerprint()` (sha256 of canonical YAML) and
+  **unknown keys as a hard error**. CLI scripts are thin argparse wrappers that
+  build a config and call library code. No config value duplicated between CLI
+  defaults and code — `configs/default.yaml` must equal the dataclass defaults,
+  and a test pins that identity. A campaign that needs different values gets its
+  own file in `configs/`.
+- Every config field is tagged with its provenance — `[spec §N]`,
+  `[plan chunk N]`, `[v1.1]`, or `[provisional — chunk N]`. **A `[provisional]`
+  number is not a decision**; the chunk that owns it sets it and pins it.
+- **Run artifacts** live in `runs/<name>/` (gitignored except the records named
+  in `tests/test_gitignore_musttrack.py`). Every run directory gets the resolved
+  `config.yaml`, the git SHA and the `check_env.py` output.
+- **Checkpoints embed their provenance**: model state, optimizer state, full
+  config dict, git SHA, step count. A checkpoint that cannot reproduce its own
+  configuration is a bug.
+- **Logging is JSONL**, one row per event/iteration, in the run directory.
+  Dashboards and analysis are pure readers with zero imports from training code.
+- **Determinism**: one seed in config fans out to all RNGs; library code takes
+  explicit `rng`/`Generator` parameters, never global random state.
+- **Large data**: `numpy.memmap` binary layouts with a small `meta.json`
+  sidecar, over JSON/pickle/HDF5. On this box memmap is a memory-pressure tool,
+  not a convenience: multi-GB datasets must be mapped or streamed, never fully
+  loaded.
+- Library code raises; only `scripts/` prints and exits. **No `print()` in
+  `src/`.**
+
+## 7. Working style
+
+- **Work in chunks with objective gates.** A chunk is done when its DONE-WHEN
+  commands pass — not when the code "looks right". One commit per chunk:
+  `chunk NN: <summary>`. Push in the same chunk; the four-session push gap does
+  not get re-learned.
+- **Never weaken a gate to pass it.** Three distinct failed attempts ⇒ stop,
+  write `BLOCKED-<date>-<topic>.md` (cause, attempts, options), commit, halt. A
+  relaxed acceptance criterion is a silent lie discovered weeks later; a
+  BLOCKED.md is useful information.
+- **Interfaces are contracts.** Once a chunk's public interface (signatures,
+  array layouts, file formats, constants, config keys) is established, do not
+  change it without being asked — later chunks depend on it.
+- **Correctness before speed, and profile before optimizing.** Benchmarks append
+  to `benchmarks/results.jsonl` with the git SHA. Never trade a correctness test
+  for throughput; never optimize an unmeasured bottleneck (`py-spy`).
+- **Bias to minimal.** Small models, few dependencies, arrays over object
+  graphs, one implementation of each concept. If a component exists twice, that
+  is a defect. New dependencies need a reason; "it's popular" isn't one.
+- **Prefer explicit structure in explanations**: precise interfaces, tables,
+  worked numeric examples and named invariants over metaphors.
+- **In multi-command shells, address git per-command with `git -C <path>`** — a
+  `cd` persists for the whole invocation and has already mis-pointed three merge
+  commits. The failure is silent.
+- **A check must reference the thing checked — a PID, a path, a digest — never a
+  pattern that can match the checker.** `while pgrep -f "train --games 20"`
+  matches its own shell's command line and waits forever on itself, reporting
+  "still running" for work that never started. It does not merely lose progress,
+  it forges it.
+- Ask before: deleting data, force-pushing, changing an established interface,
+  adding a heavyweight dependency, or touching system config (drivers, kernel
+  modules, `/etc`). Everything else: proceed and report.
+
+## 8. Domain defaults
+
+- Single-box, single-GPU. No distributed frameworks, no cloud assumptions.
+- Throughput pattern: many CPU-side actors/workers feeding **one** process that
+  owns the GPU with large batched forwards. Per-worker model copies fighting
+  over the GPU is an anti-pattern here.
+- The GPU sitting idle while CPU-bound Python saturates is the *expected*
+  profile for small-model search workloads — confirm with profiling before
+  "fixing" it. On this project it is the baseline assumption, not a surprise.
+- Long runs must be resumable: killing the process at any point and restarting
+  from the run directory must not corrupt state.
+
+## 9. Quick reference
+
+```bash
+make install          # uv venv (3.12) + editable install with dev extras
+make lint test        # the chunk 0 gate
+make env              # torch build / device / matmul TFLOPS; non-zero on a CUDA wheel
+
+rocminfo | grep gfx   # expect gfx1151
+rocm-smi              # GPU util / 96 GiB VRAM pool
+free -h               # host RAM (~30 GiB — the scarce one)
+
+git log --branches --tags --not --remotes   # MUST be empty: nothing unpushed
+```

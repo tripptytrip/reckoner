@@ -1,0 +1,69 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "reckoner"
+version = "0.1.0"
+description = "Math in base-625, trained by search against a checker (experiment two, Stage A)"
+requires-python = ">=3.12"
+dependencies = [
+    "torch>=2.2.0",
+    "numpy>=1.26.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "hypothesis>=6.100",
+    "ruff>=0.4.0",
+    "py-spy>=0.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/reckoner"]
+
+# ---------------------------------------------------------------------------
+# Torch: CPU-first, and the index is PINNED.
+#
+# A bare `pip install torch` pulls CUDA wheels from PyPI. On this box that is
+# ~2.5GB of nvidia-* libraries for hardware that does not exist, and they import
+# fine and then run CPU-only forever — the single most expensive recurring
+# failure in the chess project (AGENTS.md §2). Pinning the index here means
+# resolution cannot drift back to CUDA no matter who runs `uv sync`.
+#
+# CPU is the correct default through chunk 6: this domain is CPU-heavy
+# (pattern-matching movegen) and GPU-light, tests must pass CPU-only, and the
+# model is 2–7M parameters. Chunk 7 is the first chunk with a reason to care.
+#
+# ROCm variant (optional until chunk 7) — swap the URL below to
+#   https://download.pytorch.org/whl/rocm7.2
+# and rebuild the venv from scratch (`rm -rf .venv && make install`); do not
+# perform surgery on an existing one. gfx1151 needs the rocm7.1 index or newer.
+# Verify with `python scripts/check_env.py`: a `+cu` suffix on this machine is
+# always wrong. See AGENTS.md §2 for the full rule.
+# ---------------------------------------------------------------------------
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "PIE", "RET", "SIM", "TID"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
+markers = [
+    "slow: subprocess/SIGKILL crash-resume tests; minutes, not seconds",
+    "golden: the Phase 2 golden mini-run (chunk 9) — CPU, under 3 minutes",
+]

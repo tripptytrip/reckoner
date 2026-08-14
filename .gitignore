@@ -1,0 +1,74 @@
+# reckoner — .gitignore
+#
+# The rule this file exists to enforce: **build output is ignored, records are
+# not.** The chess campaign learned it four separate times, each time by hand
+# after the fact — a BLOCKED.md ignored outright, a bare `data/` that stopped git
+# descending into runs/data/, benchmarks/results.jsonl silently unversioned, and
+# runs/** swallowing ANCHORS.sha256 on the very commit that added it. Every
+# negation below is therefore written *before* the run that produces the file it
+# names, and tests/test_gitignore_musttrack.py is the judge — `git check-ignore`
+# answers for hypothetical paths, so a rule can be tested the day it is written.
+
+# --- run artifacts ---------------------------------------------------------
+# Checkpoints and datasets are far too large to track. The exceptions are the
+# small provenance and narrative files a campaign log cites as evidence.
+# `!runs/**/` lets git descend into the tree to reach them.
+runs/**
+!runs/**/
+# The Phase 2 loop's only durable narrative — ~50 rows for a 24h run, and
+# nothing else survives the process.
+!runs/**/iterations.jsonl
+# The ladder log is the *verdict*. In the chess campaign it was ignored, and
+# every file the RUNLOG cited as evidence would have failed to enter the repo.
+!runs/**/ladder.jsonl
+!runs/**/ladder_diagnostic.jsonl
+!runs/**/ladder_pairscores.jsonl
+# `pair_scores` is persisted from the first ladder row (inherited law), so its
+# negation exists from the first commit rather than from the first pass.
+!runs/**/metrics.jsonl
+# A run's *resolved* config is what makes its rows reproducible; the campaign
+# reads this copy, not configs/. Same for the SHA + fingerprint pair.
+!runs/**/config.yaml
+!runs/**/provenance.json
+!runs/**/meta.json
+# Perturbations carry their cause: annotations.jsonl explains blips in a run's
+# own timing series, keyed by iteration, so iterations.jsonl can be read six
+# weeks out without reconstructing why one row is slow.
+!runs/**/annotations.jsonl
+# Dataset and suite digests — the anchor list the whole campaign is measured
+# against (plan chunk 5).
+!runs/ANCHORS.sha256
+
+# Root-scoped: a bare `data/` would also swallow runs/data/ as a *directory*
+# ignore, and git cannot descend into an ignored directory to reach the
+# negations above.
+/data/
+
+# --- benchmarks ------------------------------------------------------------
+# Deliberately NOT ignored, and this comment is the reason. benchmarks/ holds
+# bench scripts *and* results.jsonl — a dated, SHA-stamped record. A
+# `benchmarks/**` rule with a negation for results.jsonl would have ignored
+# every future bench script instead, which is the same mistake in the other
+# direction. Nothing here is build output.
+
+# --- build / env -----------------------------------------------------------
+__pycache__/
+*.py[co]
+*.pt
+*.npy
+*.dat
+*.egg-info/
+dist/
+build/
+.venv/
+uv.lock
+.ruff_cache/
+.pytest_cache/
+*.ipynb_checkpoints/
+
+# Review bundles zipped for external review (regenerable)
+*.zip
+
+# Machine-local Claude Code settings (and the atomic-write temp files it leaves)
+.claude/settings.local.json*
+*.tmp.*

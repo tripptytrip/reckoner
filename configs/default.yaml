@@ -1,0 +1,96 @@
+# reckoner — default configuration
+#
+# This file and the dataclass defaults in src/reckoner/config.py must agree
+# exactly; tests/test_config.py::test_default_yaml_matches_dataclass_defaults
+# pins that identity. Two writable spellings of one number that are allowed to
+# drift is how a run ends up honouring the copy nobody edited.
+#
+# A campaign that legitimately needs different values gets its OWN file in
+# configs/ (configs/m1.yaml, and so on) — it does not edit this one.
+#
+# Provenance tags, as in config.py:
+#   [spec §N]       pinned by experiment2_math_base625_spec.md
+#   [plan chunk N]  pinned by experiment2_agent_plan.md
+#   [v1.1]          pinned by the par-game amendment
+#   [provisional]   a placeholder the named chunk owns and will set
+#
+# The strict loader rejects unknown keys outright. That is deliberate: a
+# near-miss on a real field leaves a plausible default in place and reads as a
+# request that changed nothing.
+
+seed: 42  # [inherited law] one seed fans out to all RNGs
+
+# --- the environment contract [plan chunk 3] --------------------------------
+episode:
+  step_cap: 24            # [plan chunk 3] cap reached => z = -1, same as over par
+  simplify_equiv_k: 32    # [spec §3] random-assignment equivalence, k=32 draws
+  equiv_prime: 2147483647 # 2**31 - 1; largest Mersenne prime keeping r*r in int64
+
+# --- the par game [spec §3, v1.1] -------------------------------------------
+# z in {+1 strictly under par, 0 equal, -1 over par or step cap}. The opponent
+# enters the label, never the search.
+par:
+  bfs_exact_max_depth: 6  # [spec §3] BFS-exact par is canonical to depth 6
+  from_pool_frac: 0.20    # [v1.1] the plan spells this `par_from_pool_frac`
+  concede_enabled: false  # [v1.1] implemented, default off, calibration deferred
+  concede_k: 2            # inert while concede_enabled is false; NOT calibrated
+
+# --- model [plan chunk 6] ---------------------------------------------------
+model:
+  param_budget_min: 2000000  # [spec §4] "~2-7M parameters" — the pinned envelope
+  param_budget_max: 7000000
+  value_classes: 3           # [v1.1] 3-class W/D/L vs par (reverses §8 dec. 1)
+  steps_aux_head: true       # [v1.1] steps-to-solve auxiliary regression
+  d_model: 256               # [provisional — chunk 6]
+  n_layers: 8                # [provisional — chunk 6]
+  n_heads: 8                 # [provisional — chunk 6]
+  d_ff: 1024                 # [provisional — chunk 6]
+  dropout: 0.1               # [provisional — chunk 6]
+  seq_len: 128               # [provisional — chunk 1/6] depends on the token spec
+  d_policy: 128              # [provisional — chunk 6] bilinear rule x site dim
+
+# --- search [plan chunk 7] --------------------------------------------------
+search:
+  # [plan §8 decision 5] The sharpest porting hazard in the plan, made a config
+  # key so no run can silently do the wrong backup: there is no opponent, so
+  # backup does NOT negate per ply. The loader rejects any other value.
+  perspective: single
+  sims: 48          # [provisional — chunk 7] top of the {6,16,31,48} grid
+  gumbel_m: 16      # [provisional — chunk 7] top of the {3,5,12,16} grid
+  c_visit: 50.0     # [provisional — chunk 7]
+  c_scale: 1.0      # [provisional — chunk 7]
+  batch_leaves: 512 # [provisional — chunk 7]
+  root_noise: true  # [plan chunk 7] the SELF-PLAY value; suites/ladder run false
+
+# --- training [plan chunks 8, 9] --------------------------------------------
+train:
+  # [plan chunk 9] on from day one: the checker, not the model's own Q, decides
+  # solved, so the blend's self-referential hazard is structurally absent here.
+  value_q_mse_weight: 0.5
+  rehearsal_frac: 0.0     # [plan chunk 9] dormant; the lever exists before it's needed
+  batch_size: 512         # [provisional — chunk 8]
+  lr: 0.0002              # [provisional — chunk 8]
+  weight_decay: 0.0001    # [provisional — chunk 8]
+  grad_clip: 1.0          # [provisional — chunk 8]
+  train_steps_per_iter: 400  # [provisional — chunk 9]
+  replay_capacity: 500000    # [provisional — chunk 9]
+  policy_loss_weight: 1.0    # [provisional — chunk 8]
+  value_loss_weight: 1.0     # [provisional — chunk 8]
+  steps_loss_weight: 1.0     # [provisional — chunk 8]
+  nan_abort_frac: 0.01       # [plan chunk 8] NaN-skip guard + abort
+  nan_abort_min_steps: 20
+
+# --- generator and the frozen instruments [plan chunk 5] --------------------
+generator:
+  max_bfs_depth: 6            # depth labels are MEASURED by BFS, not assumed
+  train_set_size: 100000      # [plan chunk 5] 100K-problem training set
+  suite_problems_per_depth: 200  # [plan chunk 5] solve_in_N.jsonl, 200 each
+  suite_depths: [1, 2, 3, 4, 5, 6]
+
+# --- the ladder [plan chunks 10, 11] ----------------------------------------
+ladder:
+  ladder_every: 5           # [plan chunk 11] campaign M1 runs at --ladder-every 5
+  bootstrap_resamples: 10000  # [inherited law] paired-difference bootstrap
+  problems_per_pass: 200    # [provisional — chunk 10]
+  sympy_step_budget: 16     # [provisional — chunk 10] sympy is a RUNG, never par
+  sympy_time_budget_s: 1.0  # [provisional — chunk 10]
