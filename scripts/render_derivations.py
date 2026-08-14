@@ -20,11 +20,12 @@ from __future__ import annotations
 import argparse
 import random
 from collections import Counter
+from dataclasses import replace
 from pathlib import Path
 
 from reckoner.config import Config
-from reckoner.episode import Episode, Problem
-from reckoner.expr import Expr, Num, Op, add, eq, has_var, mul, num, sub, var
+from reckoner.episode import Episode, Problem, bfs_solution
+from reckoner.expr import Expr, Num, Op, add, eq, has_var, identity_key, mul, num, sub, var
 from reckoner.interpreter import Step, glyph_panel, render_derivation, state_tokens_line
 from reckoner.rules import RULE_BY_NAME, RULES, enumerate_sites
 from reckoner.vocab import EQ, GOAL_EVALUATE, GOAL_SIMPLIFY, GOAL_SOLVE, VAR_X, VAR_Y
@@ -119,8 +120,36 @@ def derive(problem: Problem, opening: list[str] | None = None, cap: int = 12) ->
 # ---------------------------------------------------------------------------
 
 
-def solve(expr: Expr, par: int) -> Problem:
+#: Placeholder par. Fixtures no longer *state* a par — they state a problem, and
+#: `label()` computes the par with BFS. A hand-written par carrying
+#: `par_source="bfs"` is what shipped six impossible z=+1 rows in the first
+#: draft of this document.
+_UNLABELLED = 0
+
+
+def solve(expr: Expr, par: int = _UNLABELLED) -> Problem:
     return Problem(goal=GOAL_SOLVE, expr=expr, par=par, target=VAR_X)
+
+
+#: BFS is the dominant cost of rendering this document, and both the par label
+#: and the optimal derivation come from the same search. Memoised per process so
+#: it runs once per problem rather than once per caller.
+_SOLUTIONS: dict[tuple, list | None] = {}
+
+
+def solution(problem: Problem) -> list | None:
+    key = (problem.goal, problem.target, identity_key(problem.expr))
+    if key not in _SOLUTIONS:
+        _SOLUTIONS[key] = bfs_solution(problem, CFG)
+    return _SOLUTIONS[key]
+
+
+def label(problem: Problem) -> Problem:
+    """Attach a par and its true provenance. Exactness is computed, not claimed."""
+    path = solution(problem)
+    if path is not None:
+        return replace(problem, par=len(path), par_source="bfs")
+    return replace(problem, par=len(derive(problem)), par_source="scripted")
 
 
 def _linear(a: int, b: int, answer: int) -> Expr:
@@ -187,43 +216,47 @@ def fixtures() -> list[tuple[str, Problem, list[str] | None]]:
 
     # --- EVALUATE, exercising eval_add / eval_sub / eval_mul -------------
     out.append(
-        ("evaluate — a sum", Problem(goal=GOAL_EVALUATE, expr=add(num(17), num(-25)), par=1), None)
+        (
+            "evaluate — a sum",
+            Problem(goal=GOAL_EVALUATE, expr=add(num(17), num(-25)), par=_UNLABELLED),
+            None,
+        )
     )
     out.append(
         (
             "evaluate — a numeric SUB node",
-            Problem(goal=GOAL_EVALUATE, expr=sub(num(21), num(6)), par=1),
+            Problem(goal=GOAL_EVALUATE, expr=sub(num(21), num(6)), par=_UNLABELLED),
             None,
         )
     )
     out.append(
         (
             "evaluate — SUB inside a sum",
-            Problem(goal=GOAL_EVALUATE, expr=add(sub(num(40), num(15)), num(-5)), par=2),
+            Problem(goal=GOAL_EVALUATE, expr=add(sub(num(40), num(15)), num(-5)), par=_UNLABELLED),
             None,
         )
     )
     out.append(
         (
             "evaluate — a product",
-            Problem(goal=GOAL_EVALUATE, expr=mul(num(25), num(25)), par=1),
+            Problem(goal=GOAL_EVALUATE, expr=mul(num(25), num(25)), par=_UNLABELLED),
             None,
         )
     )
     out.append(
         (
             "evaluate — multi-digit product",
-            Problem(goal=GOAL_EVALUATE, expr=mul(num(625), num(3)), par=1),
+            Problem(goal=GOAL_EVALUATE, expr=mul(num(625), num(3)), par=_UNLABELLED),
             None,
         )
     )
     out.append(
         (
-            "evaluate — mixed, three steps",
+            "evaluate — product, subtraction, and a fold",
             Problem(
                 goal=GOAL_EVALUATE,
                 expr=add(mul(num(12), num(12)), sub(num(9), num(30)), num(7)),
-                par=3,
+                par=_UNLABELLED,
             ),
             None,
         )
@@ -231,7 +264,7 @@ def fixtures() -> list[tuple[str, Problem, list[str] | None]]:
     out.append(
         (
             "evaluate — negative product",
-            Problem(goal=GOAL_EVALUATE, expr=mul(num(-7), num(9)), par=1),
+            Problem(goal=GOAL_EVALUATE, expr=mul(num(-7), num(9)), par=_UNLABELLED),
             None,
         )
     )
@@ -240,21 +273,21 @@ def fixtures() -> list[tuple[str, Problem, list[str] | None]]:
     out.append(
         (
             "simplify — like terms",
-            Problem(goal=GOAL_SIMPLIFY, expr=add(mul(num(3), X), mul(num(2), X)), par=1),
+            Problem(goal=GOAL_SIMPLIFY, expr=add(mul(num(3), X), mul(num(2), X)), par=_UNLABELLED),
             None,
         )
     )
     out.append(
         (
             "simplify — like terms cancel to zero",
-            Problem(goal=GOAL_SIMPLIFY, expr=add(mul(num(3), X), mul(num(-3), X)), par=1),
+            Problem(goal=GOAL_SIMPLIFY, expr=add(mul(num(3), X), mul(num(-3), X)), par=_UNLABELLED),
             None,
         )
     )
     out.append(
         (
             "simplify — coefficient falls to 1",
-            Problem(goal=GOAL_SIMPLIFY, expr=add(mul(num(4), X), mul(num(-3), X)), par=1),
+            Problem(goal=GOAL_SIMPLIFY, expr=add(mul(num(4), X), mul(num(-3), X)), par=_UNLABELLED),
             None,
         )
     )
@@ -264,7 +297,7 @@ def fixtures() -> list[tuple[str, Problem, list[str] | None]]:
             Problem(
                 goal=GOAL_SIMPLIFY,
                 expr=add(mul(num(3), X), mul(num(2), X), num(4), num(-9)),
-                par=2,
+                par=_UNLABELLED,
             ),
             None,
         )
@@ -275,7 +308,7 @@ def fixtures() -> list[tuple[str, Problem, list[str] | None]]:
             Problem(
                 goal=GOAL_SIMPLIFY,
                 expr=add(mul(num(3), X), mul(num(2), Y), mul(num(4), X)),
-                par=1,
+                par=_UNLABELLED,
             ),
             None,
         )
@@ -283,21 +316,23 @@ def fixtures() -> list[tuple[str, Problem, list[str] | None]]:
     out.append(
         (
             "simplify — bare x doubles",
-            Problem(goal=GOAL_SIMPLIFY, expr=add(X, X, num(1)), par=1),
+            Problem(goal=GOAL_SIMPLIFY, expr=add(X, X, num(1)), par=_UNLABELLED),
             None,
         )
     )
     out.append(
         (
             "simplify — multi-digit coefficients",
-            Problem(goal=GOAL_SIMPLIFY, expr=add(mul(num(700), X), mul(num(950), X)), par=1),
+            Problem(
+                goal=GOAL_SIMPLIFY, expr=add(mul(num(700), X), mul(num(950), X)), par=_UNLABELLED
+            ),
             None,
         )
     )
     out.append(
         (
             "simplify — a product of numerals inside a sum",
-            Problem(goal=GOAL_SIMPLIFY, expr=add(mul(num(6), num(7)), X), par=1),
+            Problem(goal=GOAL_SIMPLIFY, expr=add(mul(num(6), num(7)), X), par=_UNLABELLED),
             None,
         )
     )
@@ -331,7 +366,11 @@ def fixtures() -> list[tuple[str, Problem, list[str] | None]]:
         elif kind == 1:
             expr = add(num(rng.randrange(-900, 901)), num(rng.randrange(-900, 901)))
             out.append(
-                (f"evaluate — spread {index}", Problem(goal=GOAL_EVALUATE, expr=expr, par=1), None)
+                (
+                    f"evaluate — spread {index}",
+                    Problem(goal=GOAL_EVALUATE, expr=expr, par=_UNLABELLED),
+                    None,
+                )
             )
         else:
             a, b = rng.randrange(-30, 31), rng.randrange(-30, 31)
@@ -339,7 +378,9 @@ def fixtures() -> list[tuple[str, Problem, list[str] | None]]:
                 (
                     f"simplify — spread {index}",
                     Problem(
-                        goal=GOAL_SIMPLIFY, expr=add(mul(num(a), X), mul(num(b), X), num(a)), par=2
+                        goal=GOAL_SIMPLIFY,
+                        expr=add(mul(num(a), X), mul(num(b), X), num(a)),
+                        par=_UNLABELLED,
                     ),
                     None,
                 )
@@ -362,8 +403,19 @@ def build() -> tuple[str, dict]:
 
     goal_names = {GOAL_SOLVE: "SOLVE", GOAL_EVALUATE: "EVALUATE", GOAL_SIMPLIFY: "SIMPLIFY"}
 
-    for index, (note, problem, opening) in enumerate(entries, start=1):
-        steps = derive(problem, opening)
+    for index, (note, raw, opening) in enumerate(entries, start=1):
+        problem = label(raw)
+        if opening:
+            # ILLUSTRATIVE entries are deliberately suboptimal and labelled so.
+            steps = derive(problem, opening)
+        else:
+            path = solution(problem)
+            assert path is not None, f"no BFS solution for {note}"
+            states = [problem.expr, *(state for _action, state in path)]
+            steps = [
+                Step(action[0], action[1], states[i], states[i + 1])
+                for i, (action, _state) in enumerate(path)
+            ]
         episode = Episode(cfg=CFG, rng=random.Random(0))
         episode.reset(problem)
         for step in steps:
@@ -437,6 +489,14 @@ def document() -> str:
         "that nothing was prettified into unfaithfulness.",
         "",
         "**Expect `21 + (−6)` on the page.** That is not a bug; it is the state.",
+        "",
+        "**Errata.** The first issue of this document carried two defect families, both",
+        "caught by proofread and recorded in `FINDINGS.md`: six derivations claimed",
+        "BFS-exact par for hand-written literals, producing `z = +1` rows that are",
+        "impossible by construction (F-02), and one suboptimal exhibit shipped unlabelled",
+        "with a caption that miscounted its own steps (F-01). Pars are now computed by",
+        "`episode.bfs_par`, and `z = +1` against an exact par now raises rather than",
+        "renders.",
         "`sub_both_sides` moves an addend across as its negation, and no `SUB` node exists",
         "there. Rendering it as `21 − 6` would read back as a `SUB` node — a different",
         "state — which is why `read_expr(render_expr(e)) == e` is a test and not a wish.",

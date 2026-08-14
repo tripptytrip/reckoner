@@ -39,6 +39,8 @@ MUST_TRACK: list[str] = [
     "experiment2_agent_plan.md",
     "AGENTS.md",
     "REGISTERED-ROUNDS.md",  # rounds specified before they are run
+    "FINDINGS.md",  # measured facts later chunks must not rediscover
+    "BRIEF-chunk5.md",  # fold-ins accumulated across four review rounds
     "Makefile",
     "pyproject.toml",
     "uv.lock",  # without it, "green in a clean clone" tests resolution luck

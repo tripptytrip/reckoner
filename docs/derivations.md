@@ -9,6 +9,14 @@ base-625 numerals — multi-digit and negative especially — render correctly; 
 that nothing was prettified into unfaithfulness.
 
 **Expect `21 + (−6)` on the page.** That is not a bug; it is the state.
+
+**Errata.** The first issue of this document carried two defect families, both
+caught by proofread and recorded in `FINDINGS.md`: six derivations claimed
+BFS-exact par for hand-written literals, producing `z = +1` rows that are
+impossible by construction (F-02), and one suboptimal exhibit shipped unlabelled
+with a caption that miscounted its own steps (F-01). Pars are now computed by
+`episode.bfs_par`, and `z = +1` against an exact par now raises rather than
+renders.
 `sub_both_sides` moves an addend across as its negation, and no `SUB` node exists
 there. Rendering it as `21 − 6` would read back as a `SUB` node — a different
 state — which is why `read_expr(render_expr(e)) == e` is a test and not a wish.
@@ -23,7 +31,7 @@ A gate reports what it covered, not only that it passed.
 | rule `add_both_sides` | 3 |
 | rule `combine_like_terms` | 18 |
 | rule `div_both_sides` | 22 |
-| rule `eval_add` | 33 |
+| rule `eval_add` | 32 |
 | rule `eval_mul` | 5 |
 | rule `eval_sub` | 3 |
 | rule `sub_both_sides` | 21 |
@@ -33,7 +41,7 @@ A gate reports what it covered, not only that it passed.
 | with multi-digit base-625 numerals | 10 |
 | with negative numerals | 33 |
 | x on both sides | 3 |
-| derivation lengths | {1: 29, 2: 2, 3: 12, 4: 1, 5: 4, 6: 2} |
+| derivation lengths | {1: 29, 2: 2, 3: 13, 5: 4, 6: 2} |
 
 `add_both_sides` is reachability-redundant (`REGISTERED-ROUNDS.md` ROUND-01), so it
 never appears in an optimal derivation. The entries that exercise it are labelled
@@ -421,7 +429,7 @@ glyph convention: reckoner-local placeholder, NOT base-625-canonical (vendoring 
 
 <sub>start tokens: `8 1 4 1 33 32 2 4 1 35 2 2`</sub>
 
-### 19. evaluate — mixed, three steps
+### 19. evaluate — product, subtraction, and a fold
 
 ```
 ruleset_version=1  vocab_version=1
@@ -430,12 +438,11 @@ par    3  (par_source=bfs)
 start  7 + (9 − 30) + 12 × 12
 
 7 + (9 − 30) + 12 × 12  ──[rule 1 eval_sub @ site 2 (9 − 30)]──►  7 + (−21) + 12 × 12
-7 + (−21) + 12 × 12     ──[rule 0 eval_add @ site 0 (7 + (−21) + 12 × 12)]──►  −14 + 12 × 12
-−14 + 12 × 12           ──[rule 2 eval_mul @ site 2 (12 × 12)]──►  144 + (−14)
-144 + (−14)             ──[rule 0 eval_add @ site 0 (144 + (−14))]──►  130
+7 + (−21) + 12 × 12     ──[rule 2 eval_mul @ site 3 (12 × 12)]──►  7 + 144 + (−21)
+7 + 144 + (−21)         ──[rule 0 eval_add @ site 0 (7 + 144 + (−21))]──►  130
 
 result 130
-       solved in 4 step(s), par 3, z = −1
+       solved in 3 step(s), par 3, z = 0
 ```
 
 <sub>start tokens: `6 1 4 1 39 2 7 1 4 1 41 2 4 1 62 2 2 8 1 4 1 44 2 4 1 44 2 2 2`</sub>
@@ -679,13 +686,13 @@ result 394
 ```
 ruleset_version=1  vocab_version=1
 goal   SIMPLIFY
-par    2  (par_source=bfs)
+par    1  (par_source=bfs)
 start  8x + 19x + 19
 
 8x + 19x + 19  ──[rule 3 combine_like_terms @ site 0 (8x + 19x + 19)]──►  27x + 19
 
 result 27x + 19
-       solved in 1 step(s), par 2, z = +1
+       solved in 1 step(s), par 1, z = 0
 ```
 
 <sub>start tokens: `6 1 8 1 4 1 40 2 11 2 8 1 4 1 51 2 11 2 4 1 51 2 2`</sub>
@@ -740,13 +747,13 @@ glyph convention: reckoner-local placeholder, NOT base-625-canonical (vendoring 
 ```
 ruleset_version=1  vocab_version=1
 goal   SIMPLIFY
-par    2  (par_source=bfs)
+par    1  (par_source=bfs)
 start  2x + 21x + 2
 
 2x + 21x + 2  ──[rule 3 combine_like_terms @ site 0 (2x + 21x + 2)]──►  23x + 2
 
 result 23x + 2
-       solved in 1 step(s), par 2, z = +1
+       solved in 1 step(s), par 1, z = 0
 ```
 
 <sub>start tokens: `6 1 8 1 4 1 34 2 11 2 8 1 4 1 53 2 11 2 4 1 34 2 2`</sub>
@@ -790,13 +797,13 @@ result 511
 ```
 ruleset_version=1  vocab_version=1
 goal   SIMPLIFY
-par    2  (par_source=bfs)
+par    1  (par_source=bfs)
 start  3x + (−23x) + 3
 
 3x + (−23x) + 3  ──[rule 3 combine_like_terms @ site 0 (3x + (−23x) + 3)]──►  −20x + 3
 
 result −20x + 3
-       solved in 1 step(s), par 2, z = +1
+       solved in 1 step(s), par 1, z = 0
 ```
 
 <sub>start tokens: `6 1 8 1 4 1 35 2 11 2 8 1 5 1 55 2 11 2 4 1 35 2 2`</sub>
@@ -851,13 +858,13 @@ glyph convention: reckoner-local placeholder, NOT base-625-canonical (vendoring 
 ```
 ruleset_version=1  vocab_version=1
 goal   SIMPLIFY
-par    2  (par_source=bfs)
+par    1  (par_source=bfs)
 start  −18x + (−22x) + (−18)
 
 −18x + (−22x) + (−18)  ──[rule 3 combine_like_terms @ site 0 (−18x + (−22x) + (−18))]──►  −40x + (−18)
 
 result −40x + (−18)
-       solved in 1 step(s), par 2, z = +1
+       solved in 1 step(s), par 1, z = 0
 ```
 
 <sub>start tokens: `6 1 8 1 5 1 50 2 11 2 8 1 5 1 54 2 11 2 5 1 50 2 2`</sub>
@@ -912,13 +919,13 @@ glyph convention: reckoner-local placeholder, NOT base-625-canonical (vendoring 
 ```
 ruleset_version=1  vocab_version=1
 goal   SIMPLIFY
-par    2  (par_source=bfs)
+par    1  (par_source=bfs)
 start  2x + 11x + 11
 
 2x + 11x + 11  ──[rule 3 combine_like_terms @ site 0 (2x + 11x + 11)]──►  13x + 11
 
 result 13x + 11
-       solved in 1 step(s), par 2, z = +1
+       solved in 1 step(s), par 1, z = 0
 ```
 
 <sub>start tokens: `6 1 8 1 4 1 34 2 11 2 8 1 4 1 43 2 11 2 4 1 43 2 2`</sub>
@@ -962,13 +969,13 @@ result 500
 ```
 ruleset_version=1  vocab_version=1
 goal   SIMPLIFY
-par    2  (par_source=bfs)
+par    1  (par_source=bfs)
 start  9x + 30x + 9
 
 9x + 30x + 9  ──[rule 3 combine_like_terms @ site 0 (9x + 30x + 9)]──►  39x + 9
 
 result 39x + 9
-       solved in 1 step(s), par 2, z = +1
+       solved in 1 step(s), par 1, z = 0
 ```
 
 <sub>start tokens: `6 1 8 1 4 1 41 2 11 2 8 1 4 1 62 2 11 2 4 1 41 2 2`</sub>

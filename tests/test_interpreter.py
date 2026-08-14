@@ -186,7 +186,11 @@ def test_malformed_notation_is_rejected_cleanly() -> None:
 
 def spec_example() -> tuple[Problem, list[Step]]:
     problem = Problem(
-        goal=GOAL_SOLVE, expr=eq(add(mul(num(3), X), num(6)), num(21)), par=3, target=VAR_X
+        goal=GOAL_SOLVE,
+        expr=eq(add(mul(num(3), X), num(6)), num(21)),
+        par=3,
+        target=VAR_X,
+        par_source="bfs",  # asserted, because it was computed — see FINDINGS.md F-02
     )
     episode = Episode(cfg=CFG, rng=random.Random(0))
     episode.reset(problem)
@@ -413,6 +417,37 @@ def test_document_is_byte_identical_across_processes() -> None:
         "the committed document does not match a fresh render"
     )
     print(f"\n  document digest (4 processes, 4 hash seeds): {digests.pop()}")
+
+
+def test_every_par_in_the_document_is_computed_not_asserted() -> None:
+    """**The defect chunk 4's proofread caught.** Fixtures state problems, not pars.
+
+    Six derivations shipped with a hand-written `par=2` beside
+    `par_source="bfs"`, producing z=+1 rows that are impossible by construction —
+    BFS-exact par is the minimum, so nothing beats it. This re-derives every par
+    and requires the document to agree.
+    """
+    import importlib
+
+    from reckoner.episode import bfs_par
+
+    module = importlib.import_module("render_derivations")
+    for note, raw, _opening in module.fixtures():
+        labelled = module.label(raw)
+        if labelled.par_source == "bfs":
+            assert bfs_par(labelled, module.CFG) == labelled.par, f"par disagrees for '{note}'"
+
+
+def test_the_document_contains_no_impossible_outcome() -> None:
+    """z = +1 against an exact par cannot appear on the page, ever again."""
+    text = DERIVATIONS_MD.read_text()
+    # Match the result line, not prose: the errata paragraph names `z = +1` in
+    # order to say it can no longer occur.
+    assert ", z = +1" not in text, (
+        "a z=+1 row survived. Against par_source=bfs that is a contradiction: "
+        "exact par is the minimum, so beating it means the label is wrong."
+    )
+    assert text.count("par_source=") == text.count("par_source=bfs") == 50
 
 
 def test_no_derivation_ran_away() -> None:

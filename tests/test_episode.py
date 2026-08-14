@@ -15,6 +15,8 @@ import pytest
 
 from reckoner.config import Config
 from reckoner.episode import (
+    EXACT_PAR_SOURCES,
+    PAR_SOURCES,
     TERMINAL_CONCEDED,
     TERMINAL_NO_ACTIONS,
     TERMINAL_SOLVED,
@@ -22,6 +24,8 @@ from reckoner.episode import (
     Episode,
     EpisodeResult,
     Problem,
+    bfs_par,
+    bfs_solution,
     decode_state,
     describe_goal,
     encode_state,
@@ -476,7 +480,7 @@ def test_result_carries_ruleset_version_first() -> None:
     result = episode.result()
     assert result.ruleset_version == RULESET_VERSION
     assert result.vocab_version == VOCAB_VERSION
-    assert result.par_source == "bfs"
+    assert result.par_source == "unverified"  # provenance is never acquired by silence
 
 
 def test_no_action_is_legal_after_terminal() -> None:
@@ -600,3 +604,147 @@ def test_describe_goal() -> None:
     assert describe_goal(solve_problem(eq(X, num(1)), par=0)) == "SOLVE for x"
     assert describe_goal(Problem(goal=GOAL_EVALUATE, expr=num(1), par=0)) == "EVALUATE"
     assert describe_goal(Problem(goal=GOAL_SIMPLIFY, expr=X, par=0)) == "SIMPLIFY"
+
+
+# ---------------------------------------------------------------------------
+# Par provenance — the defect class chunk 4's proofread exposed
+# ---------------------------------------------------------------------------
+
+
+def test_par_source_defaults_to_unverified() -> None:
+    """**Exactness must be asserted, never inherited.**
+
+    The default was `"bfs"`, and fifty derivations shipped claiming BFS-exact
+    provenance for pars that were hand-written literals — because the
+    most-trusted value was the one you got by saying nothing. A provenance field
+    whose default is its strongest claim is not a provenance field.
+    """
+    assert Problem(goal=GOAL_SIMPLIFY, expr=X, par=0).par_source == "unverified"
+    assert "unverified" in PAR_SOURCES
+    assert {"bfs"} == EXACT_PAR_SOURCES
+
+
+def test_unknown_par_source_is_rejected() -> None:
+    with pytest.raises(ValueError, match="unknown par_source"):
+        Problem(goal=GOAL_SIMPLIFY, expr=X, par=0, par_source="guessed")
+
+
+def test_beating_an_exact_par_is_impossible_and_raises() -> None:
+    """**z = +1 implies par_source is not exact.** The invariant, both polarities.
+
+    BFS-exact par *is* the minimum in this rule system, so beating it is not a
+    good result — it is proof the label is wrong. This converts the whole defect
+    class from proofread-detectable to structurally loud, which matters because
+    chunk 5 mints 100,000 par labels.
+    """
+    with pytest.raises(ValueError, match="not a win, it is a mislabelled problem"):
+        EpisodeResult(
+            ruleset_version=1,
+            vocab_version=1,
+            goal=GOAL_SIMPLIFY,
+            solved=True,
+            steps=1,
+            par=2,
+            par_source="bfs",
+            z=1,
+            terminal_reason=TERMINAL_SOLVED,
+        )
+
+    # The other polarity, three ways it must still be allowed:
+    for source in ("scripted", "pool", "unverified"):
+        EpisodeResult(  # beating a provisional floor is the point of the par game
+            ruleset_version=1,
+            vocab_version=1,
+            goal=GOAL_SIMPLIFY,
+            solved=True,
+            steps=1,
+            par=2,
+            par_source=source,
+            z=1,
+            terminal_reason=TERMINAL_SOLVED,
+        )
+    for z in (0, -1):  # meeting or missing an exact par is ordinary
+        EpisodeResult(
+            ruleset_version=1,
+            vocab_version=1,
+            goal=GOAL_SIMPLIFY,
+            solved=True,
+            steps=2,
+            par=2,
+            par_source="bfs",
+            z=z,
+            terminal_reason=TERMINAL_SOLVED,
+        )
+
+
+def test_an_episode_can_never_produce_the_impossible_row() -> None:
+    """End to end: a correctly-labelled problem cannot yield z=+1 by playing it."""
+    problem = solve_problem(eq(add(mul(num(3), X), num(6)), num(21)), par=3, par_source="bfs")
+    episode = Episode(cfg=CFG, rng=rng())
+    episode.reset(problem)
+    for action in greedy_solve(problem):  # type: ignore[union-attr]
+        episode.step(action)
+    result = episode.result()
+    assert result.z <= 0
+
+
+# ---------------------------------------------------------------------------
+# BFS-exact par
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("problem", "par"),
+    [
+        (Problem(goal=GOAL_SIMPLIFY, expr=add(mul(num(8), X), mul(num(19), X), num(19)), par=0), 1),
+        (Problem(goal=GOAL_EVALUATE, expr=add(num(17), num(-25)), par=0), 1),
+        (Problem(goal=GOAL_EVALUATE, expr=sub(num(21), num(6)), par=0), 1),
+        (solve_problem(eq(mul(num(3), X), num(15)), par=0), 1),
+        (solve_problem(eq(add(mul(num(3), X), num(6)), num(21)), par=0), 3),
+        (
+            solve_problem(eq(add(mul(num(5), X), num(3)), add(mul(num(2), X), num(18))), par=0),
+            5,
+        ),
+    ],
+)
+def test_bfs_par_is_the_minimum(problem: Problem, par: int) -> None:
+    assert bfs_par(problem, CFG) == par
+    path = bfs_solution(problem, CFG)
+    assert path is not None and len(path) == par
+
+
+def test_bfs_par_of_an_already_solved_problem_is_zero() -> None:
+    assert bfs_par(solve_problem(eq(X, num(5)), par=0), CFG) == 0
+    assert bfs_solution(solve_problem(eq(X, num(5)), par=0), CFG) == []
+
+
+def test_bfs_par_shares_the_episodes_terminal_test() -> None:
+    """The labeller calls verify(); it does not own a second definition of solved.
+
+    A par label and an episode outcome disagreeing about what counts as solved
+    is the failure this shares code to make impossible. Replaying BFS's own path
+    through a real episode must land on `solved` in exactly `par` steps.
+    """
+    rng_ = random.Random(99)
+    checked = 0
+    for _ in range(60):
+        problem = random_solvable_problem(rng_)
+        path = bfs_solution(problem, CFG)
+        if path is None:
+            continue
+        episode = Episode(cfg=CFG, rng=random.Random(3))
+        episode.reset(problem)
+        for action, _state in path:
+            assert not episode.done, "BFS path continued past the episode's terminal"
+            episode.step(action)
+        assert episode.solved, "BFS called it solved; the episode did not"
+        assert episode.steps == len(path)
+        checked += 1
+    assert checked >= 40, f"only {checked} problems exercised"
+
+
+def test_bfs_par_returns_none_beyond_the_horizon() -> None:
+    """Absence carries a reason: unreachable-within-cap is not par 0."""
+    problem = solve_problem(eq(add(mul(num(5), X), num(3)), add(mul(num(2), X), num(18))), par=0)
+    assert bfs_par(problem, CFG, cap=2) is None
+    assert bfs_par(problem, CFG, cap=5) == 5

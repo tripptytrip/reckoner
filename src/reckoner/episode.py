@@ -52,8 +52,8 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 
 from reckoner.config import Config
-from reckoner.expr import Expr, Num, Op, Var, canonicalize, parse, tokens
-from reckoner.rules import RULESET_VERSION, apply, legal_actions
+from reckoner.expr import Expr, Num, Op, Var, canonicalize, identity_key, parse, tokens
+from reckoner.rules import RULESET_VERSION, apply, legal_actions, successors
 from reckoner.semantics import eval_exact, eval_field, holds_exact, variables
 from reckoner.vocab import (
     DIV,
@@ -77,6 +77,11 @@ TERMINAL_STEP_CAP = "step_cap"
 TERMINAL_NO_ACTIONS = "no_legal_actions"
 TERMINAL_CONCEDED = "conceded"
 
+#: Where a par label came from. Only ``bfs`` is exact; the rest are floors or
+#: moving targets, and the difference is what ``z`` is allowed to mean.
+PAR_SOURCES = frozenset({"bfs", "scripted", "pool", "unverified"})
+EXACT_PAR_SOURCES = frozenset({"bfs"})
+
 
 # ---------------------------------------------------------------------------
 # Problems
@@ -94,7 +99,14 @@ class Problem:
 
     # [v1.1] Par labels are provenance-tagged so a re-solved pool par can never
     # silently overwrite a BFS-exact one. Fields carry their epistemic status.
-    par_source: str = "bfs"  # "bfs" | "scripted" | "pool"
+    #
+    # **The default is `unverified`, and that is load-bearing.** It was `"bfs"`,
+    # and chunk 4's proofread caught what that costs: fifty derivations shipped
+    # claiming BFS-exact provenance for pars that were hand-written literals,
+    # because the most-trusted value was the one you got by saying nothing. A
+    # provenance field whose default is its strongest claim is not a provenance
+    # field. Exactness must be asserted, never inherited.
+    par_source: str = "unverified"  # "bfs" | "scripted" | "pool" | "unverified"
     par_asof: str = ""
 
     def __post_init__(self) -> None:
@@ -102,6 +114,10 @@ class Problem:
             raise ValueError(f"{token_name(self.goal)} is not a goal token")
         if self.par < 0:
             raise ValueError(f"par must be non-negative; got {self.par}")
+        if self.par_source not in PAR_SOURCES:
+            raise ValueError(
+                f"unknown par_source {self.par_source!r}; expected one of {sorted(PAR_SOURCES)}"
+            )
         if canonicalize(self.expr) != self.expr:
             raise ValueError("Problem.expr must be canonical")
         if DIV in tokens(self.expr):
@@ -272,6 +288,26 @@ class EpisodeResult:
     z: int
     terminal_reason: str
 
+    def __post_init__(self) -> None:
+        """**z = +1 implies par_source is not exact.** Structural, not proofread.
+
+        BFS-exact par *is* the minimum step count in this rule system, so
+        beating it is not a good result — it is a contradiction, and it means
+        the label is wrong. Chunk 4's document shipped six of them before a
+        human counted; nothing in the code objected, because the win-condition
+        tests pinned what z means and nothing pinned z against the provenance of
+        the number it was computed from.
+
+        This is loud on purpose. A par off-by-one is not a cosmetic defect: par
+        is the game's currency, and chunk 5 mints 100K of them.
+        """
+        if self.z > 0 and self.par_source in EXACT_PAR_SOURCES:
+            raise ValueError(
+                f"z = +1 against par_source={self.par_source!r}: solved in {self.steps} "
+                f"steps against an exact par of {self.par}. Exact par is the minimum, "
+                "so this is not a win, it is a mislabelled problem."
+            )
+
 
 # ---------------------------------------------------------------------------
 # The episode
@@ -384,6 +420,60 @@ class Episode:
     def _require_started(self) -> None:
         if self.problem is None:
             raise ValueError("call reset(problem) before using the episode")
+
+
+# ---------------------------------------------------------------------------
+# BFS-exact par
+# ---------------------------------------------------------------------------
+
+
+def bfs_solution(
+    problem: Problem, cfg: Config | None = None, cap: int | None = None
+) -> list[tuple[tuple[int, int], Expr]] | None:
+    """A shortest derivation, or ``None`` if none exists within ``cap`` steps.
+
+    **It calls** :func:`verify` **— the episode's own acceptance test.** That is
+    not a convenience, it is the point: a labeller with its own terminal test is
+    a second definition of "solved", and the first time the two drift, every par
+    in every dataset becomes a number whose meaning nobody can reconstruct. One
+    definition, one implementation, and a par that disagrees with an episode
+    outcome is then impossible rather than merely unlikely.
+
+    The full v1 rule set is used, including ``add_both_sides``. Its removal is
+    ROUND-01 and has not fired; computing par against a reduced set early would
+    make every recorded par a label for a system that does not exist.
+    """
+    cfg = cfg or Config()
+    cap = cap if cap is not None else cfg.par.bfs_exact_max_depth
+    rng = random.Random(cfg.seed)
+
+    if verify(problem, problem.expr, cfg, rng):
+        return []
+
+    seen = {identity_key(problem.expr)}
+    frontier: list[tuple[Expr, list[tuple[tuple[int, int], Expr]]]] = [(problem.expr, [])]
+    for _ in range(cap):
+        nxt: list[tuple[Expr, list[tuple[tuple[int, int], Expr]]]] = []
+        for state, path in frontier:
+            for action, successor in successors(state):
+                key = identity_key(successor)
+                if key in seen:
+                    continue
+                seen.add(key)
+                extended = [*path, (action, successor)]
+                if verify(problem, successor, cfg, rng):
+                    return extended
+                nxt.append((successor, extended))
+        if not nxt:
+            return None
+        frontier = nxt
+    return None
+
+
+def bfs_par(problem: Problem, cfg: Config | None = None, cap: int | None = None) -> int | None:
+    """The exact minimum step count, or ``None`` beyond the BFS horizon."""
+    path = bfs_solution(problem, cfg, cap)
+    return None if path is None else len(path)
 
 
 def describe_goal(problem: Problem) -> str:
