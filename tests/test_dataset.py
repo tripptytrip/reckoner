@@ -13,6 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from reckoner.config import Config
@@ -28,8 +29,8 @@ from reckoner.dataset import (
     write_dataset,
     write_suite,
 )
-from reckoner.episode import Problem, bfs_par, bfs_solution
-from reckoner.expr import eq, mul, num, var
+from reckoner.episode import Problem, bfs_par, bfs_solution, decode_state
+from reckoner.expr import eq, identity_key, mul, num, var
 from reckoner.generator import check_emission
 from reckoner.rules import RULESET_VERSION
 from reckoner.vocab import GOAL_SOLVE, VAR_X, VOCAB_VERSION
@@ -140,6 +141,7 @@ def test_no_suite_contamination() -> None:
     the test by not being named in it.
     """
     checked = []
+    deferred = []
     suite_all: set[tuple[int, ...]] = set()
     for depth in DEPTHS:
         suite_all |= state_keys(suite(depth))
@@ -149,10 +151,12 @@ def test_no_suite_contamination() -> None:
             continue
         mode = json.loads((path / "meta.json").read_text())["mode"]
         if mode == "phase1_supervision":
-            # A supervision set holds *states along derivations*, not problems,
-            # so its rows are not comparable to a suite's. Its contamination
-            # status is inherited from the problem set it was derived from —
-            # and inherited status is verified below, not assumed.
+            # A supervision set's rows are *states along derivations*, not
+            # problems, so this check's key does not apply to them — but they are
+            # NOT thereby exempt. They are handed to the state-level check below,
+            # by name, and the handover is asserted. A1: a dataset that matches
+            # neither check must fail the build, never fall through it.
+            deferred.append(path.name)
             continue
         dataset = read_dataset(path)
         overlap = dataset_keys(dataset) & suite_all
@@ -161,6 +165,12 @@ def test_no_suite_contamination() -> None:
 
     assert checked, "no dataset directories were checked — the guard is vacuous"
     assert "train_100k" in checked, f"the training set was not among {checked}"
+    # The universal walk regains its universality: every dataset is covered by
+    # exactly one check, and the set of deferrals is pinned rather than open.
+    assert set(deferred) <= set(SUPERVISION_SETS), (
+        f"{sorted(set(deferred) - set(SUPERVISION_SETS))} deferred to a state-level check "
+        "that does not name them — a new dataset mode escaped both gates"
+    )
 
 
 @pytest.mark.skipif(
@@ -186,6 +196,115 @@ def test_the_supervision_set_names_the_problem_set_it_inherits_from() -> None:
     assert meta["problems_dropped"] == 0, "some problems produced no derivation"
     assert meta["ruleset_version"] == RULESET_VERSION
     assert meta["vocab_version"] == VOCAB_VERSION
+
+
+# ---------------------------------------------------------------------------
+# A1 — the state-level check the inheritance could not perform
+# ---------------------------------------------------------------------------
+
+
+# Every supervision set and the census record that covers it. A set added here
+# without a record fails the gate below; a set added to runs/data/ without being
+# added here fails the universal walk above. Neither can be forgotten quietly.
+SUPERVISION_SETS = {
+    "phase1_train": "supervision_contamination",
+    "phase1_eval": "eval_suite_contamination",
+}
+
+needs_supervision = pytest.mark.skipif(
+    not (DATA / "phase1_train" / "meta.json").exists(), reason="phase-1 supervision not built"
+)
+
+
+def _suite_state_keys() -> set[tuple[tuple[int, ...], int]]:
+    """``(identity_key(expr), goal)`` for every suite START state."""
+    keys = set()
+    for depth in DEPTHS:
+        for row in suite(depth):
+            goal, _target, expr = decode_state(tuple(row["tokens"]))
+            keys.add((identity_key(expr), goal))
+    return keys
+
+
+def _supervision_keys(path: Path, indices: list[int]) -> list[tuple[tuple[int, ...], int]]:
+    meta = json.loads((path / "meta.json").read_text())
+    n, width = meta["n"], meta["max_len"]
+    tokens = np.memmap(path / "tokens.i32", dtype=np.int32, mode="r", shape=(n, width))
+    lengths = np.memmap(path / "lengths.i32", dtype=np.int32, mode="r", shape=(n,))
+    out = []
+    for i in indices:
+        goal, _target, expr = decode_state(tuple(int(t) for t in tokens[i, : lengths[i]]))
+        out.append((identity_key(expr), goal))
+    return out
+
+
+@needs_supervision
+@pytest.mark.parametrize("name", sorted(SUPERVISION_SETS))
+def test_no_supervision_state_is_a_suite_start_state(name: str) -> None:
+    """**A1's permanent gate.** Inheritance covers provenance, not derivations.
+
+    ``train_100k``'s *problems* are disjoint from the suites. Its *derivations*
+    pass through states the suites also use as starts: solving ``9x + (-28) = 44``
+    passes through ``9x = 72``, and ``-4x = 28`` is a ``solve_in_1`` problem
+    verbatim. The unroll created a question the problem-level check could not
+    ask and the inheritance check could not see. Measured before the fix: 1,887
+    of 313,628 examples (0.6017%), 116 distinct states, **zero of them start
+    states** — entirely intermediates (`FINDINGS.md` F-08).
+
+    Structured like the BFS re-verification above, and for the same reason: the
+    exhaustive pass is ``scripts/census_supervision_contamination.py``, whose
+    artifact is checked here **and pinned to the bytes it censused**, plus a
+    bounded direct sample so this test is not purely trusting a record. A full
+    in-test pass is 311,741 decodes — a ``make test`` people stop running.
+    """
+    path = DATA / name
+    if not (path / "meta.json").exists():
+        pytest.skip(f"{name} not built")
+    census = REPO / "runs" / f"{SUPERVISION_SETS[name]}.json"
+    assert census.exists(), f"no census artifact for {name} — run the census script"
+    record = json.loads(census.read_text())
+    meta = json.loads((path / "meta.json").read_text())
+
+    # Currency, not just content: a record that does not match the bytes on disk
+    # is a record about a different dataset.
+    assert record["dataset_digests"] == meta["digests"], (
+        f"the census was computed against a different {name} than the one on disk — "
+        "rebuild the census before trusting its zero"
+    )
+    assert record["examples"] == meta["n"]
+    assert record["colliding_examples"] == 0, (
+        f"{record['colliding_examples']} supervision states are suite start states"
+    )
+
+    # And a bounded live sample, so deleting the artifact check alone cannot hide
+    # a fresh collision.
+    suite_keys = _suite_state_keys()
+    rng = random.Random(0)
+    sample = sorted(rng.sample(range(meta["n"]), min(4000, meta["n"])))
+    live = [k for k in _supervision_keys(path, sample) if k in suite_keys]
+    assert not live, f"{len(live)} collisions in a {len(sample)}-row sample"
+
+
+@needs_supervision
+def test_the_contamination_probe_can_find_a_collision() -> None:
+    """The other polarity, and here it is the one that matters.
+
+    The gate above passes by finding nothing, which is indistinguishable from a
+    probe that *cannot* find anything — law 5 rider (a). So the probe is run
+    against a state known to be a suite start and must report it. Without this,
+    a keying bug that returns the empty set forever would go green forever.
+    """
+    suite_keys = _suite_state_keys()
+    assert suite_keys, "no suite keys built — the probe has nothing to detect"
+
+    # Positive control: a real suite row, put through the same keying path the
+    # gate uses, must be detected.
+    row = suite(1)[0]
+    goal, _target, expr = decode_state(tuple(row["tokens"]))
+    assert (identity_key(expr), goal) in suite_keys, "the probe cannot see a known suite state"
+
+    # Negative control: a state that is not a suite start must not be reported.
+    assert (identity_key(eq(mul(num(97), X), num(9701))), goal) not in suite_keys
 
 
 @pytest.mark.skipif(not (DATA / "eval_held_out").exists(), reason="eval set not generated")

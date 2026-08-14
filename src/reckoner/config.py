@@ -175,7 +175,17 @@ class SearchConfig:
     gumbel_m: int = 16
     c_visit: float = 50.0
     c_scale: float = 1.0
-    batch_leaves: int = 512
+
+    # [chunk 8 — DECIDED, was `batch_leaves` provisional-chunk-7] How many
+    # concurrent SEARCHES pool their leaf evaluations, never how many leaves are
+    # pooled inside one tree. The rename is the whole point: within-tree pooling
+    # was removed in chunk 8 part 0 because simulation k+1's selection depends on
+    # k's backup, so pooling inside a tree changes what the tree does. A key
+    # named for deleted semantics is a lie with a schema — the old name described
+    # a mechanism this project has forbidden. Decided rather than provisional
+    # because the quantity it now names is a batching width, set by the box, not
+    # a search hyper-parameter awaiting a measurement.
+    batch_searches: int = 512
 
     # [plan chunk 7] eval/self-play profiles kept. The default is the *self-play*
     # value, so anything that forgets to choose keeps generating diverse data

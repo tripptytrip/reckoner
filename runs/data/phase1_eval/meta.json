@@ -1,0 +1,44 @@
+{
+  "caveat": "policy targets are single BFS paths; where several optimal derivations exist this imprints BFS tie-break and site-enumeration order. Accepted for the warm start; Phase 2 improved-policy targets wash it out.",
+  "depth_histogram": {
+    "1": 387,
+    "2": 563,
+    "3": 794,
+    "4": 2304,
+    "5": 1910,
+    "6": 612
+  },
+  "digests": {
+    "action": "41c09f5e90c042b98b0f1a8e1ff6b4535058678b4cb001c19a23cae703caed9e",
+    "depth": "699af2d6b385a3b061c82a9799104744d899859c7f8d770adfe5fe57e100663f",
+    "goal": "fc1c1bf9dedfd9d9db83cde38e950a51dba41d805dd084b949c4782391b5ac65",
+    "lengths": "c47383d03a3deb21d6ca16d33395cc0d5d88d30bfa9ea08777369f85eff79acf",
+    "steps_remaining": "4097b738fa7e9d34a1c2bce8428b41fb308605138c2964228bd9d43f81b2d5df",
+    "tokens": "02dd0bd6218d8454ac3941a4054c7a47f9807a8ccd9f48ea4574a91a055fded3"
+  },
+  "git_sha": "ac68d89e62d6a1aeecffda6ad08cc12ceef69853",
+  "goal_histogram": {
+    "14": 2846,
+    "15": 1994,
+    "16": 1730
+  },
+  "max_len": 64,
+  "mode": "phase1_supervision",
+  "n": 6570,
+  "problems": 2000,
+  "problems_dropped": 0,
+  "ruleset_version": 1,
+  "seconds": 17.3,
+  "source": "runs/data/eval_held_out",
+  "source_digests": {
+    "depth": "5cc714d00810ccb5d9eb445e24c3c3a88c180b00c37f203ebea2a8c879525761",
+    "goal": "06f485ebc440840daa03dd9984f3d3c8c4350a56a1ff527b2a73ddf33be31b14",
+    "lengths": "42778c29df7a5ed6cfc2edc3557b4fad3391ead7c133a9b95bf380b82c14800e",
+    "par": "5cc714d00810ccb5d9eb445e24c3c3a88c180b00c37f203ebea2a8c879525761",
+    "target": "ca3d79b8169a6257301f2e71cca713dbce34db4894a9f556e00e128e36b72c7e",
+    "tokens": "3c2f85db58ee8dfdb0a85186999f0b37bc9fbdf7e9bbd7a3f46a9f73101dda3b"
+  },
+  "suite_collision_policy": "A1 (2026-08-15): supervision states matching a suite start state on (identity_key, goal) are removed. Inherited problem-level cleanliness does not cover derivation intermediates \u2014 train_100k's problems are clean, its derivations pass through states the suites also use as starts.",
+  "suite_collisions_removed": 24,
+  "vocab_version": 1
+}

@@ -72,7 +72,9 @@ search:
   gumbel_m: 16      # [provisional — chunk 7] top of the {3,5,12,16} grid
   c_visit: 50.0     # [provisional — chunk 7]
   c_scale: 1.0      # [provisional — chunk 7]
-  batch_leaves: 512 # [provisional — chunk 7]
+  # [chunk 8 — DECIDED] concurrent SEARCHES pooling leaves, never leaves within
+  # one tree; within-tree pooling was removed as unsound (A3, was batch_leaves).
+  batch_searches: 512
   root_noise: true  # [plan chunk 7] the SELF-PLAY value; suites/ladder run false
 
 # --- training [plan chunks 8, 9] --------------------------------------------

@@ -272,7 +272,7 @@ crop must fire *and* the outputs must be bit-identical. A crop test that only
 checked the outputs would go green on a crop that never cropped, which is F-06's
 shape one layer down.
 
-**Registered, not done:** the same crop is available to the search's evaluator
+**Registered, not done (F-07):** the same crop is available to the search's evaluator
 path, where batched leaves are also padded to 512 and reachable states are
 usually far shorter. Not touched here — that is shipped chunk-7 code and this was
 a chunk-8 pre-flight.
@@ -286,3 +286,137 @@ what an accelerator addresses. AGENTS.md §8's "GPU idle while CPU-bound Python
 saturates" is stated for *search* workloads and holds there; supervised Phase-1
 training is not one, and the pilot distinguishes them by measurement rather than
 by assumption.
+
+---
+
+## F-08 — The derivations walked through the instrument
+
+**Found:** 2026-08-15, by amendment A1's census, before any training step.
+Record: `runs/supervision_contamination.json`.
+
+`train_100k`'s **problems** are disjoint from the frozen suites, and a test has
+said so since chunk 5. Phase-1 supervision holds those problems' **derivation
+states**, and an intermediate state of a deep problem can be, exactly, the start
+state of a shallow suite problem. Solving `9x + (−28) = 44` passes through
+`9x = 72`. Measured instances include `−4x = 28`, `−6x = −30`, `−7x = 14` — each
+a `solve_in_1` problem verbatim, each sitting one step from the end of a par-2
+derivation the model was about to be trained on.
+
+**1,887 of 313,628 examples — 0.6017% — across 116 distinct states.**
+
+| suite | colliding examples | | steps remaining | colliding examples |
+|---|---:|---|---|---:|
+| `solve_in_1` | 1,835 | | 1 | 1,835 |
+| `solve_in_2` | 0 | | 2 | 0 |
+| `solve_in_3` | 52 | | 3 | 52 |
+| `solve_in_4` | 0 | | 4 | 0 |
+| `solve_in_5` | 0 | | 5 | 0 |
+| `solve_in_6` | 0 | | 6 | 0 |
+
+**Those are the same table twice, and they agree exactly.** A state with *k*
+steps remaining on a BFS-optimal path *is* a par-*k* problem, so it can only
+collide with `solve_in_k`. The two counts were computed by different routes —
+one keyed on suite membership, one on the `steps_remaining` array — and matching
+1,835↔1,835 and 52↔52 is an independent confirmation that the keying is right,
+not a restatement.
+
+**Zero start states.** Every collision is an intermediate. The chunk-5
+problem-level gate was correct and remains correct; what it could not do was
+speak about states that did not exist when it ran.
+
+**Why depth 1 dominates:** the depth-1 state space is tiny — `ax = b` and little
+else — so 200 suite items catch 1.8% of 100,000 penultimate states. The rate
+collapses with depth as the state space opens up.
+
+**One measured fact that is not explained, recorded as unexplained.** 79,249
+states have exactly 2 steps remaining and **none** of them matches any of the 200
+`solve_in_2` problems, while depth 3 has 52 of 62,667. That is non-monotone and
+there is no mechanism on offer for it. It is not a keying artifact: the weaker
+goal-blind check (`dataset.py::expression_keys`'s definition) returns the
+identical 1,835 and 52 with **zero** goal mismatches, so the goal dimension is
+excluding nothing. Registered as an open question rather than rationalised.
+
+**The removal, per A1's pre-stated rule** (≤1% → remove, re-digest, report):
+1,887 removed, **311,741 remain**. Per-depth deltas — 0, −193, −475, −974, −245,
+0 for depths 1–6 — sum to exactly 1,887. Depth 1 loses nothing because depth-1
+problems contribute only their start state.
+
+**A verification identity was deliberately broken here, and this is the notice.**
+`313,628 = Σ(depth × count)` over F-04's histogram held to the digit, term by
+term, and was the single number confirming one-example-per-derivation-step across
+the whole set. It no longer holds, because a correctness fix removed rows from
+the middle of derivations. The replacement is `311,741 = 313,628 − 1,887`, with
+the per-depth deltas above. Without this note a later audit re-running the F-04
+arithmetic finds a mismatch and reads it as a regression.
+
+**The cost, stated rather than buried:** the removed states are overwhelmingly
+penultimate states of exactly the shape the depth-≤2 solve gate measures. The
+gate gets harder. That is the gate becoming honest, not the data becoming worse.
+
+**The general lesson — and it is not "add a contamination test":** a derived
+dataset inherits its parent's *provenance* but not its parent's *coverage*. The
+derivation manufactures states that never existed as problems, so no inherited
+property can speak about them. "Inherited status" answers *was my source clean?*
+It can never answer *am I clean?* — and the two questions look identical right up
+until a transform changes what the rows are. Where a dataset's rows are a
+different **kind** of thing from its parent's, every guarantee must be re-earned
+at the new granularity, not carried across.
+
+The permanent gate is `test_no_supervision_state_is_a_suite_start_state`, with
+`test_the_contamination_probe_can_find_a_collision` beside it — because a gate
+that passes by finding nothing is indistinguishable from a probe that cannot find
+anything (law 5 rider (a)). The census artifact is pinned to the digests it was
+computed against, so it cannot outlive the bytes it describes.
+
+---
+
+## F-09 — The held-out set was 21% seen, and the split that was supposed to prevent it was working correctly
+
+**Found:** 2026-08-15, immediately after F-08, by pointing the same census at the
+train/eval boundary instead of at the suites. Record:
+`runs/eval_independence.json`. **Open — the pre-stated rule says STOP.**
+
+The Phase-1 held-out set is built from `eval_held_out`, 2,000 problems that a
+chunk-5 test certifies disjoint from `train_100k`. Problem-level split hygiene,
+done correctly, verified. Then the derivations were unrolled — and:
+
+| | |
+|---|---:|
+| held-out supervision states | 6,570 |
+| **also present in `phase1_train`** | **1,398 — 21.28%** |
+| distinct shared states | 1,276 |
+| by steps remaining | `{1: 906, 2: 288, 3: 196, 4: 8}` |
+
+**This is F-08's mechanism aimed at something that matters more.** F-08 leaked an
+instrument into training. This inflates a **DONE-WHEN metric**: the chunk-8 gate
+is *held-out top-8 rule-site ≥ 0.90 on depth ≤ 3*, and depth ≤ 3 is exactly where
+the overlap lives — 1,390 of the 1,398 shared states have three or fewer steps
+remaining.
+
+**Nothing was done wrong at the problem level.** Two disjoint problem sets can
+still walk through the same intermediate state, because the state space at low
+remaining-depth is small and both sets' derivations funnel into it. Disjoint
+problems do not imply disjoint derivations, and no amount of care about the
+former produces the latter.
+
+**Not removed.** A1's threshold is pre-stated: ≤1% remove, >1% is structural and
+is a joint ruling. 21.28% is emphatically structural, the census script encodes
+the rule and refused, and the rule was fixed before the number was seen. The
+options differ in what they do to the *instrument*, which is why this is not a
+call to make alone:
+
+1. **Deduplicate eval against train at state level.** 5,172 states survive, but
+   they are systematically the deeper ones — the metric's depth mix shifts, and
+   "depth ≤ 3" loses most of its mass.
+2. **Report on the clean subset, keep the set whole.** The gate is declared on
+   the 78.7% never seen in training; the contaminated number is reported beside
+   it as the inflation measurement.
+3. **Rebuild the held-out set to be state-disjoint by construction**, rejecting
+   candidate problems whose derivations touch a training state.
+
+**The lesson, and it is the sharp end of F-08's:** a split is only as fine as the
+granularity of the thing it splits. `train_100k` and `eval_held_out` are disjoint
+*as problem sets* and that guarantee is real — it simply does not survive a
+transform that changes what a row is. **Every derived dataset re-opens every
+question its parents had closed**, and the more useful the transform, the more
+questions it re-opens.

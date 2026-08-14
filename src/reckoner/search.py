@@ -351,7 +351,7 @@ def run_batched(
     """
     sims = sims if sims is not None else cfg.search.sims
     m = m if m is not None else cfg.search.gumbel_m
-    size = batch_size if batch_size is not None else cfg.search.batch_leaves
+    size = batch_size if batch_size is not None else cfg.search.batch_searches
 
     generators = [_simulate(p, e, cfg, r, sims, m) for p, e, r in items]
     results: list[SearchResult | None] = [None] * len(generators)

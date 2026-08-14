@@ -96,6 +96,11 @@ MUST_REACH: list[str] = [
     # they projected. F-03 exists because one was not.
     "runs/pilot_phase1_timing.json",
     "runs/pilot_a_future_preflight.json",
+    # A1: contamination censuses are standing evidence, not one-offs.
+    "runs/supervision_contamination.json",
+    "runs/eval_suite_contamination.json",
+    "runs/eval_independence.json",
+    "runs/a_future_set_contamination.json",
 ]
 
 # The counterpart polarity: things that must STAY ignored.
