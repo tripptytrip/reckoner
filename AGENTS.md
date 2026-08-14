@@ -193,10 +193,15 @@ then run CPU-only forever. This has burned real time more than once.
   passed, each for a reason unrelated to the defect (`FINDINGS.md` F-06). Every
   gate asked how the search could be subtly wrong; none asked whether it
   searched.
-  **Operational rider: the first gate written for any component measures it
+  **Operational rider (a): the first gate written for any component measures it
   doing its central job.** For a search, that it searches. For a generator, that
   it generates the distribution it claims. For a checker, that it accepts a true
   answer and rejects a false one. The known-hazard gates come second, forever.
+  **Operational rider (b): a number nobody asserts on is not a gate; it is a
+  comment that happens to be computed.** Measured in the same incident:
+  `SearchStats.nodes` existed in chunk 7, was populated correctly, was written
+  into every stats row, and read 6, 6, 6, 6 across an 8× budget increase. The
+  instrument was not missing — it was mute. Adding a field is not adding a gate.
   *(countersigned-under-delegation)*
 - **A provenance field whose default is its strongest claim is not a provenance
   field — the most-trusted value must be the one that costs something to say.** *(countersigned-under-delegation)*
@@ -220,9 +225,16 @@ then run CPU-only forever. This has burned real time more than once.
   and a test pins that identity. A campaign that needs different values gets its
   own file in `configs/`.
 - **One lever per round is an executable property, not a reviewed one.**
-  *(ratified as a ruling — judgment call 2, 2026-08-14 — and in force; NOT in the
-  countersign list, which named four. Marked here as ratified, not
-  countersigned, because the registry has to match the delegation record.)* Because
+  *(**Inherited, not earned** — principal's registry ruling, 2026-08-15. It
+  predates the earned registry and is therefore neither a countersign nor a
+  ruling: the earned lines are five, the inherited corpus is separate.
+  **Reported discrepancy, not silently merged:** the phrase is not in §1's
+  verbatim inherited-law block. Its pre-registry sources are
+  `experiment2_math_base625_spec.md` §2 — "extend by round, one lever" — and
+  `experiment2_agent_plan.md` chunk 12 — "grid-bit vs token embedding round
+  (st2's question, one lever)". The principle predates the registry as ruled;
+  the §1 block is not where it is written. A reader searching §1 for it should
+  find this note rather than conclude the registry lies.)* Because
   `default.yaml` equals the defaults exactly, a campaign config's
   `config_diff(Config(), load_config("configs/<campaign>.yaml"))` **is** its
   lever list. Every campaign config ships with a
@@ -265,6 +277,16 @@ then run CPU-only forever. This has burned real time more than once.
   write `BLOCKED-<date>-<topic>.md` (cause, attempts, options), commit, halt. A
   relaxed acceptance criterion is a silent lie discovered weeks later; a
   BLOCKED.md is useful information.
+- **A brief is committed verbatim on receipt, before any item executes.**
+  *(countersigned-under-delegation)* Governance text that lives only in a
+  conversation is destructible. Measured twice: the chunk-6 gate verdict existed
+  only as a spoken "PASS. continue" until `GATE-chunk4-VERDICT.md` was written
+  for it, and the chunk-8 brief was never committed, so a session crash took
+  items 3 and 5–8 permanently (`BRIEF-chunk8.md` carries the summary that
+  survived and says so). The commit precedes execution, not follows it: a brief
+  committed after the work is a transcript, and a transcript cannot be the thing
+  the work was checked against. **Amendments to a committed brief are appended to
+  it, dated, never edited into the original text.**
 - **Interfaces are contracts.** Once a chunk's public interface (signatures,
   array layouts, file formats, constants, config keys) is established, do not
   change it without being asked — later chunks depend on it.

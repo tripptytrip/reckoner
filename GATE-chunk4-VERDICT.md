@@ -52,9 +52,11 @@ plus the errata header. All other entries diff-verify against the prior digest.
 
 ## Countersign — closed
 
-Countersign authority was delegated to the reviewer (AGENTS.md §0). **Four** law
-lines were countersigned; a fifth is in force by ruling and a sixth was
-countersigned later. The registry distinguishes them:
+Countersign authority was delegated to the reviewer (AGENTS.md §0). The registry
+is **five earned lines and one inherited corpus**, and the two are not the same
+kind of thing. Earned lines are countersigned individually and dated; inherited
+law arrived whole, before chunk 0, and is not countersignable because it was
+never up for adoption.
 
 1. Round-trip gates are blind to symmetric bugs; every codec carries pinned
    absolute reference vectors.
@@ -63,17 +65,26 @@ countersigned later. The registry distinguishes them:
    field — the most-trusted value must be the one that costs something to say.
 4. One formatter of states, ever — a caption describes, or it calls `render()`.
 
-**Countersigned later (2026-08-14):**
+**Countersigned later (2026-08-14 / 15):**
 
 5. A gate suite assembled from known hazards has a blind spot exactly the shape
-   of the component doing its job at all — with the operational rider that the
-   first gate written for any component measures it doing its central job.
+   of the component doing its job at all. Rider (a): the first gate written for
+   any component measures it doing its central job. Rider (b) *(2026-08-15)*: a
+   number nobody asserts on is not a gate; it is a comment that happens to be
+   computed.
+6. A brief is committed verbatim on receipt, before any item executes
+   *(2026-08-15)*.
 
-**In force by ruling, not countersigned:**
+**Not on this list — inherited, not earned:**
 
-6. One lever per round is an executable property, not a reviewed one — ratified
-   as judgment call 2. A previous report claimed this as countersigned; it was
-   not, and the claim is corrected here rather than left to stand.
+*One lever per round is an executable property, not a reviewed one.* Principal's
+registry ruling, 2026-08-15: it predates the earned registry, so it is neither a
+countersign nor a ruling. Two prior claims about it are corrected rather than
+left to stand — a chunk-8 report called it countersigned (it was not), and a
+chunk-8-part-1 correction called it a ratified ruling (also not). The reported
+discrepancy in AGENTS.md §6 stands with it: the principle predates the registry,
+but the phrase is not in §1's verbatim inherited-law block, and its pre-registry
+sources are the spec's §2 lean and the plan's chunk 12.
 
 All were already in force in the code and tests; the countersign settles the
 record, not the behaviour.

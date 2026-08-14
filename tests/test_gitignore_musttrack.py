@@ -40,8 +40,11 @@ MUST_TRACK: list[str] = [
     "AGENTS.md",
     "REGISTERED-ROUNDS.md",  # rounds specified before they are run
     "FINDINGS.md",  # measured facts later chunks must not rediscover
-    "BRIEF-chunk5.md",  # fold-ins accumulated across four review rounds
-    "BRIEF-chunk9.md",  # obligations registered by earlier chunks
+    # BRIEF-*.md as a glob, not one line per chunk: BRIEF-chunk8.md existed only
+    # in a conversation until a crash took it, and a per-file list is a list
+    # somebody has to remember to extend. The law is "committed on receipt"
+    # (AGENTS.md §7); the pattern is what makes forgetting fail the build.
+    "BRIEF-*.md",
     "GATE-*.md",  # manual-gate verdicts — the record a chunk closed on
     "ERRATA-*.md",  # corrections to a shipped chunk report, nothing fixed silently
     "Makefile",
