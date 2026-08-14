@@ -83,7 +83,9 @@ train:
   # solved, so the blend's self-referential hazard is structurally absent here.
   value_q_mse_weight: 0.5
   rehearsal_frac: 0.0     # [plan chunk 9] dormant; the lever exists before it's needed
-  batch_size: 512         # [provisional — chunk 8]
+  batch_size: 128         # [chunk 8 — DECIDED by the timing slice; 512 was provisional]
+  lr_schedule: cosine     # [plan chunk 8] constant | cosine; loader rejects others
+  lr_warmup_steps: 200    # [provisional — chunk 8]
   lr: 0.0002              # [provisional — chunk 8]
   weight_decay: 0.0001    # [provisional — chunk 8]
   grad_clip: 1.0          # [provisional — chunk 8]

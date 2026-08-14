@@ -22,6 +22,7 @@ set and wash it out.
 from __future__ import annotations
 
 import json
+import math
 import random
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -165,6 +166,23 @@ def make_batch(data: SupervisionSet, indices: list[int], cfg: Config) -> Batch:
     )
 
 
+def lr_at(step: int, total: int, cfg: Config) -> float:
+    """Learning rate for ``step`` (0-based), per ``train.lr_schedule``.
+
+    Warmup is linear and applies to both schedules: the first steps of a warm
+    start see a policy head at chance over ~1,344 actions, and the gradient that
+    produces is not the one the run should be steered by.
+    """
+    warmup = cfg.train.lr_warmup_steps
+    if warmup and step < warmup:
+        return cfg.train.lr * (step + 1) / warmup
+    if cfg.train.lr_schedule == "constant":
+        return cfg.train.lr
+    span = max(1, total - warmup)
+    progress = min(1.0, (step - warmup) / span)
+    return cfg.train.lr * 0.5 * (1.0 + math.cos(math.pi * progress))
+
+
 def train(
     model: Reckoner,
     data: SupervisionSet,
@@ -174,11 +192,11 @@ def train(
     device: str = "cpu",
     seed: int = 0,
     log_every: int = 50,
-    on_log: Callable[[int, float], None] | None = None,
+    on_log: Callable[[int, float, float], None] | None = None,
 ) -> TrainStats:
     """Run the warm start. NaN-skip guard with a 1% abort, per the inherited kit.
 
-    ``on_log(step, mean_loss_over_window)`` is called every ``log_every`` steps.
+    ``on_log(step, mean_loss_over_window, lr)`` is called every ``log_every`` steps.
     Library code does not print (AGENTS.md §6) — the caller in ``scripts/`` owns
     the terminal, and a training loop that printed would also be unusable from a
     dashboard or a test.
@@ -192,6 +210,9 @@ def train(
     stats = TrainStats()
 
     for step in range(steps):
+        lr = lr_at(step, steps, cfg)
+        for group in optimiser.param_groups:
+            group["lr"] = lr
         indices = [rng.randrange(len(data)) for _ in range(cfg.train.batch_size)]
         batch = make_batch(data, indices, cfg)
         stats.encode_skips += batch.skipped
@@ -230,6 +251,6 @@ def train(
                 )
         if on_log is not None and log_every and (step + 1) % log_every == 0:
             window = stats.losses[-log_every:]
-            on_log(step + 1, sum(window) / len(window))
+            on_log(step + 1, sum(window) / len(window), lr)
 
     return stats

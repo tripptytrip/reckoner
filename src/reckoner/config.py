@@ -209,10 +209,21 @@ class TrainConfig:
     # default — the lever exists before it's needed)".
     rehearsal_frac: float = 0.0
 
-    # [provisional — chunk 8/9] Optimizer. Ported defaults; the timing slice that
-    # chunk 8 runs as a required pre-flight is what sets the real batch size.
-    batch_size: int = 512
+    # [chunk 8 — DECIDED by the timing slice, was provisional 512] The pre-flight
+    # measured 113.6 / 124.3 / 117.1 / 105.1 examples/s at batch 64 / 128 / 256 /
+    # 512 (`runs/pilot_phase1_timing.json`). Throughput is flat across 64-256 and
+    # falls at 512, so batch size is NOT a throughput lever on this box — which
+    # means it is chosen for gradient quality at fixed wall-clock, and at fixed
+    # wall-clock 128 buys 4x the optimiser steps of 512. 5,000 steps is 85.8 min
+    # at 128 against 406 min at 512, for 2.04 epochs against 8.2.
+    batch_size: int = 128
     lr: float = 2e-4
+
+    # [plan chunk 8] "constant/cosine LR from config" — the schedule is a config
+    # key, not a script flag, so a run's own resolved config.yaml states which
+    # curve produced its loss trace. ``validate()`` rejects anything else.
+    lr_schedule: str = "cosine"
+    lr_warmup_steps: int = 200
     weight_decay: float = 1e-4
     grad_clip: float = 1.0
     train_steps_per_iter: int = 400
@@ -318,6 +329,14 @@ def validate(cfg: Config) -> None:
             f"model.param_budget_min ({cfg.model.param_budget_min}) exceeds "
             f"param_budget_max ({cfg.model.param_budget_max})."
         )
+    if cfg.train.lr_schedule not in ("constant", "cosine"):
+        raise ValueError(
+            f"train.lr_schedule must be 'constant' or 'cosine'; got "
+            f"{cfg.train.lr_schedule!r}. The plan names those two; a third curve "
+            "is a decision, not a typo, and belongs in a round."
+        )
+    if cfg.train.lr_warmup_steps < 0:
+        raise ValueError(f"train.lr_warmup_steps must be >= 0; got {cfg.train.lr_warmup_steps}")
     if not 0.0 <= cfg.league.par_from_pool_frac <= 1.0:
         raise ValueError(
             f"league.par_from_pool_frac must be in [0, 1]; got {cfg.league.par_from_pool_frac}"
