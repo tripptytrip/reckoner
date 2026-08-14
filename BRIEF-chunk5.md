@@ -40,6 +40,15 @@ hard ones.
    alternative cost.
 6. **`par_source` is explicit on every emitted problem.** The default is
    `unverified` and must stay that way; exactness is asserted, never inherited.
+6a. **`unverified` may exist at construction but must never ship.** The dataset
+   and suite writers assert `par_source != "unverified"` and `par is not None` on
+   every row. The weakest honest state is allowed to *be*; it is not allowed to
+   *leave*. A shipped row with an unlabelled par is an unlabelable problem
+   wearing a label field, and every consumer downstream will read it as one.
+6b. **Emitted problems carry `par >= 1`.** A par-0 problem is already in goal
+   form — terminal at birth, nothing to learn from, and a free +0 in any average.
+   `par=None` means unlabelled and `par=0` means solved-on-arrival; they are
+   different facts and neither may stand in for the other.
 7. **BFS-for-par runs the full v1 rule set**, including `add_both_sides`, until
    ROUND-01 fires and passes. Par is denominated in a rule system; computing it
    against a reduced set would make every recorded par a label for a system that

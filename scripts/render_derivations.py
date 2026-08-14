@@ -120,14 +120,14 @@ def derive(problem: Problem, opening: list[str] | None = None, cap: int = 12) ->
 # ---------------------------------------------------------------------------
 
 
-#: Placeholder par. Fixtures no longer *state* a par — they state a problem, and
-#: `label()` computes the par with BFS. A hand-written par carrying
-#: `par_source="bfs"` is what shipped six impossible z=+1 rows in the first
-#: draft of this document.
-_UNLABELLED = 0
+#: Fixtures no longer *state* a par — they state a problem, and `label()`
+#: computes it. `None` rather than 0, because 0 is a legitimate par (a problem
+#: already in goal form) and a sentinel inside the value domain is the defect
+#: the provenance law forbids.
+_UNLABELLED = None
 
 
-def solve(expr: Expr, par: int = _UNLABELLED) -> Problem:
+def solve(expr: Expr, par: int | None = _UNLABELLED) -> Problem:
     return Problem(goal=GOAL_SOLVE, expr=expr, par=par, target=VAR_X)
 
 

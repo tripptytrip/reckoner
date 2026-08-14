@@ -10,6 +10,7 @@ the near-miss suite and is worthless.
 from __future__ import annotations
 
 import random
+from dataclasses import replace
 
 import pytest
 
@@ -238,12 +239,12 @@ NEAR_MISSES: list[tuple[str, Problem, Expr]] = [
     ),
     (
         "simplify: a term silently dropped",
-        Problem(goal=GOAL_SIMPLIFY, expr=add(mul(num(3), X), num(4)), par=0),
+        Problem(goal=GOAL_SIMPLIFY, expr=add(mul(num(3), X), num(4)), par=None),
         mul(num(3), X),
     ),
     (
         "simplify: agrees at 0 and 1 but is a different function",
-        Problem(goal=GOAL_SIMPLIFY, expr=mul(X, X), par=0),
+        Problem(goal=GOAL_SIMPLIFY, expr=mul(X, X), par=None),
         X,
     ),
     (
@@ -280,7 +281,7 @@ def test_the_near_miss_suite_is_not_vacuous() -> None:
             Problem(goal=GOAL_SIMPLIFY, expr=add(mul(num(3), X), mul(num(2), X)), par=1),
             mul(num(5), X),
         ),
-        (Problem(goal=GOAL_SIMPLIFY, expr=mul(X, X), par=0), mul(X, X)),
+        (Problem(goal=GOAL_SIMPLIFY, expr=mul(X, X), par=None), mul(X, X)),
     ]
     for problem, claim in corrections:
         assert verify(problem, claim, CFG, rng()), (
@@ -294,7 +295,7 @@ def test_simplify_rejects_a_near_function_with_high_probability() -> None:
     `x·x` and `x` agree at 0 and 1 and nowhere else — a checker sampling small
     integers could plausibly be fooled; one sampling the whole field cannot.
     """
-    problem = Problem(goal=GOAL_SIMPLIFY, expr=mul(X, X), par=0)
+    problem = Problem(goal=GOAL_SIMPLIFY, expr=mul(X, X), par=None)
     for seed in range(50):
         assert not verify(problem, X, CFG, random.Random(seed))
 
@@ -361,16 +362,16 @@ def random_solvable_problem(rng_: random.Random) -> Problem:
         expr = add(num(rng_.randrange(-40, 41)), num(rng_.randrange(-40, 41)))
         if rng_.random() < 0.4:
             expr = mul(num(rng_.randrange(-9, 10)), num(rng_.randrange(-9, 10)))
-        return Problem(goal=GOAL_EVALUATE, expr=expr, par=0)
+        return Problem(goal=GOAL_EVALUATE, expr=expr, par=None)
     if kind == "evaluate2":  # eval_mul then eval_add -> depth 2
         expr = add(
             mul(num(rng_.randrange(-9, 10)), num(rng_.randrange(-9, 10))),
             num(rng_.randrange(-40, 41)),
         )
-        return Problem(goal=GOAL_EVALUATE, expr=expr, par=0)
+        return Problem(goal=GOAL_EVALUATE, expr=expr, par=None)
     if kind == "simplify":
         a, b = rng_.randrange(-9, 10), rng_.randrange(-9, 10)
-        return Problem(goal=GOAL_SIMPLIFY, expr=add(mul(num(a), X), mul(num(b), X)), par=0)
+        return Problem(goal=GOAL_SIMPLIFY, expr=add(mul(num(a), X), mul(num(b), X)), par=None)
     if kind == "simplify2":  # combine then eval_add -> depth 2
         a, b = rng_.randrange(-9, 10), rng_.randrange(-9, 10)
         return Problem(
@@ -381,12 +382,12 @@ def random_solvable_problem(rng_: random.Random) -> Problem:
                 num(rng_.randrange(-9, 10)),
                 num(rng_.randrange(-9, 10)),
             ),
-            par=0,
+            par=None,
         )
     a = rng_.choice([c for c in range(-9, 10) if c != 0])
     answer = rng_.randrange(-12, 13)
     b = rng_.randrange(-20, 21)
-    return solve_problem(eq(add(mul(num(a), X), num(b)), num(a * answer + b)), par=0)
+    return solve_problem(eq(add(mul(num(a), X), num(b)), num(a * answer + b)), par=None)
 
 
 def test_checker_accepts_1000_scripted_solutions() -> None:
@@ -547,7 +548,7 @@ def test_using_an_episode_before_reset_is_refused() -> None:
 
 
 def test_an_already_solved_problem_is_terminal_at_zero_steps() -> None:
-    problem = solve_problem(eq(X, num(5)), par=0)
+    problem = solve_problem(eq(X, num(5)), par=0, par_source="bfs")
     episode = Episode(cfg=CFG, rng=rng())
     episode.reset(problem)
     assert episode.done and episode.solved
@@ -591,7 +592,12 @@ def test_step_count_and_cap_invariants_fuzzed() -> None:
     for _ in range(400):
         cfg = Config()
         cfg.episode.step_cap = rng_.randint(1, 8)
-        problem = random_solvable_problem(rng_)
+        raw = random_solvable_problem(rng_)
+        # A result needs a par, and a par needs provenance: label it, do not
+        # invent one. Depth <= 3 here, so BFS is cheap.
+        exact = bfs_par(raw, cfg)
+        assert exact is not None
+        problem = replace(raw, par=exact, par_source="bfs")
         episode = Episode(cfg=cfg, rng=random.Random(rng_.randrange(10**6)))
         episode.reset(problem)
         taken = 0
@@ -627,14 +633,44 @@ def test_terminal_reasons_are_distinguishable() -> None:
 
 
 def test_describe_goal() -> None:
-    assert describe_goal(solve_problem(eq(X, num(1)), par=0)) == "SOLVE for x"
-    assert describe_goal(Problem(goal=GOAL_EVALUATE, expr=num(1), par=0)) == "EVALUATE"
-    assert describe_goal(Problem(goal=GOAL_SIMPLIFY, expr=X, par=0)) == "SIMPLIFY"
+    assert describe_goal(solve_problem(eq(X, num(1)), par=None)) == "SOLVE for x"
+    assert describe_goal(Problem(goal=GOAL_EVALUATE, expr=num(1), par=None)) == "EVALUATE"
+    assert describe_goal(Problem(goal=GOAL_SIMPLIFY, expr=X, par=None)) == "SIMPLIFY"
 
 
 # ---------------------------------------------------------------------------
 # Par provenance — the defect class chunk 4's proofread exposed
 # ---------------------------------------------------------------------------
+
+
+def test_an_unlabelled_problem_cannot_be_scored() -> None:
+    """`par=None` is absence, and z is undefined against absence.
+
+    0 would have been a sentinel inside par's own domain — a problem already in
+    goal form has par 0 legitimately — so "not computed" and "terminal at birth"
+    would share a value. Absence carries the reason instead.
+    """
+    problem = Problem(goal=GOAL_SIMPLIFY, expr=X, par=None)
+    assert problem.par is None
+    episode = Episode(cfg=CFG, rng=rng())
+    episode.reset(problem)
+    assert episode.done  # X is a SIMPLIFY normal form
+    with pytest.raises(ValueError, match="carries no par"):
+        episode.result()
+
+
+def test_provenance_without_a_label_is_rejected() -> None:
+    """A source describes a label; claiming one without a par is incoherent."""
+    with pytest.raises(ValueError, match="no par"):
+        Problem(goal=GOAL_SIMPLIFY, expr=X, par=None, par_source="bfs")
+
+
+def test_par_zero_is_a_real_par_not_a_sentinel() -> None:
+    problem = solve_problem(eq(X, num(5)), par=0, par_source="bfs")
+    episode = Episode(cfg=CFG, rng=rng())
+    episode.reset(problem)
+    assert episode.result().par == 0
+    assert episode.result().z == 0
 
 
 def test_par_source_defaults_to_unverified() -> None:
@@ -645,14 +681,14 @@ def test_par_source_defaults_to_unverified() -> None:
     most-trusted value was the one you got by saying nothing. A provenance field
     whose default is its strongest claim is not a provenance field.
     """
-    assert Problem(goal=GOAL_SIMPLIFY, expr=X, par=0).par_source == "unverified"
+    assert Problem(goal=GOAL_SIMPLIFY, expr=X, par=None).par_source == "unverified"
     assert "unverified" in PAR_SOURCES
     assert {"bfs"} == EXACT_PAR_SOURCES
 
 
 def test_unknown_par_source_is_rejected() -> None:
     with pytest.raises(ValueError, match="unknown par_source"):
-        Problem(goal=GOAL_SIMPLIFY, expr=X, par=0, par_source="guessed")
+        Problem(goal=GOAL_SIMPLIFY, expr=X, par=None, par_source="guessed")
 
 
 def test_beating_an_exact_par_is_impossible_and_raises() -> None:
@@ -722,13 +758,18 @@ def test_an_episode_can_never_produce_the_impossible_row() -> None:
 @pytest.mark.parametrize(
     ("problem", "par"),
     [
-        (Problem(goal=GOAL_SIMPLIFY, expr=add(mul(num(8), X), mul(num(19), X), num(19)), par=0), 1),
-        (Problem(goal=GOAL_EVALUATE, expr=add(num(17), num(-25)), par=0), 1),
-        (Problem(goal=GOAL_EVALUATE, expr=sub(num(21), num(6)), par=0), 1),
-        (solve_problem(eq(mul(num(3), X), num(15)), par=0), 1),
-        (solve_problem(eq(add(mul(num(3), X), num(6)), num(21)), par=0), 3),
         (
-            solve_problem(eq(add(mul(num(5), X), num(3)), add(mul(num(2), X), num(18))), par=0),
+            Problem(
+                goal=GOAL_SIMPLIFY, expr=add(mul(num(8), X), mul(num(19), X), num(19)), par=None
+            ),
+            1,
+        ),
+        (Problem(goal=GOAL_EVALUATE, expr=add(num(17), num(-25)), par=None), 1),
+        (Problem(goal=GOAL_EVALUATE, expr=sub(num(21), num(6)), par=None), 1),
+        (solve_problem(eq(mul(num(3), X), num(15)), par=None), 1),
+        (solve_problem(eq(add(mul(num(3), X), num(6)), num(21)), par=None), 3),
+        (
+            solve_problem(eq(add(mul(num(5), X), num(3)), add(mul(num(2), X), num(18))), par=None),
             5,
         ),
     ],
@@ -740,8 +781,8 @@ def test_bfs_par_is_the_minimum(problem: Problem, par: int) -> None:
 
 
 def test_bfs_par_of_an_already_solved_problem_is_zero() -> None:
-    assert bfs_par(solve_problem(eq(X, num(5)), par=0), CFG) == 0
-    assert bfs_solution(solve_problem(eq(X, num(5)), par=0), CFG) == []
+    assert bfs_par(solve_problem(eq(X, num(5)), par=None), CFG) == 0
+    assert bfs_solution(solve_problem(eq(X, num(5)), par=None), CFG) == []
 
 
 def test_bfs_par_shares_the_episodes_terminal_test() -> None:
@@ -785,6 +826,6 @@ def test_bfs_par_shares_the_episodes_terminal_test() -> None:
 
 def test_bfs_par_returns_none_beyond_the_horizon() -> None:
     """Absence carries a reason: unreachable-within-cap is not par 0."""
-    problem = solve_problem(eq(add(mul(num(5), X), num(3)), add(mul(num(2), X), num(18))), par=0)
+    problem = solve_problem(eq(add(mul(num(5), X), num(3)), add(mul(num(2), X), num(18))), par=None)
     assert bfs_par(problem, CFG, cap=2) is None
     assert bfs_par(problem, CFG, cap=5) == 5

@@ -94,7 +94,12 @@ class Problem:
 
     goal: int
     expr: Expr
-    par: int
+    #: ``None`` means **not labelled**, and it is None rather than 0 because 0 is
+    #: a legitimate par — a problem already in goal form is terminal at birth. A
+    #: sentinel that shares the domain of real values is the untested-equivalence
+    #: -class pattern, and it is exactly what the provenance law forbids one
+    #: level down: absent must be *absent*, not a number that reads as absent.
+    par: int | None = None
     target: int | None = None  # the variable to solve for; SOLVE only
 
     # [v1.1] Par labels are provenance-tagged so a re-solved pool par can never
@@ -112,11 +117,16 @@ class Problem:
     def __post_init__(self) -> None:
         if self.goal not in GOAL_TOKENS:
             raise ValueError(f"{token_name(self.goal)} is not a goal token")
-        if self.par < 0:
+        if self.par is not None and self.par < 0:
             raise ValueError(f"par must be non-negative; got {self.par}")
         if self.par_source not in PAR_SOURCES:
             raise ValueError(
                 f"unknown par_source {self.par_source!r}; expected one of {sorted(PAR_SOURCES)}"
+            )
+        if self.par is None and self.par_source != "unverified":
+            raise ValueError(
+                f"par_source={self.par_source!r} on a problem with no par. Provenance "
+                "describes a label; there is no label here."
             )
         if canonicalize(self.expr) != self.expr:
             raise ValueError("Problem.expr must be canonical")
@@ -405,6 +415,12 @@ class Episode:
         if not self.done:
             raise ValueError("episode is still running; result() would be a guess")
         assert self.problem is not None
+        if self.problem.par is None:
+            raise ValueError(
+                "this problem carries no par, so z is undefined. Label it "
+                "(episode.bfs_par) before scoring an episode against it — a "
+                "result with an invented par is the F-02 defect wearing a z."
+            )
         return EpisodeResult(
             ruleset_version=RULESET_VERSION,
             vocab_version=VOCAB_VERSION,
