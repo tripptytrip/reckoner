@@ -174,6 +174,15 @@ then run CPU-only forever. This has burned real time more than once.
   coverage distribution beside the result — a 200K-iteration loop concentrated
   at two depths is a narrower gate than its iteration count advertises, and the
   count alone will never say so.
+- **A provenance field whose default is its strongest claim is not a provenance
+  field — the most-trusted value must be the one that costs something to say.**
+  "Fields carry their epistemic status" guards the *read* path; a default is a
+  write nobody performs, and nothing guarded that. Measured: `Problem.par_source`
+  defaulted to `"bfs"`, and fifty derivations shipped claiming BFS-exact
+  provenance for hand-written literals (`FINDINGS.md` F-02). This generalises to
+  every `*_source`, `*_asof` and verification flag this project will carry: **the
+  trusted value is computed, or it is absent.** Defaults name the weakest honest
+  state, never the strongest.
 - The `Makefile` carries at least `make lint` and `make test`; `make bench`
   arrives with the first benchmark script (chunk 7).
 

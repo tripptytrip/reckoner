@@ -52,6 +52,20 @@ hard ones.
    `meta.json`**, beside the git SHA and config fingerprint. A par without its
    rule-system version is a number, not a label.
 
+## Required pre-flight
+
+**Before generation starts, project the total labelling cost.** Measure `label()`
+on a sample, multiply by the 100K training count plus 1,200 suite problems, and
+report the projection — the timing-slice discipline, applied where the real cost
+now lives. BFS-exact par is not free: the chunk 4 document's fifty labels take
+~3.4s, and the test suite went 44s → 73s the moment real labelling landed. That
+is the first invoice, and it was for fifty problems.
+
+If the projection is hours, that is a fact to decide against before generating,
+not to discover at 40% completion. Record the measured per-problem cost by depth
+— cost grows ~5× per ply at the measured branching, so the depth-6 stratum
+dominates the bill and the projection must be *stratified*, not an average.
+
 ## Instruments
 
 10. **Per-rule participation histogram over BFS-optimal derivations**, across the

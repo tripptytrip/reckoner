@@ -348,19 +348,45 @@ def greedy_solve(problem: Problem, cap: int = 24) -> list[tuple[int, int]] | Non
 
 
 def random_solvable_problem(rng_: random.Random) -> Problem:
-    kind = rng_.choice(("solve", "solve", "evaluate", "simplify"))
+    """Problems the greedy solver can finish, spread across several BFS depths.
+
+    The depth spread is deliberate. The first version emitted only depths 1 and
+    3, which the replay test caught: a labeller/episode agreement check is worth
+    exactly the range of derivation lengths it walks, and two lengths is not a
+    range. Par is left at 0 — callers that care compute it; nothing here may
+    assert a par it did not derive.
+    """
+    kind = rng_.choice(("solve", "solve", "evaluate", "evaluate2", "simplify", "simplify2"))
     if kind == "evaluate":
         expr = add(num(rng_.randrange(-40, 41)), num(rng_.randrange(-40, 41)))
         if rng_.random() < 0.4:
             expr = mul(num(rng_.randrange(-9, 10)), num(rng_.randrange(-9, 10)))
-        return Problem(goal=GOAL_EVALUATE, expr=expr, par=1)
+        return Problem(goal=GOAL_EVALUATE, expr=expr, par=0)
+    if kind == "evaluate2":  # eval_mul then eval_add -> depth 2
+        expr = add(
+            mul(num(rng_.randrange(-9, 10)), num(rng_.randrange(-9, 10))),
+            num(rng_.randrange(-40, 41)),
+        )
+        return Problem(goal=GOAL_EVALUATE, expr=expr, par=0)
     if kind == "simplify":
         a, b = rng_.randrange(-9, 10), rng_.randrange(-9, 10)
-        return Problem(goal=GOAL_SIMPLIFY, expr=add(mul(num(a), X), mul(num(b), X)), par=1)
+        return Problem(goal=GOAL_SIMPLIFY, expr=add(mul(num(a), X), mul(num(b), X)), par=0)
+    if kind == "simplify2":  # combine then eval_add -> depth 2
+        a, b = rng_.randrange(-9, 10), rng_.randrange(-9, 10)
+        return Problem(
+            goal=GOAL_SIMPLIFY,
+            expr=add(
+                mul(num(a), X),
+                mul(num(b), X),
+                num(rng_.randrange(-9, 10)),
+                num(rng_.randrange(-9, 10)),
+            ),
+            par=0,
+        )
     a = rng_.choice([c for c in range(-9, 10) if c != 0])
     answer = rng_.randrange(-12, 13)
     b = rng_.randrange(-20, 21)
-    return solve_problem(eq(add(mul(num(a), X), num(b)), num(a * answer + b)), par=3)
+    return solve_problem(eq(add(mul(num(a), X), num(b)), num(a * answer + b)), par=0)
 
 
 def test_checker_accepts_1000_scripted_solutions() -> None:
@@ -727,7 +753,10 @@ def test_bfs_par_shares_the_episodes_terminal_test() -> None:
     """
     rng_ = random.Random(99)
     checked = 0
-    for _ in range(60):
+    by_goal: dict[str, int] = {}
+    by_depth: dict[int, int] = {}
+    goal_names = {GOAL_SOLVE: "SOLVE", GOAL_EVALUATE: "EVALUATE", GOAL_SIMPLIFY: "SIMPLIFY"}
+    for _ in range(120):
         problem = random_solvable_problem(rng_)
         path = bfs_solution(problem, CFG)
         if path is None:
@@ -740,7 +769,18 @@ def test_bfs_par_shares_the_episodes_terminal_test() -> None:
         assert episode.solved, "BFS called it solved; the episode did not"
         assert episode.steps == len(path)
         checked += 1
-    assert checked >= 40, f"only {checked} problems exercised"
+        name = goal_names[problem.goal]
+        by_goal[name] = by_goal.get(name, 0) + 1
+        by_depth[len(path)] = by_depth.get(len(path), 0) + 1
+
+    assert checked >= 100, f"only {checked} problems exercised"
+    assert set(by_goal) == {"SOLVE", "EVALUATE", "SIMPLIFY"}, f"a goal untested: {by_goal}"
+    assert min(by_goal.values()) >= 15, f"a goal under-covered: {by_goal}"
+    assert len(by_depth) >= 3, f"only depths {sorted(by_depth)} exercised"
+    # Depth 5 (x on both sides) is not in this generator — greedy cannot reliably
+    # finish those. It is covered explicitly by test_bfs_par_is_the_minimum's
+    # par-5 case, which is where a divergence would be most likely to show.
+    print(f"\n  BFS/episode replay: {checked} problems, goals {by_goal}, depths {by_depth}")
 
 
 def test_bfs_par_returns_none_beyond_the_horizon() -> None:
