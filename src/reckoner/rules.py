@@ -94,7 +94,7 @@ Chunk 3's SIMPLIFY checker depends on that, so the invariant and the licence are
 tested as a pair rather than assumed.
 
 ``eval_div`` plus a structural ``div_both_sides`` is registered as its own
-candidate one-lever round — see ``REGISTERED-ROUNDS.md``. Adding an eighth rule
+candidate one-lever round — see ``REGISTERED-ROUNDS.md`` ROUND-02. Adding an eighth rule
 is a spec change, not an implementation detail.
 """
 

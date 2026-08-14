@@ -184,6 +184,17 @@ def token_name(token: int) -> str:
     return f"<invalid:{token}>"
 
 
+def to_digits_of(value: int) -> list[int]:
+    """Base-625 digits of a non-negative int, most significant first.
+
+    A thin re-export of the numeral layout so the glyph panel does not have to
+    import the expression module to answer a question about digits.
+    """
+    from reckoner.expr import to_digits
+
+    return to_digits(value)
+
+
 def vocab_table() -> list[tuple[int, str, str]]:
     """The whole vocabulary as ``(id, name, kind)`` rows, ascending by id.
 

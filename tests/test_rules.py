@@ -590,6 +590,18 @@ def test_soundness_fuzz_equivalence(rule_name: str, request: pytest.FixtureReque
     assert stats["exact_ok"] >= total * 0.5, (
         f"{rule_name}: only {stats['exact_ok']}/{total} ℚ assignments actually evaluated."
     )
+    if rule.scope == "equation":
+        # The deterministic half of the oracle needs its own floor. `linear_root`
+        # refuses anything nonlinear or multi-variable — correctly, it is a probe
+        # and not a solver — and those instances fall back to random draws alone.
+        # Without this floor a `linear_root` that started refusing *everything*
+        # would delete the strengthener silently and the fuzz would stay green.
+        assert stats["probe_ok"] >= INSTANCES_PER_RULE, (
+            f"{rule_name}: only {stats['probe_ok']} solution probes over "
+            f"{INSTANCES_PER_RULE} instances — the deterministic layer has gone quiet."
+        )
+    else:
+        assert stats["probe_ok"] == 0, "node rules have no solution set to probe"
     request.node.stash  # noqa: B018 — keep the stats visible in a failure report
     print(f"\n  {rule_name:<20} {stats}")
 

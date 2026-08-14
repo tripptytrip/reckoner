@@ -108,7 +108,7 @@ class Problem:
             raise ValueError(
                 "a v1 problem may not contain DIV: rule set v1 has no eval_div, so "
                 "the node is irreducible and the problem is unsolvable by "
-                "construction (see REGISTERED-ROUNDS.md R2)"
+                "construction (see REGISTERED-ROUNDS.md ROUND-02)"
             )
 
         if self.goal == GOAL_SOLVE:

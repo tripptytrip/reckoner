@@ -49,6 +49,7 @@ env:
 # build instead of leaving a plausible, wrong reference behind.
 docs:
 	$(PYTHON) scripts/dump_vocab.py
+	$(PYTHON) scripts/render_derivations.py
 
 clean:
 	rm -rf .pytest_cache .ruff_cache src/*.egg-info

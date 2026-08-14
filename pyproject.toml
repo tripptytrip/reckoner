@@ -62,6 +62,9 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# scripts/ is importable from tests so the 50-derivation generator can be
+# exercised directly — the manual gate's artifact needs its own tests.
+pythonpath = ["scripts"]
 addopts = "-v"
 markers = [
     "slow: subprocess/SIGKILL crash-resume tests; minutes, not seconds",

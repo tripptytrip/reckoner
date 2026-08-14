@@ -548,6 +548,8 @@ def test_step_count_and_cap_invariants_fuzzed() -> None:
     """Random legal play: the step count tracks the steps, and the cap holds."""
     rng_ = random.Random(4242)
     reasons: dict[str, int] = {}
+    terminal_checks = 0
+    total_steps = 0
     for _ in range(400):
         cfg = Config()
         cfg.episode.step_cap = rng_.randint(1, 8)
@@ -564,7 +566,9 @@ def test_step_count_and_cap_invariants_fuzzed() -> None:
             assert episode.steps <= cfg.episode.step_cap
         result = episode.result()
         assert result.steps == taken <= cfg.episode.step_cap
-        assert episode.legal() == []
+        assert episode.legal() == [], "an action was legal after terminal"
+        terminal_checks += 1
+        total_steps += taken
         assert result.z in (-1, 0, 1)
         assert (result.z >= 0) == (result.solved and result.steps <= result.par)
         reasons[result.terminal_reason] = reasons.get(result.terminal_reason, 0) + 1
@@ -572,7 +576,11 @@ def test_step_count_and_cap_invariants_fuzzed() -> None:
     assert set(reasons) >= {TERMINAL_SOLVED, TERMINAL_STEP_CAP}, (
         f"the fuzz never reached one of the terminal kinds: {reasons}"
     )
-    print(f"\n  episode fuzz terminal reasons: {reasons}")
+    assert terminal_checks == 400
+    print(
+        f"\n  episode fuzz: {terminal_checks} episodes, {total_steps} steps, "
+        f"{terminal_checks} post-terminal legality checks all empty; reasons {reasons}"
+    )
 
 
 def test_terminal_reasons_are_distinguishable() -> None:

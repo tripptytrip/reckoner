@@ -10,9 +10,14 @@ generator, grid-bit vs token embeddings, rule-set extensions, the FOL
 specialist). This file registers the ones that came out of implementation, with
 the measurements that motivated them.
 
+**Namespace.** Registry entries are `ROUND-NN`. Review *rulings* are referred to
+by date and topic, never by number — two R-prefixed numbering schemes in one
+project is the same defect class as two spellings of one key, and it already
+cost a paragraph of disambiguation once.
+
 ---
 
-## R1 — Remove `add_both_sides`
+## ROUND-01 — Remove `add_both_sides`
 
 **Registered:** 2026-08-14, from chunk 2.
 **Status:** registered, not run. `add_both_sides` stays in rule set v1.
@@ -50,10 +55,10 @@ system that does not exist.
 
 ---
 
-## R2 — `eval_div` plus a structural `div_both_sides`
+## ROUND-02 — `eval_div` plus a structural `div_both_sides`
 
 **Registered:** 2026-08-14, from chunk 2.
-**Status:** registered, not run. Separate from R1; do not bundle them.
+**Status:** registered, not run. Separate from ROUND-01; do not bundle them.
 
 **Claim.** Adding `eval_div` (evaluate a `DIV` node with exact integer operands)
 would let `div_both_sides` become structural like the other movers — emitting
@@ -69,12 +74,12 @@ re-established as part of the round rather than assumed:
 
 1. **The v1 DIV-free invariant.** Today no rule constructs a `DIV`, so a
    `DIV`-free problem generates a `DIV`-free reachable state space
-   (`test_no_rule_ever_constructs_a_div_node`). R2 breaks that by construction.
+   (`test_no_rule_ever_constructs_a_div_node`). ROUND-02 breaks that by construction.
 2. **The field-only licence that invariant buys.** Division is the only partial
    operation — it is what makes `eval_field` return `None`. Chunk 3's SIMPLIFY
    checker compares by field equivalence alone *because* no state contains a
    `DIV` and so no draw is ever undefined
-   (`test_div_free_states_never_evaluate_to_undefined`). R2 reintroduces
+   (`test_div_free_states_never_evaluate_to_undefined`). ROUND-02 reintroduces
    undefined draws, and the checker would have to skip-and-count them.
 3. **Par everywhere.** Every solve gains a ply. `RULESET_VERSION` bumps, and
    every recorded par is invalidated.
