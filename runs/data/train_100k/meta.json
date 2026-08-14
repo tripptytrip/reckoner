@@ -1,0 +1,73 @@
+{
+  "config_fingerprint": "b0691252d48e4d23c64c4614467246a6beb1bb95a1a2d82b2825c061bd6d585d",
+  "depth_histogram": {
+    "1": 20751,
+    "2": 16582,
+    "3": 14068,
+    "4": 29036,
+    "5": 16013,
+    "6": 3550
+  },
+  "digests": {
+    "depth": "f75abe977039faa51d4794dc282bc84dffebbdf412abb31df197b96efe545be9",
+    "goal": "20886a2eb373f0bd42ef70f00b3787f649f38581436c325ea2fa8a8611360d6d",
+    "lengths": "e648895fc30d71d466107214c782cab5c204839d5347d2fcdf492110821d49a8",
+    "par": "f75abe977039faa51d4794dc282bc84dffebbdf412abb31df197b96efe545be9",
+    "target": "99fcac04cccdca57c549582920fac81c2cb40df6b7ef8dd6955948982f28cd23",
+    "tokens": "586c3bcdc37635e1fcf6ca326575f2a82578e237291413d451b3000e0a21d47e"
+  },
+  "fields": {
+    "depth": {
+      "dtype": "int32",
+      "shape": [
+        100000
+      ]
+    },
+    "goal": {
+      "dtype": "int32",
+      "shape": [
+        100000
+      ]
+    },
+    "lengths": {
+      "dtype": "int32",
+      "shape": [
+        100000
+      ]
+    },
+    "par": {
+      "dtype": "int32",
+      "shape": [
+        100000
+      ]
+    },
+    "target": {
+      "dtype": "int32",
+      "shape": [
+        100000
+      ]
+    },
+    "tokens": {
+      "dtype": "int32",
+      "shape": [
+        100000,
+        64
+      ]
+    }
+  },
+  "git_sha": "deef9690252cd4e5090fe264f4f0ee273a3c2c52",
+  "goal_histogram": {
+    "14": 38128,
+    "15": 28336,
+    "16": 33536
+  },
+  "max_len": 64,
+  "mode": "train_100k",
+  "n": 100000,
+  "par_source_histogram": {
+    "bfs": 100000
+  },
+  "ruleset_version": 1,
+  "seed": 42,
+  "vocab_version": 1
+}

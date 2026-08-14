@@ -1,0 +1,73 @@
+{
+  "config_fingerprint": "b0691252d48e4d23c64c4614467246a6beb1bb95a1a2d82b2825c061bd6d585d",
+  "depth_histogram": {
+    "1": 387,
+    "2": 283,
+    "3": 266,
+    "4": 579,
+    "5": 383,
+    "6": 102
+  },
+  "digests": {
+    "depth": "5cc714d00810ccb5d9eb445e24c3c3a88c180b00c37f203ebea2a8c879525761",
+    "goal": "06f485ebc440840daa03dd9984f3d3c8c4350a56a1ff527b2a73ddf33be31b14",
+    "lengths": "42778c29df7a5ed6cfc2edc3557b4fad3391ead7c133a9b95bf380b82c14800e",
+    "par": "5cc714d00810ccb5d9eb445e24c3c3a88c180b00c37f203ebea2a8c879525761",
+    "target": "ca3d79b8169a6257301f2e71cca713dbce34db4894a9f556e00e128e36b72c7e",
+    "tokens": "3c2f85db58ee8dfdb0a85186999f0b37bc9fbdf7e9bbd7a3f46a9f73101dda3b"
+  },
+  "fields": {
+    "depth": {
+      "dtype": "int32",
+      "shape": [
+        2000
+      ]
+    },
+    "goal": {
+      "dtype": "int32",
+      "shape": [
+        2000
+      ]
+    },
+    "lengths": {
+      "dtype": "int32",
+      "shape": [
+        2000
+      ]
+    },
+    "par": {
+      "dtype": "int32",
+      "shape": [
+        2000
+      ]
+    },
+    "target": {
+      "dtype": "int32",
+      "shape": [
+        2000
+      ]
+    },
+    "tokens": {
+      "dtype": "int32",
+      "shape": [
+        2000,
+        64
+      ]
+    }
+  },
+  "git_sha": "deef9690252cd4e5090fe264f4f0ee273a3c2c52",
+  "goal_histogram": {
+    "14": 801,
+    "15": 532,
+    "16": 667
+  },
+  "max_len": 64,
+  "mode": "eval_held_out",
+  "n": 2000,
+  "par_source_histogram": {
+    "bfs": 2000
+  },
+  "ruleset_version": 1,
+  "seed": 42,
+  "vocab_version": 1
+}

@@ -69,6 +69,13 @@ MUST_REACH: list[str] = [
     "runs/m1/provenance.json",  # git_sha + config fingerprint
     "runs/data/train_100k/meta.json",  # dataset provenance sidecar
     "runs/m1/annotations.jsonl",  # why a timing row is anomalous
+    # Chunk 5: the frozen instruments and the dataset provenance sidecars. The
+    # suites ARE the measuring stick — a suite git silently dropped would make
+    # every number measured against it unreproducible.
+    "runs/suites/solve_in_3.jsonl",
+    "runs/data/train_100k/meta.json",
+    "runs/data/eval_held_out/meta.json",
+    "runs/rule_participation.json",
 ]
 
 # The counterpart polarity: things that must STAY ignored.
@@ -76,6 +83,7 @@ MUST_IGNORE: list[str] = [
     "runs/m1/latest.pt",
     "runs/m1/snapshots/iter0005.pt",
     "runs/data/train_100k/states.npy",
+    "runs/data/train_100k/tokens.i32",  # 100K x max_len int32 — build output, not a record
     ".venv/bin/python",
     "src/reckoner/__pycache__/config.cpython-312.pyc",
 ]

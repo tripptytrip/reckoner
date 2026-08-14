@@ -74,6 +74,21 @@ from reckoner.vocab import (
 #: whether an unsolved episode ran out of steps or ran out of moves.
 TERMINAL_SOLVED = "solved"
 TERMINAL_STEP_CAP = "step_cap"
+#: **Defensive, and provably unreachable under the v1 emission grammar.** The
+#: epistemic status is assigned rather than left floating (chunk 5), with the
+#: proof sketch here so a later rule-set change has something to invalidate:
+#:
+#:   * **SIMPLIFY** — its goal form *is* "no rule applies", so an empty action
+#:     set is a solve, never a dead end.
+#:   * **EVALUATE** — the problem is ground and DIV-free, and every ground
+#:     ADD/SUB/MUL node has an eval rule, so reduction continues until a single
+#:     numeral remains.
+#:   * **SOLVE** — the state is EQ-rooted, and both-sides rules are legal at
+#:     every top-level addend of both sides, so the action set is never empty.
+#:
+#: It is kept because it is cheap and because ROUND-02 (`eval_div`) would break
+#: the EVALUATE leg immediately: a DIV node with no rule to reduce it is exactly
+#: the dead end this reason names.
 TERMINAL_NO_ACTIONS = "no_legal_actions"
 TERMINAL_CONCEDED = "conceded"
 

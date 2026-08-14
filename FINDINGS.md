@@ -67,3 +67,54 @@ inherited.
 result path rather than in a test is scale: chunk 5 mints 100K par labels and
 1,200 suite pars, and a par off-by-one at that scale poisons the game's currency
 at birth.
+
+---
+
+## F-03 — The pre-flight underestimated by 5×
+
+**Found:** 2026-08-14, chunk 5 generation.
+
+The stratified pre-flight projected **18.3 min** for 100K problems on 24
+workers. Actual: **5,636.9 s — 94 min**, 5.1× over.
+
+**Why.** Three compounding causes, none of them the stratification the
+projection got right:
+
+1. **Sample too small for a heavy tail.** 20 candidates per stratum, against a
+   template (`solve_both_sides_product`) whose cost ranges 4.5 s median to 8.8 s
+   worst. Twenty draws does not estimate the mean of that distribution.
+2. **The projection priced labelling, not generation.** The driver emits ~1.6×
+   the requested count and deduplicates, so the real work is ~1.6× the projected
+   work before any retry.
+3. **Retries are unpriced.** Strata that under-fill trigger another pass.
+
+**The correction, for the next projection that matters:** sample per *template*
+rather than per stratum, use the mean of ≥100 draws where the tail is heavy, and
+multiply by the over-generation factor. The stratification instinct was right —
+projecting from a flat average would have been worse — but a stratified estimate
+built on 20 samples of a long-tailed distribution is still an estimate of the
+wrong number.
+
+**Not a blocker:** 94 min ran unattended and the artifacts are correct. Recorded
+because the next pre-flight will be for something that cannot be re-run casually.
+
+---
+
+## F-04 — Depth histograms are outcomes, not requests
+
+**Found:** 2026-08-14, chunk 5 generation.
+
+The generation plan asks for equal counts per stratum. The training set came out
+`{1: 20751, 2: 16582, 3: 14068, 4: 29036, 5: 16013, 6: 3550}` — depth 4 nearly
+double its share, depth 6 at a fifth of it.
+
+**This is the design working, not failing.** Difficulty is parameterised by
+*measured* depth, so a candidate lands in the stratum BFS says it belongs to, not
+the one its template was aimed at. `solve_two_terms` splits 4/21 across depths 3
+and 4; `eval_deepest` splits 4/56 across 5 and 6. The plan is a request; the
+histogram is the answer.
+
+**Consequence for chunk 8:** the warm start sees this distribution, not a uniform
+one, and depth 6 is thin (3.6%). Either the sampler rebalances at training time
+or the generation plan over-requests the deep strata. Recorded here so it is a
+decision rather than a surprise in a loss curve.

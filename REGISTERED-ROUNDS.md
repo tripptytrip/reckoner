@@ -46,6 +46,26 @@ policy and heuristic opponent that will be written against this rule set."
 **Why it is not simply removed.** Plan §8 decision 2 pins the rule set. Removal
 is a spec change and therefore a registered round, not an edit.
 
+**Suite-level evidence, measured (chunk 5).** Across **920 BFS-optimal
+derivations** spanning all six suites, all three goals and depths 1–6,
+`add_both_sides` appears in **0 of them — 0.0%**. Every other rule is live:
+
+| rule | share of optimal derivations |
+|---|---:|
+| `eval_add` | 76.1% |
+| `combine_like_terms` | 45.8% |
+| `eval_mul` | 45.2% |
+| `div_both_sides` | 37.2% |
+| `sub_both_sides` | 28.3% |
+| `eval_sub` | 21.7% |
+| **`add_both_sides`** | **0.0%** |
+
+One caveat that keeps this evidence and not proof: participation is measured on
+the derivation BFS *returned*, which is one optimal derivation per problem, not
+all of them. A rule at 0% here has not been shown unusable — only unused by the
+paths BFS reached first. The round's par-with vs par-without comparison is still
+the deciding test; this is the prior that makes it worth running.
+
 **Evidence standard — three fixtures do not prove a universal.** The set-growth
 law applies: the round's evidence is **par-with vs par-without over the full
 chunk-5 suite**, BFS computed both ways on every problem. Prediction: identical

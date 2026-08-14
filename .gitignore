@@ -38,6 +38,14 @@ runs/**
 # Dataset and suite digests — the anchor list the whole campaign is measured
 # against (plan chunk 5).
 !runs/ANCHORS.sha256
+# The frozen suites ARE the measuring stick (chunk 5). ~1.2K problems, a few
+# hundred KB of JSONL, and every number the campaign ever reports is measured
+# against them — a suite git silently dropped makes the whole ladder
+# unreproducible. The memmap arrays beside them stay ignored: those are bulk,
+# rebuildable from the seed, and the meta.json carries their digests.
+!runs/suites/*.jsonl
+# Instrument outputs that later chunks cite as evidence.
+!runs/rule_participation.json
 
 # Root-scoped: a bare `data/` would also swallow runs/data/ as a *directory*
 # ignore, and git cannot descend into an ignored directory to reach the
