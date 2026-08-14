@@ -104,7 +104,7 @@ import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from reckoner.expr import Expr, Num, Op, canonicalize, identity_key, make_op
+from reckoner.expr import Expr, Num, Op, canonicalize, identity_key, make_op, tokens
 from reckoner.vocab import ADD, EQ, MUL, SUB
 
 #: Bump when a rule id changes meaning or a rule is removed. Datasets store rule
@@ -140,6 +140,49 @@ def enumerate_sites(state: Expr) -> list[Site]:
             for index in range(len(node.children) - 1, -1, -1):
                 stack.append((node.children[index], (*path, index)))
     return sites
+
+
+def site_token_offsets(state: Expr) -> list[int]:
+    """Token index where each site's subtree begins, in ``enumerate_sites`` order.
+
+    This is what lets the policy head read a *site* off the trunk: site ``k``'s
+    representation is the hidden state at ``site_token_offsets(state)[k]``. It is
+    the direct analog of a square's embedding in the chess encoding, and it works
+    because the printer emits ``HEAD ( children… )`` — pre-order — which is the
+    same order ``enumerate_sites`` walks. Two orders that must agree, so a test
+    pins the agreement rather than trusting the coincidence.
+
+    Two passes, both iterative: subtree token lengths bottom-up, then offsets
+    top-down.
+    """
+    lengths: dict[int, int] = {}
+    stack: list[tuple[Expr, bool]] = [(state, False)]
+    while stack:
+        node, expanded = stack.pop()
+        if isinstance(node, Op):
+            if not expanded:
+                stack.append((node, True))
+                for child in node.children:
+                    stack.append((child, False))
+            else:
+                # kind + LPAREN + children + RPAREN
+                lengths[id(node)] = 3 + sum(lengths[id(c)] for c in node.children)
+        else:
+            lengths[id(node)] = len(tokens(node))
+
+    offsets: list[int] = []
+    walk: list[tuple[Expr, int]] = [(state, 0)]
+    while walk:
+        node, cursor = walk.pop()
+        offsets.append(cursor)
+        if isinstance(node, Op):
+            child_cursor = cursor + 2  # past the kind token and the LPAREN
+            pending: list[tuple[Expr, int]] = []
+            for child in node.children:
+                pending.append((child, child_cursor))
+                child_cursor += lengths[id(child)]
+            walk.extend(reversed(pending))
+    return offsets
 
 
 def node_at(state: Expr, path: tuple[int, ...]) -> Expr:

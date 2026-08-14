@@ -118,3 +118,34 @@ histogram is the answer.
 one, and depth 6 is thin (3.6%). Either the sampler rebalances at training time
 or the generation plan over-requests the deep strata. Recorded here so it is a
 decision rather than a surprise in a loss curve.
+
+---
+
+## F-05 — `add_both_sides` is the entire source of state growth
+
+**Found:** 2026-08-14, chunk 6 sizing measurement.
+
+Random legal play from the depth-5/6 suites, 24 steps, 1,600 walks:
+
+| | tokens p99 | tokens p100 | sites p99 | sites p100 |
+|---|---:|---:|---:|---:|
+| with `add_both_sides` | 247 | 295 | 87 | 104 |
+| **without** | **57** | **57** | **15** | **15** |
+
+Without it, a reachable state never exceeds the scale of a *start* state
+(p100 64 tokens / 17 sites). With it, states reach 5× the tokens and 7× the
+sites — and since attention is O(L²), that is roughly a 25× cost multiplier on
+the trunk, plus a policy head 7× wider.
+
+**This is the third independent argument for ROUND-01**, and the first that
+costs money rather than elegance:
+
+1. reachability-redundant — par is identical without it (chunk 2)
+2. an active trap — any policy that prefers it fails to terminate (chunk 4)
+3. **it alone forces the model's sequence and action bounds** (here)
+
+**What chunk 6 did with it:** nothing. The rule is in the pinned v1 set, so the
+model is sized for the rule set that exists, not the one a round might produce —
+the same discipline as computing par against the full set until ROUND-01 fires.
+The measurement is recorded so the round's cost/benefit is a number rather than
+a preference.

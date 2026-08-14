@@ -41,6 +41,7 @@ MUST_TRACK: list[str] = [
     "REGISTERED-ROUNDS.md",  # rounds specified before they are run
     "FINDINGS.md",  # measured facts later chunks must not rediscover
     "BRIEF-chunk5.md",  # fold-ins accumulated across four review rounds
+    "BRIEF-chunk9.md",  # obligations registered by earlier chunks
     "Makefile",
     "pyproject.toml",
     "uv.lock",  # without it, "green in a clean clone" tests resolution luck
@@ -76,6 +77,8 @@ MUST_REACH: list[str] = [
     "runs/data/train_100k/meta.json",
     "runs/data/eval_held_out/meta.json",
     "runs/rule_participation.json",
+    "runs/state_extent.json",
+    "runs/par_delta.json",
 ]
 
 # The counterpart polarity: things that must STAY ignored.

@@ -72,6 +72,13 @@ chunk-5 suite**, BFS computed both ways on every problem. Prediction: identical
 par on every problem. **Any single counterexample kills the round** — it would
 mean `add_both_sides` is reachability-relevant and the claim above is false.
 
+**Third argument, measured in chunk 6 (`FINDINGS.md` F-05).** It is the *sole*
+driver of state growth: reachable states reach 295 tokens / 104 sites with it and
+**57 / 15** without. Since it forces `seq_len` and `max_sites` roughly 5× and 7×
+wider than the domain otherwise needs, and attention is O(L²), removing it is
+worth roughly a 25× trunk-cost multiplier. The round is no longer only about
+branching.
+
 **Declared dependency.** Removing the rule changes branching, so this round must
 also re-measure branching (`scripts/measure_branching.py`) and re-derive chunk
 7's `(sims, m)` gate arithmetic against the new numbers. It cannot be run as an

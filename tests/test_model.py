@@ -1,0 +1,317 @@
+"""The network: shapes, both masks, the single legality oracle, provenance."""
+
+from __future__ import annotations
+
+import inspect
+import random
+from pathlib import Path
+
+import pytest
+import torch
+
+from reckoner import model as model_module
+from reckoner.config import Config
+from reckoner.episode import Problem
+from reckoner.expr import add, eq, mul, num, var
+from reckoner.model import (
+    N_RULES,
+    Reckoner,
+    StateTooLarge,
+    action_index,
+    action_pair,
+    checkpoint_meta,
+    encode,
+    load_checkpoint,
+    policy_loss,
+    save_checkpoint,
+    steps_loss,
+)
+from reckoner.rules import (
+    RULESET_VERSION,
+    enumerate_sites,
+    legal_actions,
+    site_token_offsets,
+    successors,
+)
+from reckoner.vocab import GOAL_EVALUATE, GOAL_SIMPLIFY, GOAL_SOLVE, PAD, VAR_X, VOCAB_VERSION
+
+REPO = Path(__file__).resolve().parents[1]
+CFG = Config()
+X = var(VAR_X)
+
+PROBLEMS = [
+    Problem(
+        goal=GOAL_SOLVE,
+        target=VAR_X,
+        par=3,
+        par_source="bfs",
+        expr=eq(add(mul(num(3), X), num(6)), num(21)),
+    ),
+    Problem(goal=GOAL_EVALUATE, par=1, par_source="bfs", expr=add(num(17), num(-25))),
+    Problem(goal=GOAL_SIMPLIFY, par=1, par_source="bfs", expr=add(mul(num(3), X), mul(num(2), X))),
+]
+
+
+# ---------------------------------------------------------------------------
+# Site positions: the map the policy head reads a site through
+# ---------------------------------------------------------------------------
+
+
+def test_site_offsets_agree_with_site_enumeration() -> None:
+    """Two orders that must agree — pinned, not assumed to coincide."""
+    from reckoner.expr import tokens
+
+    rng = random.Random(3)
+    checked = 0
+    population = list(PROBLEMS)
+    suites = REPO / "runs" / "suites"
+    if suites.exists():
+        from reckoner.dataset import read_suite, suite_problem
+
+        for depth in range(1, 7):
+            path = suites / f"solve_in_{depth}.jsonl"
+            if path.exists():
+                population += [suite_problem(r) for r in read_suite(path)[:15]]
+    for problem in population:
+        state = problem.expr
+        for _ in range(6):
+            sites = enumerate_sites(state)
+            offsets = site_token_offsets(state)
+            seq = tokens(state)
+            assert len(offsets) == len(sites)
+            for site, offset in zip(sites, offsets, strict=True):
+                assert seq[offset : offset + len(tokens(site.node))] == tokens(site.node), (
+                    f"site {site.site_id} does not start at token {offset}"
+                )
+                checked += 1
+            options = successors(state)
+            if not options:
+                break
+            state = rng.choice(options)[1]
+    assert checked >= 200, f"only {checked} sites checked"
+
+
+# ---------------------------------------------------------------------------
+# One legality oracle
+# ---------------------------------------------------------------------------
+
+
+def test_the_mask_is_consumed_from_legal_actions_byte_for_byte() -> None:
+    for problem in PROBLEMS:
+        state = encode(problem, problem.expr, CFG)
+        expected = torch.zeros(N_RULES * CFG.model.max_sites, dtype=torch.bool)
+        for rule_id, site_id in legal_actions(problem.expr):
+            expected[rule_id * CFG.model.max_sites + site_id] = True
+        assert torch.equal(state.legal_mask, expected)
+        assert int(state.legal_mask.sum()) == len(legal_actions(problem.expr))
+
+
+def test_the_model_module_has_no_second_legality_implementation() -> None:
+    """Fourth member of the mono-instance family, enforced structurally.
+
+    One terminal test, one formatter, one identity normalizer, one legality
+    source. A mask that disagrees with the movegen trains a model to want
+    illegal moves, and it fails *silently* — the argmax is legal most of the
+    time anyway.
+    """
+    source = inspect.getsource(model_module)
+    assert source.count("legal_actions(") == 1, "legality is derived in more than one place"
+    assert ".legal(" not in source, "the model calls Rule.legal — that is a second oracle"
+    assert "def legal" not in source, "the model defines its own legality"
+
+
+# ---------------------------------------------------------------------------
+# Overflow is an error, never a crop
+# ---------------------------------------------------------------------------
+
+
+def test_an_over_long_state_raises_rather_than_cropping() -> None:
+    """A cropped state tensor is the fabricated-input twin of a fabricated target."""
+    cfg = Config()
+    cfg.model.seq_len = 8
+    with pytest.raises(StateTooLarge, match="never cropped"):
+        encode(PROBLEMS[0], PROBLEMS[0].expr, cfg)
+
+
+def test_too_many_sites_raises_rather_than_dropping_them() -> None:
+    cfg = Config()
+    cfg.model.max_sites = 3
+    with pytest.raises(StateTooLarge, match="not cropped"):
+        encode(PROBLEMS[0], PROBLEMS[0].expr, cfg)
+
+
+def test_the_chosen_bounds_clear_the_measured_maxima() -> None:
+    """Sized from reachable states, not start states — the numbers are on record."""
+    import json
+
+    path = REPO / "runs" / "state_extent.json"
+    if not path.exists():
+        pytest.skip("run scripts/measure_state_extent.py")
+    measured = json.loads(path.read_text())["measured_max"]
+    assert CFG.model.seq_len > measured["tokens"], "seq_len does not clear the measured p100"
+    assert CFG.model.max_sites > measured["sites"], "max_sites does not clear the measured p100"
+    # And the gap between start states and reachable states is why this matters.
+    starts = json.loads(path.read_text())["start_states"]
+    assert measured["tokens"] > 3 * starts["tokens_p100"]
+
+
+# ---------------------------------------------------------------------------
+# Forward / backward
+# ---------------------------------------------------------------------------
+
+
+def batch(problems: list[Problem]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    states = [encode(p, p.expr, CFG) for p in problems]
+    return (
+        torch.stack([s.tokens for s in states]),
+        torch.stack([s.site_positions for s in states]),
+        torch.stack([s.legal_mask for s in states]),
+    )
+
+
+def test_forward_on_all_three_goals() -> None:
+    model = Reckoner(CFG)
+    tokens, positions, mask = batch(PROBLEMS)
+    policy, value, steps = model(tokens, positions)
+    assert policy.shape == (3, N_RULES * CFG.model.max_sites)
+    assert value.shape == (3, CFG.model.value_classes)
+    assert steps is not None and steps.shape == (3,)
+    assert torch.isfinite(policy).all() and torch.isfinite(value).all()
+
+
+def test_backward_updates_every_parameter_group() -> None:
+    model = Reckoner(CFG)
+    tokens, positions, mask = batch(PROBLEMS)
+    policy, value, steps = model(tokens, positions)
+
+    targets = mask.float()
+    targets = targets / targets.sum(-1, keepdim=True).clamp(min=1)
+    loss = (
+        policy_loss(policy, targets, mask)
+        + torch.nn.functional.cross_entropy(value, torch.tensor([0, 1, 2]))
+        + steps_loss(steps, torch.tensor([3.0, 1.0, 1.0]), torch.tensor([True, True, False]))
+    )
+    loss.backward()
+    for name, param in model.named_parameters():
+        assert param.grad is not None, f"{name} received no gradient"
+        assert torch.isfinite(param.grad).all(), f"{name} has a non-finite gradient"
+
+
+# ---------------------------------------------------------------------------
+# Masked-loss invariance — BOTH masks, BOTH polarities
+# ---------------------------------------------------------------------------
+
+
+def test_policy_loss_ignores_masked_off_logits() -> None:
+    """The ported fabricated-target detector, on the legality mask."""
+    torch.manual_seed(0)
+    mask = torch.zeros(1, N_RULES * CFG.model.max_sites, dtype=torch.bool)
+    mask[0, [3, 17, 400]] = True
+    logits = torch.randn(1, N_RULES * CFG.model.max_sites)
+    targets = mask.float() / mask.sum()
+
+    before = policy_loss(logits, targets, mask).item()
+
+    perturbed = logits.clone()
+    perturbed[0, ~mask[0]] += 137.0  # every illegal logit, hard
+    assert policy_loss(perturbed, targets, mask).item() == before
+
+    moved = logits.clone()
+    moved[0, 3] += 5.0  # one *legal* logit
+    assert policy_loss(moved, targets, mask).item() != before
+
+
+def test_steps_loss_ignores_unsolved_rows() -> None:
+    """The same detector on the auxiliary head — a mask declared is not a mask."""
+    steps = torch.tensor([2.0, 5.0, 9.0])
+    targets = torch.tensor([2.0, 5.0, 0.0])
+    solved = torch.tensor([True, True, False])
+
+    before = steps_loss(steps, targets, solved).item()
+
+    perturbed = steps.clone()
+    perturbed[2] += 1000.0  # the unsolved row, hard
+    assert steps_loss(perturbed, targets, solved).item() == before
+
+    moved = steps.clone()
+    moved[0] += 1.0  # a solved row
+    assert steps_loss(moved, targets, solved).item() != before
+
+
+def test_a_row_with_no_legal_action_contributes_no_nan() -> None:
+    mask = torch.zeros(1, N_RULES * CFG.model.max_sites, dtype=torch.bool)
+    loss = policy_loss(torch.randn(1, N_RULES * CFG.model.max_sites), mask.float(), mask)
+    assert torch.isfinite(loss)
+
+
+# ---------------------------------------------------------------------------
+# Action layout, parameters, provenance
+# ---------------------------------------------------------------------------
+
+
+def test_action_index_round_trips() -> None:
+    for rule_id in range(N_RULES):
+        for site_id in (0, 1, 191):
+            index = action_index(rule_id, site_id, CFG.model.max_sites)
+            assert action_pair(index, CFG.model.max_sites) == (rule_id, site_id)
+
+
+def test_parameter_count_is_inside_the_envelope_and_decomposed() -> None:
+    breakdown = Reckoner(CFG).parameter_breakdown()
+    assert CFG.model.param_budget_min <= breakdown["total"] <= CFG.model.param_budget_max
+    for part in ("embeddings", "trunk", "policy_head", "value_head", "steps_head"):
+        assert breakdown[part] > 0, f"{part} has no parameters"
+    assert breakdown["total"] == 5_073_156, "the model size changed — update the report"
+    assert breakdown["trunk"] > breakdown["embeddings"], "the trunk should dominate at this scale"
+
+
+def test_checkpoint_round_trips_with_its_provenance(tmp_path: Path) -> None:
+    model = Reckoner(CFG)
+    meta = save_checkpoint(tmp_path / "c.pt", model, CFG, step=7)
+    assert meta["ruleset_version"] == RULESET_VERSION
+    assert meta["vocab_version"] == VOCAB_VERSION
+    assert len(meta["config_fingerprint"]) == 64
+
+    loaded, loaded_meta = load_checkpoint(tmp_path / "c.pt", CFG)
+    assert loaded_meta == meta
+    for (a, p), (b, q) in zip(model.named_parameters(), loaded.named_parameters(), strict=True):
+        assert a == b and torch.equal(p, q)
+
+
+def test_a_checkpoint_from_another_rule_system_is_refused(tmp_path: Path) -> None:
+    """Registered for chunk 9: CheckpointPool must refuse a version mismatch.
+
+    A pool par re-solved under a different rule system is the par-provenance
+    defect (FINDINGS.md F-02) reborn at the league layer. The guard costs one
+    line and closes the door before it exists.
+    """
+    model = Reckoner(CFG)
+    save_checkpoint(tmp_path / "c.pt", model, CFG, step=1)
+    blob = torch.load(tmp_path / "c.pt", weights_only=False)
+    blob["meta"]["ruleset_version"] = RULESET_VERSION + 1
+    torch.save(blob, tmp_path / "c.pt")
+
+    with pytest.raises(ValueError, match="rule system that no longer exists"):
+        load_checkpoint(tmp_path / "c.pt", CFG)
+    model2, _ = load_checkpoint(tmp_path / "c.pt", CFG, strict_versions=False)
+    assert isinstance(model2, Reckoner)  # the escape hatch exists and is explicit
+
+
+def test_checkpoint_meta_carries_both_versions() -> None:
+    meta = checkpoint_meta(CFG, step=0)
+    assert {"ruleset_version", "vocab_version", "config_fingerprint", "git_sha", "step"} <= set(
+        meta
+    )
+
+
+def test_padding_does_not_reach_the_trunk_as_content() -> None:
+    model = Reckoner(CFG).eval()
+    problem = PROBLEMS[1]
+    state = encode(problem, problem.expr, CFG)
+    tokens = state.tokens.unsqueeze(0)
+    with torch.no_grad():
+        _, value_a, _ = model(tokens, state.site_positions.unsqueeze(0))
+        longer = tokens.clone()
+        longer[0, state.length + 5] = PAD  # still PAD; a no-op by construction
+        _, value_b, _ = model(longer, state.site_positions.unsqueeze(0))
+    assert torch.allclose(value_a, value_b)

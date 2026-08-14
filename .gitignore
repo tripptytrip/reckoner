@@ -46,6 +46,9 @@ runs/**
 !runs/suites/*.jsonl
 # Instrument outputs that later chunks cite as evidence.
 !runs/rule_participation.json
+!runs/state_extent.json
+!runs/par_delta.json
+!runs/suite_verification.json
 
 # Root-scoped: a bare `data/` would also swallow runs/data/ as a *directory*
 # ignore, and git cannot descend into an ignored directory to reach the

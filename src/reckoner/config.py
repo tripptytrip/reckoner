@@ -128,21 +128,30 @@ class ModelConfig:
     value_classes: int = 3
     steps_aux_head: bool = True
 
-    # [provisional — chunk 6] Trunk shape. Ported from the v2 transformer family
-    # as a starting point; chunk 6 sizes it against the envelope above.
+    # [chunk 6, sized to the envelope] Trunk shape. n_layers is 6 rather than
+    # the v2 family's 8 because 8 puts the total at ~6.6M — inside the 2-7M
+    # envelope but pressed against its ceiling, leaving nothing for the head
+    # growth a later round might want.
     d_model: int = 256
-    n_layers: int = 8
+    n_layers: int = 6
     n_heads: int = 8
     d_ff: int = 1024
     dropout: float = 0.1
-    # [provisional — chunk 6] Sequence length. Chunk 1 fixed the encoding, so
-    # the cost is now known rather than guessed: a numeral is 3 + ndigits tokens
-    # (marker, parens, digits), a variable is 1, an operator node is 3 + the
-    # cost of its children. `3x + 6 = 21` is 22 tokens. Chunk 5 measures the
-    # real distribution over generated problems and chunk 6 sets this against it.
-    seq_len: int = 128
-    # [provisional — chunk 6] Bilinear projection dim for the factorized
-    # rule x site policy head — the (from, to) factorization transplanted.
+    # [chunk 6, measured — runs/state_extent.json] Sized from the REACHABLE-state
+    # distribution, not the dataset's start states. Episodes grow before they
+    # shrink, so the longest state inside an episode strictly exceeds the longest
+    # problem: start states reach 64 tokens / 17 sites, but 24-step random walks
+    # reach 332 tokens / 121 sites. Sizing from the dataset would have set this
+    # to 64 and guaranteed overflow the first time search explored.
+    #
+    # 512 is ~1.5x the measured p100. Overflow raises StateTooLarge and the
+    # episode is aborted and counted — never cropped.
+    seq_len: int = 512
+    # [chunk 6, measured] Sites per state, same population, same headroom.
+    # Action space is N_RULES * max_sites = 7 * 192 = 1344.
+    max_sites: int = 192
+    # [chunk 6] Bilinear projection dim for the factorized rule x site policy
+    # head — the (from, to) factorization transplanted.
     d_policy: int = 128
 
 

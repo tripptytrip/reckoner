@@ -1,0 +1,37 @@
+{
+  "measured_max": {
+    "sites": 121,
+    "tokens": 332
+  },
+  "optimal_derivations": {
+    "population": "optimal derivations",
+    "sites_p100": 17,
+    "sites_p50": 7,
+    "sites_p99": 17,
+    "states": 5400,
+    "tokens_p100": 64,
+    "tokens_p50": 25,
+    "tokens_p99": 64
+  },
+  "random_walks_deep": {
+    "population": "random walks (cap 24)",
+    "sites_p100": 121,
+    "sites_p50": 19,
+    "sites_p99": 76,
+    "states": 25148,
+    "tokens_p100": 332,
+    "tokens_p50": 64,
+    "tokens_p99": 216
+  },
+  "start_states": {
+    "population": "start states",
+    "sites_p100": 17,
+    "sites_p50": 10,
+    "sites_p99": 17,
+    "states": 1200,
+    "tokens_p100": 64,
+    "tokens_p50": 33,
+    "tokens_p99": 64
+  },
+  "walk_steps": 24
+}

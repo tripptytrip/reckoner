@@ -1,0 +1,43 @@
+{
+  "elapsed_seconds": 332.6,
+  "failures": [],
+  "suites": {
+    "solve_in_1.jsonl": {
+      "problems": 200,
+      "seconds": 0.1,
+      "sha256": "edf0eb1e7333e47a9e229a144e0c98bc99bdc5f61ece01a5fdf6f9f05376bcf0",
+      "verified": 200
+    },
+    "solve_in_2.jsonl": {
+      "problems": 200,
+      "seconds": 0.2,
+      "sha256": "4a8cee73b161bcb701193206003ac0199a3dbe02f23e5156953ece82000e85b3",
+      "verified": 200
+    },
+    "solve_in_3.jsonl": {
+      "problems": 200,
+      "seconds": 1.0,
+      "sha256": "abc40d4a5d97ed13b775a82c1060c288e25cd8d98613c79b9ce06a48c7bd1157",
+      "verified": 200
+    },
+    "solve_in_4.jsonl": {
+      "problems": 200,
+      "seconds": 5.9,
+      "sha256": "f5fdc9bacaf79678b01e17df9efaa9ca7c0b8411e8710bd07fddbf8f7479f61b",
+      "verified": 200
+    },
+    "solve_in_5.jsonl": {
+      "problems": 200,
+      "seconds": 81.4,
+      "sha256": "fc34df75d26792308f2c565914e50d920372807a94c7c3fbda25b6cba96c2e7d",
+      "verified": 200
+    },
+    "solve_in_6.jsonl": {
+      "problems": 200,
+      "seconds": 243.9,
+      "sha256": "4ea17b6986f6a5f2a641562505604867daaf0d9850400cbeebb0e39010dadc3d",
+      "verified": 200
+    }
+  },
+  "total": 1200
+}
