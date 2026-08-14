@@ -5,8 +5,16 @@ Two properties this module exists to guarantee, both inherited law:
 **1. Unknown keys are a hard error.** Silence on a mistyped key is the same
 failure family as a wrong git SHA — the run looks fine and the number is wrong.
 A near-miss on a real field is *worse* than a typo, because the default it
-leaves in place is plausible: ``par_from_pool_frac`` (not a field) sitting next
-to ``from_pool_frac`` (a field) would read as a request and change nothing.
+leaves in place is plausible: ``train.value_q_mse`` (not a field) sitting next
+to ``train.value_q_mse_weight`` (a field) would read, in the config file and in
+the RUNLOG, as a request that changed nothing.
+
+**One spelling per referent.** A config key's name is not private to the config
+system — it appears in the spec, the amendment, the PREREG and every RUNLOG that
+cites it. ``grep par_from_pool_frac`` has to hit documents, briefs, configs and
+code as one corpus, so a key is spelled here exactly as the prose spells it, and
+the section it lives in is chosen to make that spelling read cleanly rather than
+the spelling shortened to suit the section.
 
 **2. Every value is traceable.** Each field below is tagged with where its value
 comes from:
@@ -67,13 +75,6 @@ class ParConfig:
     # a provisional *floor* above that, and is provenance-tagged `par_source`.
     bfs_exact_max_depth: int = 6
 
-    # [spec §3, v1.1] The plan spells this key ``par_from_pool_frac``; it is
-    # ``par.from_pool_frac`` here to avoid the stutter. Fraction of training
-    # problems whose par comes from a pool snapshot's own solution, solved fresh
-    # at episode time — so par escalates with the model. This is the built-in
-    # half of the funnel treatment; the Phase-3 generator is the other half.
-    from_pool_frac: float = 0.20
-
     # [v1.1] The resign-vs-par analog: concede when the best solution found is
     # already >= par + k steps. "Implemented but default off, calibration
     # deferred to campaign evidence, per the resignation lesson." k is therefore
@@ -81,6 +82,29 @@ class ParConfig:
     # and calibrating it is a campaign decision, not a default.
     concede_enabled: bool = False
     concede_k: int = 2
+
+
+@dataclass
+class LeagueConfig:
+    """The snapshot league [v1.1, plan chunk 9] — where pool-derived par comes from.
+
+    Chunk 9 ports ``CheckpointPool`` and fills this section out (pool size,
+    snapshot cadence, opponent draw). It exists now because one key already
+    belongs to it, and that key needed an owner that was not ``par``.
+    """
+
+    # [spec §3, v1.1] Spelled exactly as the plan, the amendment, and every
+    # future PREREG and RUNLOG spell it. One spelling per referent: the string
+    # lives in prose as well as in config, and a grep for `par_from_pool_frac`
+    # has to hit documents, briefs, configs and code as one corpus. The loader's
+    # near-miss suggestion only ever guarded config-space; it could not guard
+    # the half of the corpus that is written in English.
+    #
+    # Fraction of training problems whose par comes from a pool snapshot's own
+    # solution, solved fresh at episode time — so par escalates with the model.
+    # This is the built-in half of the funnel treatment; the Phase-3 generator
+    # is the other half.
+    par_from_pool_frac: float = 0.20
 
 
 @dataclass
@@ -236,6 +260,7 @@ class Config:
     seed: int = 42
     episode: EpisodeConfig = field(default_factory=EpisodeConfig)
     par: ParConfig = field(default_factory=ParConfig)
+    league: LeagueConfig = field(default_factory=LeagueConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     search: SearchConfig = field(default_factory=SearchConfig)
     train: TrainConfig = field(default_factory=TrainConfig)
@@ -274,8 +299,10 @@ def validate(cfg: Config) -> None:
             f"model.param_budget_min ({cfg.model.param_budget_min}) exceeds "
             f"param_budget_max ({cfg.model.param_budget_max})."
         )
-    if not 0.0 <= cfg.par.from_pool_frac <= 1.0:
-        raise ValueError(f"par.from_pool_frac must be in [0, 1]; got {cfg.par.from_pool_frac}")
+    if not 0.0 <= cfg.league.par_from_pool_frac <= 1.0:
+        raise ValueError(
+            f"league.par_from_pool_frac must be in [0, 1]; got {cfg.league.par_from_pool_frac}"
+        )
     if not 0.0 <= cfg.train.rehearsal_frac < 1.0:
         raise ValueError(f"train.rehearsal_frac must be in [0, 1); got {cfg.train.rehearsal_frac}")
     if cfg.episode.step_cap < 1:
@@ -399,6 +426,46 @@ def save_config(cfg: Config, path: str | Path) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as fh:
         yaml.safe_dump(_dataclass_to_dict(cfg), fh, default_flow_style=False, sort_keys=True)
+
+
+def config_diff(base: Config, other: Config) -> dict[str, tuple[Any, Any]]:
+    """Every key where ``other`` differs from ``base``, as ``{dotted: (base, other)}``.
+
+    **The registered enforcement for one-lever-per-round.** ``configs/default.yaml``
+    equals the dataclass defaults (a test pins that), so a campaign config's diff
+    against the default *is* the campaign's lever list. When the first campaign
+    file lands (chunk 8 or 11), its test is::
+
+        assert set(config_diff(Config(), load_config("configs/m1.yaml"))) == LEVERS
+
+    where ``LEVERS`` is the set the PREREG registered. That turns
+    one-lever-per-round from a reviewed property into an executable one: a second
+    lever added quietly during a run fails the build, and it fails it by *name*.
+
+    Registered now, before the first campaign, so it is adopted by design rather
+    than after an incident — which is the whole argument of the inherited-law
+    block.
+    """
+    flat_base = _flatten(_dataclass_to_dict(base))
+    flat_other = _flatten(_dataclass_to_dict(other))
+    keys = sorted(set(flat_base) | set(flat_other))
+    return {
+        k: (flat_base.get(k), flat_other.get(k))
+        for k in keys
+        if flat_base.get(k) != flat_other.get(k)
+    }
+
+
+def _flatten(node: Any, prefix: str = "") -> dict[str, Any]:
+    """Nested config dict -> ``{"section.key": value}``. Leaves stay whole."""
+    flat: dict[str, Any] = {}
+    for key, value in node.items():
+        dotted = f"{prefix}{key}"
+        if isinstance(value, dict):
+            flat.update(_flatten(value, f"{dotted}."))
+        else:
+            flat[dotted] = value
+    return flat
 
 
 def config_fingerprint(cfg: Config) -> str:

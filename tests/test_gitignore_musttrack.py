@@ -40,6 +40,7 @@ MUST_TRACK: list[str] = [
     "AGENTS.md",
     "Makefile",
     "pyproject.toml",
+    "uv.lock",  # without it, "green in a clean clone" tests resolution luck
     "configs/*.yaml",
     "docs/*.md",  # generated reference (docs/vocab.md) — regenerable, but cited
     "src/reckoner/*.py",

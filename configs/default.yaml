@@ -8,6 +8,12 @@
 # A campaign that legitimately needs different values gets its OWN file in
 # configs/ (configs/m1.yaml, and so on) — it does not edit this one.
 #
+# That convention is load-bearing, not tidiness. Because this file equals the
+# dataclass defaults exactly, a campaign config's `config_diff()` against the
+# defaults IS its lever list, so its test can assert that the diff equals the
+# set the PREREG registered — one-lever-per-round as an executable property
+# rather than a reviewed one. See config_diff()'s docstring.
+#
 # Provenance tags, as in config.py:
 #   [spec §N]       pinned by experiment2_math_base625_spec.md
 #   [plan chunk N]  pinned by experiment2_agent_plan.md
@@ -31,9 +37,15 @@ episode:
 # enters the label, never the search.
 par:
   bfs_exact_max_depth: 6  # [spec §3] BFS-exact par is canonical to depth 6
-  from_pool_frac: 0.20    # [v1.1] the plan spells this `par_from_pool_frac`
   concede_enabled: false  # [v1.1] implemented, default off, calibration deferred
   concede_k: 2            # inert while concede_enabled is false; NOT calibrated
+
+# --- the snapshot league [v1.1, plan chunk 9] -------------------------------
+# Chunk 9 ports CheckpointPool and fills this out. It exists now because
+# par_from_pool_frac needed an owning section that was not `par` — the key is
+# spelled exactly as the plan, the amendment and every future PREREG spell it.
+league:
+  par_from_pool_frac: 0.20  # [v1.1] pool-derived par; par escalates with the model
 
 # --- model [plan chunk 6] ---------------------------------------------------
 model:

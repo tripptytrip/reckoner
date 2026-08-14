@@ -351,6 +351,97 @@ def test_print_parse_is_canonical_and_idempotent(seed: int) -> None:
     assert canonicalize(parse(once)) == parse(once)
 
 
+def tree_depth(expr: object) -> int:
+    """Node depth, iterative. An atom is depth 1."""
+    stack = [(expr, 1)]
+    deepest = 0
+    while stack:
+        node, d = stack.pop()
+        deepest = max(deepest, d)
+        if isinstance(node, Op):
+            stack.extend((c, d + 1) for c in node.children)
+    return deepest
+
+
+def expr_of_depth(rng: random.Random, target: int, forbidden: int | None = None) -> object:
+    """A tree built to reach ``target`` depth along one spine.
+
+    Two things this has to dodge, both consequences of chunk 1's own canonical
+    form:
+
+    * **Flattening eats depth.** An ADD directly under an ADD merges, costing a
+      level. The spine child is therefore never given its parent's kind.
+    * **Bushy siblings explode.** Sibling depth drawn from ``[1, target-1]``
+      makes a depth-200 tree astronomically large. Siblings are capped at 3, so
+      size stays O(target) — a spine with small bushes on it.
+    """
+    if target <= 1:
+        return (
+            num(rng.randrange(-625, 625)) if rng.random() < 0.7 else var(rng.choice((VAR_X, VAR_Y)))
+        )
+    choices = [k for k in (ADD, MUL, SUB, DIV, EQ) if k != forbidden]
+    kind = rng.choice(choices)
+    n = rng.randint(2, 3) if kind in (ADD, MUL) else 2
+    spine = rng.randrange(n)
+    kids = [
+        expr_of_depth(rng, target - 1 if i == spine else rng.randint(1, min(3, target - 1)), kind)
+        for i in range(n)
+    ]
+    return make_op(kind, kids)
+
+
+def test_round_trip_stratified_by_depth() -> None:
+    """**Chunk 1 gate, strengthened.** Byte-exact round-trips across depth strata.
+
+    Why this exists: the 200K gate's own coverage table showed its sampler is
+    *bimodal* — 35.1% of trees at depth 1, 50.8% pinned at its depth cap of 5,
+    and 14.1% spread across depths 2-4. 200,000 iterations, two depths. Chunk 5's
+    generator will emit deeper trees the moment EVALUATE nesting or mid-derivation
+    states get interesting, and nothing here would have covered them.
+
+    Gates ratchet one way, so this is added beside the 200K rather than
+    replacing it: uniform over strata 1..16, plus an extreme band of 50..200.
+
+    Both round-trip directions are checked, and both by token sequence:
+    ``tokens -> tree -> tokens`` directly, and ``tree -> tokens -> tree`` via
+    ``identity_key`` rather than ``==``. That is not a weakening — ``tokens`` is
+    injective on canonical trees, so equal keys mean equal trees — and it is
+    what lets the extreme band run at depth 200 without meeting Python's
+    recursive ``__eq__``.
+
+    The test asserts its own coverage. A generator that silently stopped
+    reaching a stratum would otherwise leave this gate passing green over a hole,
+    which is exactly the failure being repaired here.
+    """
+    rng = random.Random(0xDEE9)
+    achieved: dict[int, int] = {}
+
+    def check(tree: object) -> None:
+        printed = tokens(tree)
+        reparsed = parse(printed)
+        assert identity_key(reparsed) == identity_key(tree)  # tree -> tokens -> tree
+        assert tokens(reparsed) == printed  # tokens -> tree -> tokens
+        depth = tree_depth(tree)
+        achieved[depth] = achieved.get(depth, 0) + 1
+
+    for target in range(1, 17):
+        for _ in range(400):
+            check(expr_of_depth(rng, target))
+
+    for _ in range(200):
+        check(expr_of_depth(rng, rng.randint(50, 200)))
+
+    # Coverage is part of the gate, not a footnote to it.
+    for stratum in range(1, 17):
+        assert achieved.get(stratum, 0) >= 50, (
+            f"depth stratum {stratum} got {achieved.get(stratum, 0)} trees — the "
+            f"generator stopped reaching it. Histogram: {dict(sorted(achieved.items()))}"
+        )
+    deep = sum(count for depth, count in achieved.items() if depth >= 40)
+    assert deep >= 150, f"extreme band under-covered: {deep} trees at depth >= 40"
+    assert max(achieved) >= 150, f"deepest tree reached was only {max(achieved)}"
+
+
 def test_round_trip_200k_byte_exact() -> None:
     """**Chunk 1 gate:** 200K random-tree round-trips, byte-exact.
 

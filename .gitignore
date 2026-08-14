@@ -61,7 +61,13 @@ __pycache__/
 dist/
 build/
 .venv/
-uv.lock
+# uv.lock is deliberately NOT ignored. Without it committed, a clean-clone gate
+# tests today's resolution luck rather than reproducibility: `make install`
+# would re-resolve every dependency at whatever versions exist that morning, and
+# "green in a clean clone" would silently mean "green against a different
+# environment than the one the numbers were measured on". `make install` runs
+# `uv sync --frozen`, and `make lint` runs `uv lock --check`, so the lockfile
+# and pyproject.toml cannot drift apart unnoticed.
 .ruff_cache/
 .pytest_cache/
 *.ipynb_checkpoints/

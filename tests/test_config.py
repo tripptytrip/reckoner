@@ -19,11 +19,14 @@ from reckoner.config import (
     EpisodeConfig,
     GeneratorConfig,
     LadderConfig,
+    LeagueConfig,
     ModelConfig,
     ParConfig,
     SearchConfig,
     TrainConfig,
     _dataclass_to_dict,
+    _flatten,
+    config_diff,
     config_fingerprint,
     load_config,
     save_config,
@@ -49,6 +52,7 @@ def test_default_config_instantiates() -> None:
     cfg = Config()
     assert isinstance(cfg.episode, EpisodeConfig)
     assert isinstance(cfg.par, ParConfig)
+    assert isinstance(cfg.league, LeagueConfig)
     assert isinstance(cfg.model, ModelConfig)
     assert isinstance(cfg.search, SearchConfig)
     assert isinstance(cfg.train, TrainConfig)
@@ -77,11 +81,11 @@ def test_nested_sections_are_reconstructed_not_left_as_dicts(tmp_path: Path) -> 
 
 
 def test_pinned_episode_and_par_values() -> None:
-    e, p = EpisodeConfig(), ParConfig()
+    e, p, lg = EpisodeConfig(), ParConfig(), LeagueConfig()
     assert e.step_cap == 24  # plan chunk 3
     assert e.simplify_equiv_k == 32  # spec §3
     assert p.bfs_exact_max_depth == 6  # spec §3
-    assert p.from_pool_frac == 0.20  # amendment v1.1
+    assert lg.par_from_pool_frac == 0.20  # amendment v1.1
     assert p.concede_enabled is False  # v1.1: implemented, default off
 
 
@@ -169,14 +173,14 @@ def test_unknown_nested_key_is_rejected(tmp_path: Path) -> None:
 def test_near_miss_key_is_rejected_with_a_suggestion(tmp_path: Path) -> None:
     """The dangerous case: a plausible name that leaves a plausible default.
 
-    `par_from_pool_frac` is what the plan text calls it; `par.from_pool_frac` is
-    what it is. Accepting the former would leave the fraction at 0.20 while
-    reading, in the config file and in the RUNLOG, as a request to change it.
+    `value_q_mse` next to `value_q_mse_weight`. Accepting it would leave the
+    blend at 0.5 while reading, in the config file and in the RUNLOG, as a
+    request to change it — the run looks fine and the number is wrong.
     """
     with pytest.raises(ValueError) as exc:
-        load_config(_write(tmp_path, {"par": {"par_from_pool_frac": 0.5}}))
-    assert "par.par_from_pool_frac" in str(exc.value)
-    assert "from_pool_frac" in str(exc.value)
+        load_config(_write(tmp_path, {"train": {"value_q_mse": 0.0}}))
+    assert "train.value_q_mse" in str(exc.value)
+    assert "value_q_mse_weight" in str(exc.value)
 
 
 def test_known_keys_are_accepted(tmp_path: Path) -> None:
@@ -187,7 +191,7 @@ def test_known_keys_are_accepted(tmp_path: Path) -> None:
             {
                 "seed": 7,
                 "episode": {"step_cap": 32},
-                "par": {"from_pool_frac": 0.5},
+                "league": {"par_from_pool_frac": 0.5},
                 "search": {"sims": 16, "gumbel_m": 5},
                 "train": {"rehearsal_frac": 0.25},
             },
@@ -195,7 +199,7 @@ def test_known_keys_are_accepted(tmp_path: Path) -> None:
     )
     assert cfg.seed == 7
     assert cfg.episode.step_cap == 32
-    assert cfg.par.from_pool_frac == 0.5
+    assert cfg.league.par_from_pool_frac == 0.5
     assert cfg.search.sims == 16
     assert cfg.search.gumbel_m == 5
     assert cfg.train.rehearsal_frac == 0.25
@@ -273,12 +277,13 @@ def test_three_class_value_head_is_accepted(tmp_path: Path) -> None:
 @pytest.mark.parametrize("bad", [-0.1, 1.5])
 def test_out_of_range_pool_frac_is_rejected(tmp_path: Path, bad: float) -> None:
     with pytest.raises(ValueError, match="from_pool_frac"):
-        load_config(_write(tmp_path, {"par": {"from_pool_frac": bad}}))
+        load_config(_write(tmp_path, {"league": {"par_from_pool_frac": bad}}))
 
 
 @pytest.mark.parametrize("ok", [0.0, 0.2, 1.0])
 def test_in_range_pool_frac_is_accepted(tmp_path: Path, ok: float) -> None:
-    assert load_config(_write(tmp_path, {"par": {"from_pool_frac": ok}})).par.from_pool_frac == ok
+    cfg = load_config(_write(tmp_path, {"league": {"par_from_pool_frac": ok}}))
+    assert cfg.league.par_from_pool_frac == ok
 
 
 def test_rehearsal_frac_of_one_is_rejected(tmp_path: Path) -> None:
@@ -345,6 +350,75 @@ def test_save_creates_parent_dirs(tmp_path: Path) -> None:
     path = tmp_path / "sub" / "dir" / "config.yaml"
     save_config(Config(), path)
     assert path.exists()
+
+
+# ---------------------------------------------------------------------------
+# One spelling per referent, and the lever-list enforcement it enables
+# ---------------------------------------------------------------------------
+
+
+def test_par_from_pool_frac_is_spelled_verbatim() -> None:
+    """The key is spelled exactly as the plan, the amendment and the PREREGs spell it.
+
+    A config key's name is not private to the config system. `grep
+    par_from_pool_frac` has to hit documents, briefs, configs and code as one
+    corpus, and two spellings of one referent is a defect class that has already
+    cost this project once (`stockfish:0` vs `stockfish_s0`). The loader's
+    near-miss suggestion guards config-space only; it cannot guard the half of
+    the corpus written in English.
+    """
+    flat = _flatten(_dataclass_to_dict(Config()))
+    assert "league.par_from_pool_frac" in flat
+    assert not [k for k in flat if k.endswith("from_pool_frac") and "par_from_pool_frac" not in k]
+
+
+def test_config_diff_is_empty_for_identical_configs() -> None:
+    assert config_diff(Config(), Config()) == {}
+    assert config_diff(Config(), load_config(DEFAULT_YAML)) == {}
+
+
+def test_config_diff_names_every_changed_key_and_only_those() -> None:
+    """The registered enforcement for one-lever-per-round.
+
+    A campaign config's diff against the defaults IS its lever list, so a
+    campaign test can assert the diff equals the set its PREREG registered. A
+    second lever added quietly mid-run then fails the build, and fails it by
+    name.
+    """
+    other = load_config(overrides={"search.sims": 16, "seed": 7})
+    diff = config_diff(Config(), other)
+    assert set(diff) == {"search.sims", "seed"}
+    assert diff["search.sims"] == (48, 16)
+    assert diff["seed"] == (42, 7)
+
+
+def test_config_diff_reaches_every_section() -> None:
+    """Both polarities: a differ blind to a section would report a clean lever list."""
+    cfg = Config()
+    cfg.episode.step_cap = 1
+    cfg.par.concede_k = 99
+    cfg.league.par_from_pool_frac = 0.0
+    cfg.model.d_model = 8
+    cfg.search.sims = 6
+    cfg.train.lr = 1.0
+    cfg.generator.train_set_size = 1
+    cfg.ladder.ladder_every = 1
+    assert set(config_diff(Config(), cfg)) == {
+        "episode.step_cap",
+        "par.concede_k",
+        "league.par_from_pool_frac",
+        "model.d_model",
+        "search.sims",
+        "train.lr",
+        "generator.train_set_size",
+        "ladder.ladder_every",
+    }
+
+
+def test_config_diff_sees_list_valued_keys() -> None:
+    cfg = Config()
+    cfg.generator.suite_depths = [1, 2, 3]
+    assert config_diff(Config(), cfg) == {"generator.suite_depths": ([1, 2, 3, 4, 5, 6], [1, 2, 3])}
 
 
 def test_fingerprint_is_stable_across_instances() -> None:

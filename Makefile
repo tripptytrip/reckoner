@@ -1,4 +1,4 @@
-.PHONY: install lint format test env docs clean
+.PHONY: install relock lint format test env docs clean
 
 # uv is the only Python tool chain on this box (AGENTS.md §5). Resolve it rather
 # than assume PATH: a Makefile invoked from a stripped environment must not
@@ -16,11 +16,19 @@ RUFF := $(if $(wildcard $(VENV)/bin/ruff),$(VENV)/bin/ruff,ruff)
 PYTEST := $(if $(wildcard $(VENV)/bin/pytest),$(VENV)/bin/pytest,pytest)
 PYTHON := $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
 
+# --frozen: install exactly what uv.lock pins, never re-resolve. An unfrozen
+# install makes "green in a clean clone" mean "green against whatever versions
+# existed this morning", which is not the claim the gate is supposed to make.
+# Use `make relock` to change dependencies on purpose.
 install:
-	$(UV) venv --python 3.12
-	$(UV) pip install -e ".[dev]"
+	$(UV) sync --frozen --extra dev
+
+relock:
+	$(UV) lock
+	$(UV) sync --frozen --extra dev
 
 lint:
+	$(UV) lock --check
 	$(RUFF) check src/ tests/ scripts/
 	$(RUFF) format --check src/ tests/ scripts/
 

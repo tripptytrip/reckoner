@@ -148,14 +148,32 @@ then run CPU-only forever. This has burned real time more than once.
 - **`uv` for everything**: `uv venv`, `uv pip`, `uv lock`, `uv run`. Not conda,
   not poetry, not bare pip. Python 3.12.
 - Projects are installable packages: `src/` layout, `pyproject.toml`, installed
-  with `uv pip install -e ".[dev]"`. **`sys.path` mutation is banned** — if an
-  import needs a path hack, the packaging is wrong; fix the packaging.
+  with `make install` (`uv sync --frozen --extra dev`). **`sys.path` mutation is
+  banned** — if an import needs a path hack, the packaging is wrong; fix the
+  packaging.
+- **`uv.lock` is committed and installs are frozen.** Without it, a clean-clone
+  gate tests today's resolution luck rather than reproducibility: "green in a
+  clean clone" would mean "green against a different environment than the one
+  the numbers were measured on". `make lint` runs `uv lock --check` so the lock
+  and `pyproject.toml` cannot drift apart unnoticed; `make relock` is how
+  dependencies change on purpose.
 - Lint/format with `ruff` before every commit (`make lint`). Type-hint all
   public interfaces.
 - Tests: `pytest`, with `hypothesis` for property-based testing of codecs,
   invariants and round-trips (chunk 1's parser/printer is the first customer).
   **All tests must pass on CPU only** — GPU availability is never a test
   dependency. GPU-dependent checks live in benchmark scripts.
+- **Round-trip gates are blind to symmetric bugs; every codec carries pinned
+  absolute reference vectors.** A codec whose encoder and decoder are wrong in
+  the same direction round-trips perfectly forever. Measured, not argued: in
+  chunk 1, flipping base-625 digits to LSB-first in *both* `to_digits` and
+  `from_digits` survived all 200,000 round-trips and died only on the pinned
+  table (`625 → [1, 0]`). A round-trip proves the two halves agree; only an
+  absolute vector proves they agree with reality.
+- **A gate must report what it covered, not only that it passed.** Publish the
+  coverage distribution beside the result — a 200K-iteration loop concentrated
+  at two depths is a narrower gate than its iteration count advertises, and the
+  count alone will never say so.
 - The `Makefile` carries at least `make lint` and `make test`; `make bench`
   arrives with the first benchmark script (chunk 7).
 
@@ -168,6 +186,14 @@ then run CPU-only forever. This has burned real time more than once.
   defaults and code — `configs/default.yaml` must equal the dataclass defaults,
   and a test pins that identity. A campaign that needs different values gets its
   own file in `configs/`.
+- **One lever per round is an executable property, not a reviewed one.** Because
+  `default.yaml` equals the defaults exactly, a campaign config's
+  `config_diff(Config(), load_config("configs/<campaign>.yaml"))` **is** its
+  lever list. Every campaign config ships with a
+  `test_<campaign>_config_is_the_brief` asserting that diff equals the set its
+  PREREG registered. A second lever added quietly mid-run then fails the build,
+  and fails it by name. Registered here before the first campaign exists, so it
+  is adopted by design rather than after an incident.
 - Every config field is tagged with its provenance — `[spec §N]`,
   `[plan chunk N]`, `[v1.1]`, or `[provisional — chunk N]`. **A `[provisional]`
   number is not a decision**; the chunk that owns it sets it and pins it.
@@ -236,8 +262,9 @@ then run CPU-only forever. This has burned real time more than once.
 ## 9. Quick reference
 
 ```bash
-make install          # uv venv (3.12) + editable install with dev extras
-make lint test        # the chunk 0 gate
+make install          # uv sync --frozen --extra dev (exactly what uv.lock pins)
+make relock           # change dependencies on purpose
+make lint test        # the chunk 0 gate (lint includes `uv lock --check`)
 make env              # torch build / device / matmul TFLOPS; non-zero on a CUDA wheel
 
 rocminfo | grep gfx   # expect gfx1151
