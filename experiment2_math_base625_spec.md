@@ -59,3 +59,46 @@ CPU-heavy again (pattern-matching movegen), GPU light — the box suffices; the 
 
 ---
 *Next step on Tom's word: resolve §8, then the chunked agent plan with DONE-WHEN gates, same shape as the chess rebuild — after `p2_d` reports.*
+
+---
+
+# Erratum E1 — §2's interpreter example (2026-08-14, from chunk 2)
+
+**Superseded, not reinterpreted.** §2 illustrates the interpreter with
+
+> `3x + 6 = 21  ──[sub 6 both sides]──►  3x = 15`
+
+Under rule set v1 as built and frozen in chunk 2, that is **two** rewrites, because
+`sub_both_sides` is a structural rule and does not compute:
+
+```
+3x + 6 = 21  ──[sub_both_sides, operand 6]──►  3x = 21 + (−6)
+             ──[eval_add, right side]──►       3x = 15
+```
+
+Two corrections to the erratum as first drafted in review: the intermediate is
+`21 + (−6)` and the second rule is **`eval_add`**, not `21 − 6` / `eval_sub`.
+`sub_both_sides` moves the addend across *as its negation* rather than building a
+`SUB` node, and that is load-bearing rather than cosmetic: `eval_sub` requires
+both operands numeric, so on a two-sided problem `SUB(2x + 18, 3)` would be a
+dead end that no v1 rule can reduce. The negation lands inside the same
+flattened `ADD`, where `eval_add` reaches it.
+
+**Why the finer granularity was adopted** (measured in chunk 2, ratified in
+review): structural rules move, `eval_*` rules compute, so every rendered line is
+semantically atomic — the interpretability thesis expressed in the rule system
+itself. The spec's original one-line form hides `21 − 6 = 15` inside a
+structural step. The alternative (deferring the cancellation too) was measured
+and rejected: it put `5x + 3 = 2x + 18` at par 7, *outside* the depth-6
+BFS-exact band that canonical par depends on, and cost 234,627 BFS states
+against 9,378.
+
+One exception, forced not stylistic: **`div_both_sides` computes its quotient**
+under its exactness guard. Deferring it would emit a `DIV` node, and v1 has no
+`eval_div` to reduce one. See `REGISTERED-ROUNDS.md` R2.
+
+**Consequence for par.** Granularity is now frozen as `RULESET_VERSION = 1`. Par
+is denominated in a rule system, so the version is part of the label: it is
+carried in episode results, par provenance, and every dataset and suite
+`meta.json` from chunk 5 on. A future granularity change bumps it and invalidates
+recorded pars loudly rather than silently.

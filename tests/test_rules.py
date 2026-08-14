@@ -50,8 +50,8 @@ from reckoner.expr import (
 )
 from reckoner.rules import (
     RULE_BY_NAME,
-    RULE_SET_VERSION,
     RULES,
+    RULESET_VERSION,
     Site,
     apply,
     enumerate_sites,
@@ -63,7 +63,14 @@ from reckoner.rules import (
     split_coefficient,
     successors,
 )
-from reckoner.semantics import eval_exact, eval_field, holds_exact, holds_field, variables
+from reckoner.semantics import (
+    eval_exact,
+    eval_field,
+    holds_exact,
+    holds_field,
+    linear_root,
+    variables,
+)
 from reckoner.vocab import ADD, DIV, EQ, MUL, SUB, VAR_X, VAR_Y
 
 P = 2_147_483_647  # episode.equiv_prime
@@ -80,7 +87,7 @@ PINNED_RULE_FINGERPRINT = "f9c61ba15e41f8d3448daddc5cd642217a30914dc830ae11ba4d8
 
 def test_rule_set_v1_is_exactly_the_pinned_seven() -> None:
     """Plan §8 decision 2. Extensions are later one-lever rounds, not edits."""
-    assert RULE_SET_VERSION == 1
+    assert RULESET_VERSION == 1
     assert [r.name for r in RULES] == [
         "eval_add",
         "eval_sub",
@@ -95,7 +102,7 @@ def test_rule_set_v1_is_exactly_the_pinned_seven() -> None:
 
 def test_rule_fingerprint_is_pinned() -> None:
     assert rule_set_fingerprint() == PINNED_RULE_FINGERPRINT, (
-        "The rule set changed. If deliberate: bump RULE_SET_VERSION and update "
+        "The rule set changed. If deliberate: bump RULESET_VERSION and update "
         "this literal. Datasets store rule ids; renumbering relabels every "
         "recorded action in every dataset already written."
     )
@@ -473,6 +480,24 @@ def test_soundness_fuzz_equivalence(rule_name: str, request: pytest.FixtureReque
     Undefined evaluations (a denominator that vanished) are skipped and counted,
     never passed. The floors below are what stop "10,000 assignments" from
     meaning "twelve assignments and 9,988 shrugs".
+
+    **The draw distribution is part of the oracle's specification, not an
+    implementation detail.** A rewrite that changes an equation's solution set
+    differs from the original *only at the solution points*, so random-draw
+    truth testing detects it exactly when a draw lands on one. That probability
+    is a function of the draw width, and it collapses: a ``div_both_sides`` with
+    its guard removed is caught on 226/400 instances at draws in ±10, 102/400 at
+    ±50, 8/400 at ±500, and **0/400** at ±10⁶ or at field width. So:
+
+    * 𝔽ₚ draws are uniform over the whole field — deliberately wide, because
+      that layer is testing same-function, not same-solution-set.
+    * ℚ draws are integers in **[-50, 50]** (``_assignment_exact``), narrow on
+      purpose.
+    * **Every equation-rule instance additionally evaluates at the exact
+      solution points of the before- and after-equations** (``linear_root``).
+      That is what makes solution-set detection deterministic instead of
+      statistical — measured below at 100% of inexact instances, versus 25% for
+      the ±50 draws alone.
     """
     rule = RULE_BY_NAME[rule_name]
     rng = random.Random(0xC0FFEE + rule.rule_id)
@@ -484,6 +509,7 @@ def test_soundness_fuzz_equivalence(rule_name: str, request: pytest.FixtureReque
         "field_skip": 0,
         "exact_ok": 0,
         "exact_skip": 0,
+        "probe_ok": 0,
     }
 
     for state, site in instances:
@@ -495,6 +521,31 @@ def test_soundness_fuzz_equivalence(rule_name: str, request: pytest.FixtureReque
         else:
             before_expr, after_expr = state, rule.apply(state, site)
         vars_ = tuple(sorted(set(variables(before_expr)) | set(variables(after_expr))))
+
+        # Closure, asserted here and not only in its own test: equivalence and
+        # closure are one oracle, and a successor that leaves the vocabulary is
+        # unsound however well it evaluates.
+        successor = after_expr if rule.scope == "equation" else rule.apply(state, site)
+        assert canonicalize(successor) == successor
+        assert identity_key(parse(tokens(successor))) == tokens(successor)
+
+        # Deterministic solution-set probes, on top of the random draws.
+        probes: list[dict] = []
+        if rule.scope == "equation" and len(vars_) == 1:
+            for equation in (before_expr, after_expr):
+                root = linear_root(equation)
+                if root is not None:
+                    probes.append({vars_[0]: root})
+        for env_q in probes:
+            left_q = holds_exact(before_expr, env_q)
+            right_q = holds_exact(after_expr, env_q)
+            if left_q is None or right_q is None:
+                stats["exact_skip"] += 1
+            else:
+                assert left_q == right_q, (
+                    f"{rule_name}: solution-set mismatch at {env_q} on {tokens(state)}"
+                )
+                stats["probe_ok"] += 1
 
         for _ in range(ASSIGNMENTS_PER_INSTANCE):
             env_f = _assignment_field(rng, vars_)
@@ -868,6 +919,92 @@ def test_effective_branching_is_below_raw_branching() -> None:
 def test_no_action_is_legal_on_an_atom() -> None:
     assert legal_actions(num(3)) == []
     assert legal_actions(X) == []
+
+
+def test_no_rule_ever_constructs_a_div_node() -> None:
+    """**The v1 DIV-free invariant.** Stronger than the generator ban.
+
+    No rule's RHS template builds a ``DIV``, and ``div_both_sides`` consumes its
+    division rather than emitting one. So a problem free of ``DIV`` generates a
+    reachable state space free of ``DIV``. Chunk 5's generator ban makes the
+    premise hold; this test is the step from premise to invariant.
+    """
+    rng = random.Random(0xD1F)
+    states = expanded = 0
+    for _ in range(3000):
+        state = random_state(rng)
+        if DIV in tokens(state):
+            continue  # premise: the problem is DIV-free
+        for _ in range(rng.randint(1, 4)):
+            options = successors(state)
+            if not options:
+                break
+            for _, successor in options:
+                assert DIV not in tokens(successor), (
+                    f"a rule constructed a DIV node from {tokens(state)} — the v1 "
+                    "DIV-free invariant is broken, and chunk 3's field-only "
+                    "SIMPLIFY checker loses its licence."
+                )
+                expanded += 1
+            state = rng.choice(options)[1]
+        states += 1
+    assert states >= 1000, f"only {states} DIV-free states sampled"
+    assert expanded >= 10_000, f"only {expanded} successors examined"
+
+
+def test_div_free_states_never_evaluate_to_undefined() -> None:
+    """The licence the invariant buys, tested with it rather than assumed.
+
+    Division is the only partial operation: it is what makes ``eval_field``
+    return ``None``. Over a ``DIV``-free state space there are no undefined
+    draws to skip, so chunk 3's SIMPLIFY checker can compare by field
+    equivalence alone and treat *every* draw as informative.
+    """
+    rng = random.Random(0xC1E)
+    checked = 0
+    for _ in range(2000):
+        state = random_state(rng)
+        if DIV in tokens(state):
+            continue
+        vars_ = variables(state)
+        env = {v: rng.randrange(P) for v in vars_}
+        if isinstance(state, Op) and state.kind == EQ:
+            assert holds_field(state, env, P) is not None
+        else:
+            assert eval_field(state, env, P) is not None
+        checked += 1
+    assert checked >= 500, f"only {checked} DIV-free states evaluated"
+
+
+def test_legal_actions_is_byte_identical_across_processes() -> None:
+    """Determinism, across runs *and* interpreters.
+
+    Same-process repetition cannot see hash-order leakage: a dict or set
+    iteration order that varies with ``PYTHONHASHSEED`` is stable within one
+    process and different in the next, which would silently relabel actions
+    between the process that wrote a dataset and the process that reads it.
+    """
+    import os
+    import subprocess
+    import sys
+
+    program = (
+        "from reckoner.expr import add, eq, mul, num, var;"
+        "from reckoner.rules import legal_actions;"
+        "from reckoner.vocab import VAR_X, VAR_Y;"
+        "X=var(VAR_X); Y=var(VAR_Y);"
+        "s=eq(add(mul(num(3),X),mul(num(2),X),Y,num(6),num(-6)),add(mul(num(2),Y),num(21)));"
+        "print(legal_actions(s))"
+    )
+    outputs = set()
+    for seed in ("0", "1", "12345", "random"):
+        env = {**os.environ, "PYTHONHASHSEED": seed}
+        result = subprocess.run(
+            [sys.executable, "-c", program], capture_output=True, text=True, check=True, env=env
+        )
+        outputs.add(result.stdout.strip())
+    assert len(outputs) == 1, f"action list varied across PYTHONHASHSEED: {outputs}"
+    assert outputs.pop() != "[]", "the fixture became terminal — it tests nothing"
 
 
 def test_div_node_states_have_no_eval_rule() -> None:

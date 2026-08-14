@@ -197,6 +197,11 @@ then run CPU-only forever. This has burned real time more than once.
 - Every config field is tagged with its provenance — `[spec §N]`,
   `[plan chunk N]`, `[v1.1]`, or `[provisional — chunk N]`. **A `[provisional]`
   number is not a decision**; the chunk that owns it sets it and pins it.
+- **Flipping a `[provisional — chunk N]` tag to a decided one, with its source,
+  is part of chunk N's DONE-WHEN.** The tags exist to tell a reader which
+  numbers are load-bearing; a tag left stale after its chunk shipped tells them
+  the opposite of the truth. The transition rule is what makes the tags guard
+  the record and not just the reader.
 - **Run artifacts** live in `runs/<name>/` (gitignored except the records named
   in `tests/test_gitignore_musttrack.py`). Every run directory gets the resolved
   `config.yaml`, the git SHA and the `check_env.py` output.

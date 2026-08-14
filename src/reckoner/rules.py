@@ -66,14 +66,36 @@ shorter one without it. It is kept because the rule set is pinned, and its cost
 is measured rather than assumed — see the chunk report's branching table. It is
 the obvious candidate for a one-lever removal round.
 
-Closure gap, recorded rather than patched
------------------------------------------
-There is no ``eval_div`` in rule set v1, so a ``DIV`` node appearing in a
-problem cannot be reduced by any rule — ``div_both_sides`` divides an equation
-by a coefficient, it does not evaluate a quotient. **Chunk 5's generator must
-therefore not emit ``DIV`` in EVALUATE problems**, or those problems are
-unsolvable by construction. Adding an eighth rule is a spec change, not an
-implementation detail, so this is flagged here rather than fixed here.
+Structural rules defer arithmetic; ``div_both_sides`` computes
+---------------------------------------------------------------
+The asymmetry is deliberate and it is *forced*, not stylistic. The movers
+(``add_both_sides``, ``sub_both_sides``) rearrange and leave every sum for
+``eval_add`` to compute, so each rendered line is semantically atomic.
+``div_both_sides`` cannot do the same: deferring its quotient would mean
+emitting a ``DIV`` node, and there is no ``eval_div`` in v1 to reduce it — the
+state would be a dead end. So it computes ``c // a`` inside its exactness guard.
+
+Every rendered derivation line is therefore one of two kinds — a structural move
+or one arithmetic step — with exactly one exception, named here so chunk 4's
+interpreter does not have to rediscover it.
+
+No reachable v1 state contains a DIV node
+------------------------------------------
+Follows from the above: no rule's RHS template ever constructs a ``DIV``, and
+``div_both_sides`` consumes its division rather than emitting one. So if a
+*problem* contains no ``DIV``, no state reachable from it does either. Chunk 5's
+generator is therefore barred from emitting ``DIV`` in v1 problems — and with
+that ban, the invariant holds over the whole reachable state space.
+
+The invariant is a **license**: division is what makes field evaluation
+partial (a denominator vanishing mod p), so a state space with no ``DIV`` in it
+can be compared by field-only equivalence with no undefined draws to skip.
+Chunk 3's SIMPLIFY checker depends on that, so the invariant and the licence are
+tested as a pair rather than assumed.
+
+``eval_div`` plus a structural ``div_both_sides`` is registered as its own
+candidate one-lever round — see ``REGISTERED-ROUNDS.md``. Adding an eighth rule
+is a spec change, not an implementation detail.
 """
 
 from __future__ import annotations
@@ -87,7 +109,7 @@ from reckoner.vocab import ADD, EQ, MUL, SUB
 
 #: Bump when a rule id changes meaning or a rule is removed. Datasets store rule
 #: ids; a silent renumbering relabels every recorded action.
-RULE_SET_VERSION = 1
+RULESET_VERSION = 1
 
 
 # ---------------------------------------------------------------------------

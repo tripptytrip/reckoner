@@ -38,6 +38,7 @@ MUST_TRACK: list[str] = [
     "experiment2_math_base625_spec.md",
     "experiment2_agent_plan.md",
     "AGENTS.md",
+    "REGISTERED-ROUNDS.md",  # rounds specified before they are run
     "Makefile",
     "pyproject.toml",
     "uv.lock",  # without it, "green in a clean clone" tests resolution luck

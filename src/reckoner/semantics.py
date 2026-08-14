@@ -168,6 +168,45 @@ def holds_exact(equation: Expr, env: dict[int, Fraction | int]) -> bool | None:
     return left == right
 
 
+def linear_root(equation: Expr) -> Fraction | None:
+    """The solution of a one-variable **linear** equation, exactly, or ``None``.
+
+    Exists to make the equation-rule soundness oracle *deterministic* rather than
+    statistical. A rewrite that changes an equation's solution set differs from
+    the original at the solution points and nowhere else, so random-draw truth
+    testing detects it only when a draw lands on one — which is entirely a
+    function of the draw width, and measured to collapse fast: a broken
+    ``div_both_sides`` guard is caught on 226/400 instances at draws in ±10,
+    102/400 at ±50, 8/400 at ±500, and **0/400** at ±10⁶ or at field width.
+    Feeding this root into the draw set turns that coincidence into a proof.
+
+    Deliberately not a solver: it recovers the line through three evaluations
+    and refuses anything that is not linear or not single-variable, rather than
+    growing into a second implementation of the rule engine's job.
+    """
+    if not (isinstance(equation, Op) and equation.kind == EQ):
+        raise ValueError("linear_root expects an EQ node")
+    vars_ = variables(equation)
+    if len(vars_) != 1:
+        return None
+    v = vars_[0]
+
+    values: list[Fraction] = []
+    for point in (0, 1, 2):
+        left = eval_exact(equation.children[0], {v: point})
+        right = eval_exact(equation.children[1], {v: point})
+        if left is None or right is None:
+            return None
+        values.append(left - right)
+
+    slope = values[1] - values[0]
+    if values[2] - values[1] != slope:  # not linear in v
+        return None
+    if slope == 0:  # parallel: no unique solution (or every point is one)
+        return None
+    return -values[0] / slope
+
+
 def variables(expr: Expr) -> tuple[int, ...]:
     """Variable tokens occurring in ``expr``, in ascending token order."""
     seen: set[int] = set()

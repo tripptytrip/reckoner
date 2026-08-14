@@ -12,7 +12,14 @@ from fractions import Fraction
 import pytest
 
 from reckoner.expr import add, div, eq, mul, num, sub, var
-from reckoner.semantics import eval_exact, eval_field, holds_exact, holds_field, variables
+from reckoner.semantics import (
+    eval_exact,
+    eval_field,
+    holds_exact,
+    holds_field,
+    linear_root,
+    variables,
+)
 from reckoner.vocab import VAR_X, VAR_Y
 
 P = 2_147_483_647
@@ -154,6 +161,67 @@ def test_a_missing_assignment_is_an_error_not_a_default() -> None:
 def test_arithmetic_agrees_across_domains(expr, env: dict, expected: int) -> None:
     assert eval_exact(expr, env) == expected
     assert eval_field(expr, env, P) == expected % P
+
+
+# ---------------------------------------------------------------------------
+# linear_root — what turns solution-set testing from statistical to deterministic
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("equation", "root"),
+    [
+        (eq(mul(num(3), X), num(15)), Fraction(5)),
+        (eq(mul(num(3), X), num(16)), Fraction(16, 3)),  # not an integer, still exact
+        (eq(add(mul(num(2), X), num(-4)), num(10)), Fraction(7)),
+        (eq(add(mul(num(5), X), num(3)), add(mul(num(2), X), num(18))), Fraction(5)),
+        (eq(X, num(0)), Fraction(0)),
+    ],
+)
+def test_linear_root_finds_the_solution(equation, root: Fraction) -> None:
+    found = linear_root(equation)
+    assert found == root
+    assert holds_exact(equation, {VAR_X: found}) is True
+
+
+@pytest.mark.parametrize(
+    "equation",
+    [
+        eq(mul(num(3), X), mul(num(3), X)),  # every point is a solution
+        eq(add(mul(num(3), X), num(1)), add(mul(num(3), X), num(2))),  # parallel, none
+        eq(mul(X, Y), num(1)),  # two variables
+        eq(mul(X, X), num(4)),  # not linear
+        eq(div(num(1), X), num(1)),  # not linear
+    ],
+)
+def test_linear_root_refuses_what_it_cannot_solve(equation) -> None:
+    """It is a probe, not a solver. Refusing is correct; guessing would be worse."""
+    assert linear_root(equation) is None
+
+
+def test_linear_root_requires_an_equation() -> None:
+    with pytest.raises(ValueError, match="expects an EQ"):
+        linear_root(num(1))
+
+
+def test_the_root_is_where_an_unsound_rewrite_shows_itself() -> None:
+    """The whole point, in one case: `3x = 16` vs a floor-divided `x = 5`.
+
+    These differ at exactly one rational point out of infinitely many. Random
+    draws find it with probability P(draw hits 5) — measured at 25% over the
+    fuzz's ±50 range and **0%** at field width. Evaluating at the root finds it
+    every time.
+    """
+    broken_before, broken_after = eq(mul(num(3), X), num(16)), eq(X, num(5))
+    root = linear_root(broken_after)
+    assert root == 5
+    assert holds_exact(broken_before, {VAR_X: root}) != holds_exact(broken_after, {VAR_X: root})
+
+    honest_before, honest_after = eq(mul(num(3), X), num(15)), eq(X, num(5))
+    for probe in (linear_root(honest_before), linear_root(honest_after)):
+        assert holds_exact(honest_before, {VAR_X: probe}) == holds_exact(
+            honest_after, {VAR_X: probe}
+        )
 
 
 def test_variables_are_reported_in_token_order() -> None:
