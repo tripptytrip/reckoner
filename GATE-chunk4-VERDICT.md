@@ -1,0 +1,73 @@
+# GATE — chunk 4 manual proofread
+
+The chunk-4 gate is manual by design: no automated check can certify that the
+rule named on a line matches the transformation shown. This file is its record.
+
+## Artifact under gate
+
+| | |
+|---|---|
+| document | `docs/derivations.md` |
+| sha256 (as passed) | `b2b6c932a7236c8299a24dec72d08fc787d791a34ed83f0caaa38219540a22e0` |
+| prior issue (failed) | `f6a10c094dfe13ee2c7b94518c38b86866e9d56fe7a3bc826eb0c1394a304a2b` |
+| derivations | 50 |
+| commit at pass | `deef969` |
+
+## What the proofread certifies
+
+1. Every line is followable without the code.
+2. The rule named matches the transformation shown, all fifty times.
+3. Base-625 numerals — multi-digit and negative especially — render correctly.
+4. Nothing was prettified into unfaithfulness. `21 + (−6)` is the state, not a bug.
+5. The three ILLUSTRATIVE labels are present and honest; version stamps are on
+   the page; no caption restates an equation; the glyph panel is a labelled
+   placeholder.
+
+## First issue — FAIL
+
+Two defect families, both recorded in `FINDINGS.md`:
+
+* **F-01** — derivation 19 shipped a suboptimal exhibit, unlabelled, under a
+  caption that miscounted its own steps.
+* **F-02** — six derivations claimed BFS-exact provenance for hand-written par
+  literals, producing `z = +1` rows that are impossible by construction.
+
+Root cause of F-02 was neither branch the review's diagnostic named: there was no
+BFS labeller at all, and `Problem.par_source` defaulted to `"bfs"`. Audit of all
+fifty: 6 mislabelled, 44 correct by luck.
+
+## Second issue — PASS
+
+**Verdict, verbatim as given:** `verdict: PASS. continue`
+
+**Basis:** *not stated.* The reviewer offered two forms — "Proofread in full —
+PASS" or "Accepted on diff plus changed entries — PASS" — and neither was
+selected. The distinction matters for what the record can later be read to
+claim, so it is left open rather than assumed. **Absence carries a reason: this
+line is blank because the basis was not supplied, not because it was overlooked.**
+
+Changed entries at the second issue: derivations 19, 33, 36, 39, 42, 45, 48,
+plus the errata header. All other entries diff-verify against the prior digest.
+
+## Outstanding, non-blocking
+
+Four AGENTS.md laws remain flagged for countersign or veto:
+
+1. Round-trip gates are blind to symmetric bugs; every codec carries pinned
+   absolute reference vectors.
+2. A gate must report what it covered, not only that it passed.
+3. A provenance field whose default is its strongest claim is not a provenance
+   field — the most-trusted value must be the one that costs something to say.
+4. One formatter of states, ever — a caption describes, or it calls `render()`.
+
+All four are in force in the code and tests already; the countersign is about
+the record, not the behaviour.
+
+## Reporting erratum
+
+The chunk-6 report was ordered to open with this artifact's hash and did not.
+The cause was a misreading, not an abstention: "the verdict artifact" was taken
+to mean the document under review, and `docs/derivations.md`'s digest was given
+instead. Had the artifact been correctly identified as missing, the report was
+required to say so — absence carries a reason applies to ordered report items,
+not only to schema fields.

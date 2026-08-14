@@ -11,7 +11,7 @@ import torch
 
 from reckoner import model as model_module
 from reckoner.config import Config
-from reckoner.episode import Problem
+from reckoner.episode import Problem, encode_state
 from reckoner.expr import add, eq, mul, num, var
 from reckoner.model import (
     N_RULES,
@@ -33,11 +33,21 @@ from reckoner.rules import (
     site_token_offsets,
     successors,
 )
-from reckoner.vocab import GOAL_EVALUATE, GOAL_SIMPLIFY, GOAL_SOLVE, PAD, VAR_X, VOCAB_VERSION
+from reckoner.vocab import (
+    GOAL_EVALUATE,
+    GOAL_SIMPLIFY,
+    GOAL_SOLVE,
+    PAD,
+    VAR_X,
+    VAR_Y,
+    VOCAB_SIZE,
+    VOCAB_VERSION,
+)
 
 REPO = Path(__file__).resolve().parents[1]
 CFG = Config()
 X = var(VAR_X)
+Y = var(VAR_Y)
 
 PROBLEMS = [
     Problem(
@@ -169,14 +179,108 @@ def batch(problems: list[Problem]) -> tuple[torch.Tensor, torch.Tensor, torch.Te
     )
 
 
-def test_forward_on_all_three_goals() -> None:
+#: The synthetic batch the DONE-WHEN names, with its composition stated. `y` is
+#: in the vocabulary and reachable (SIMPLIFY's unlike-variable case), so the
+#: model must digest it — a batch of x-only states would leave a live embedding
+#: row untouched by every forward pass in the gate.
+SYNTHETIC_BATCH = [
+    *PROBLEMS,  # SOLVE(x), EVALUATE, SIMPLIFY(x)
+    Problem(  # SIMPLIFY with two variables — y-bearing
+        goal=GOAL_SIMPLIFY,
+        par=1,
+        par_source="bfs",
+        expr=add(mul(num(3), X), mul(num(2), X), mul(num(4), Y), mul(num(5), Y), num(7)),
+    ),
+    Problem(  # SOLVE for y, so the target slot is not always VAR_X
+        goal=GOAL_SOLVE,
+        target=VAR_Y,
+        par=1,
+        par_source="bfs",
+        expr=eq(mul(num(4), Y), num(20)),
+    ),
+    Problem(  # a mid-derivation state, longer than any start state
+        goal=GOAL_SOLVE,
+        target=VAR_X,
+        par=2,
+        par_source="bfs",
+        expr=eq(add(mul(num(3), X), num(6), num(-6), num(2)), add(num(21), num(-6))),
+    ),
+]
+
+
+def test_forward_backward_on_a_synthetic_batch_of_every_goal() -> None:
+    """**Chunk 6 gate.** Forward and backward on all goals, y included.
+
+    Composition (6 rows): 3 SOLVE — two for x, one for y — 1 EVALUATE, 2
+    SIMPLIFY of which one carries two variables. Both variable tokens appear,
+    both target slots are exercised, and one row is a mid-derivation state
+    longer than any start state.
+    """
+    goals = {p.goal for p in SYNTHETIC_BATCH}
+    assert goals == {GOAL_SOLVE, GOAL_EVALUATE, GOAL_SIMPLIFY}, "a goal is missing"
+    targets = {p.target for p in SYNTHETIC_BATCH}
+    assert {VAR_X, VAR_Y, None} <= targets, "the y target slot is untested"
+    assert any(VAR_Y in encode_state(p.goal, p.expr, p.target) for p in SYNTHETIC_BATCH), (
+        "no y token reaches the embedding table"
+    )
+
     model = Reckoner(CFG)
-    tokens, positions, mask = batch(PROBLEMS)
+    tokens, positions, mask = batch(SYNTHETIC_BATCH)
     policy, value, steps = model(tokens, positions)
-    assert policy.shape == (3, N_RULES * CFG.model.max_sites)
-    assert value.shape == (3, CFG.model.value_classes)
-    assert steps is not None and steps.shape == (3,)
+    n = len(SYNTHETIC_BATCH)
+    assert policy.shape == (n, N_RULES * CFG.model.max_sites)
+    assert value.shape == (n, CFG.model.value_classes)
+    assert steps is not None and steps.shape == (n,)
     assert torch.isfinite(policy).all() and torch.isfinite(value).all()
+
+    targets_p = mask.float()
+    targets_p = targets_p / targets_p.sum(-1, keepdim=True).clamp(min=1)
+    loss = policy_loss(policy, targets_p, mask) + value.square().mean() + steps.square().mean()
+    loss.backward()
+    assert all(p.grad is not None for p in model.parameters())
+
+
+# ---------------------------------------------------------------------------
+# Config-is-spec
+# ---------------------------------------------------------------------------
+
+
+def test_config_is_spec_for_the_model() -> None:
+    """**Chunk 6 gate.** The shape the config declares is the shape that is built.
+
+    Two spellings of a model — the config and the module — that are allowed to
+    drift is how a checkpoint stops loading into the architecture that made it.
+    Every value here is founding config: `n_layers = 6` in particular is a
+    recorded decision, and any later depth change is a registered lever, not an
+    edit.
+    """
+    m = CFG.model
+    assert (m.d_model, m.n_layers, m.n_heads, m.d_ff) == (256, 6, 8, 1024)
+    assert (m.seq_len, m.max_sites, m.d_policy) == (512, 192, 128)
+    assert (m.value_classes, m.steps_aux_head) == (3, True)
+
+    model = Reckoner(CFG)
+    assert model.token_embedding.embedding_dim == m.d_model
+    assert model.token_embedding.num_embeddings == VOCAB_SIZE
+    assert model.position_embedding.num_embeddings == m.seq_len
+    assert len(model.trunk.layers) == m.n_layers
+    assert model.trunk.layers[0].self_attn.num_heads == m.n_heads
+    assert model.trunk.layers[0].linear1.out_features == m.d_ff
+    assert model.rule_embedding.num_embeddings == N_RULES
+    assert model.site_projection.out_features == m.d_policy
+    assert model.value_head.out_features == m.value_classes
+    assert model.steps_head is not None and model.steps_head.out_features == 1
+    assert model.max_sites == m.max_sites
+
+
+def test_the_steps_head_can_be_switched_off_by_config_alone() -> None:
+    """Both polarities on a config-is-spec key: the flag has to do something."""
+    cfg = Config()
+    cfg.model.steps_aux_head = False
+    model = Reckoner(cfg)
+    assert model.steps_head is None
+    _, _, steps = model(*batch(PROBLEMS)[:2])
+    assert steps is None
 
 
 def test_backward_updates_every_parameter_group() -> None:

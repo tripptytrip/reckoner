@@ -42,6 +42,7 @@ MUST_TRACK: list[str] = [
     "FINDINGS.md",  # measured facts later chunks must not rediscover
     "BRIEF-chunk5.md",  # fold-ins accumulated across four review rounds
     "BRIEF-chunk9.md",  # obligations registered by earlier chunks
+    "GATE-*.md",  # manual-gate verdicts — the record a chunk closed on
     "Makefile",
     "pyproject.toml",
     "uv.lock",  # without it, "green in a clean clone" tests resolution luck
@@ -50,6 +51,7 @@ MUST_TRACK: list[str] = [
     "src/reckoner/*.py",
     "tests/*.py",
     "scripts/*.py",
+    "runs/state_extent.json",  # decision-bearing: it sized seq_len and max_sites
 ]
 
 # The chunk 0 list, verbatim from the plan, expanded to concrete example paths
@@ -77,7 +79,6 @@ MUST_REACH: list[str] = [
     "runs/data/train_100k/meta.json",
     "runs/data/eval_held_out/meta.json",
     "runs/rule_participation.json",
-    "runs/state_extent.json",
     "runs/par_delta.json",
 ]
 

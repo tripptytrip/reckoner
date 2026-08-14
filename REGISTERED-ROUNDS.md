@@ -79,8 +79,19 @@ wider than the domain otherwise needs, and attention is O(L²), removing it is
 worth roughly a 25× trunk-cost multiplier. The round is no longer only about
 branching.
 
-**Declared dependency.** Removing the rule changes branching, so this round must
-also re-measure branching (`scripts/measure_branching.py`) and re-derive chunk
+**It is the first argument that costs money rather than elegance.** The other
+two are about correctness and ergonomics; this one is (295/57)² ≈ **26.8× of
+attention cost** and 104/15 ≈ **6.9× of policy-head width**, paid on every
+forward pass of every campaign.
+
+**Declared dependency — and it has grown twice.** Removing the rule changes
+branching, so this round must re-measure branching and re-derive chunk 7's
+`(sims, m)`. It also changes the reachable-state extent, so it must re-run
+`scripts/measure_state_extent.py` and re-decide `seq_len` / `max_sites` — which
+makes it a **model-resizing** round with checkpoint-compatibility consequences:
+every snapshot taken before it indexes a different action space, and
+`load_checkpoint` will refuse them. This is no longer a one-line deletion under
+any reading. It must (`scripts/measure_branching.py`) and re-derive chunk
 7's `(sims, m)` gate arithmetic against the new numbers. It cannot be run as an
 isolated deletion.
 
