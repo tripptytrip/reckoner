@@ -545,7 +545,15 @@ def test_concede_is_implemented_and_off_by_default() -> None:
 
 
 def test_step_count_and_cap_invariants_fuzzed() -> None:
-    """Random legal play: the step count tracks the steps, and the cap holds."""
+    """Random legal play: the step count tracks the steps, and the cap holds.
+
+    **The cap is randomised per episode, uniform over 1..8** — not left at the
+    config default of 24. That is deliberate: at cap 24 almost nothing times
+    out, and a cap-behaviour fuzz that never reaches its cap tests one branch.
+    It is also what makes the reported arithmetic checkable — 400 episodes
+    totalling ~1,000 steps with ~200 cap-outs is only coherent against small
+    caps, and a reader should not have to reconstruct that from the source.
+    """
     rng_ = random.Random(4242)
     reasons: dict[str, int] = {}
     terminal_checks = 0

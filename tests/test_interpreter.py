@@ -270,7 +270,8 @@ def test_glyph_cells_rejects_out_of_range() -> None:
 def test_glyph_panel_shows_the_base_625_digits() -> None:
     panel = glyph_panel(1887)  # 3 × 625 + 12
     assert "1887 = D3 D12" in panel
-    assert glyph_panel(-6).startswith(f"{MINUS}6 = D6")
+    assert panel.splitlines()[1] == "1887 = D3 D12"
+    assert glyph_panel(-6).splitlines()[1] == f"{MINUS}6 = D6"
 
 
 def test_state_tokens_line_is_the_audit_trail() -> None:
@@ -326,6 +327,92 @@ def test_the_manifest_meets_every_declared_stratum() -> None:
     assert manifest["with_negative_numerals"] >= 10
     assert manifest["x_on_both_sides"] >= 1
     assert max(manifest["steps_histogram"]) >= 5, "no derivation is long enough to be interesting"
+
+
+def test_no_caption_hand_formats_a_state() -> None:
+    """**One formatter of states, ever.** A caption describes, or it calls render().
+
+    There is no third path. A caption reading `4x − 1250` describes a state that
+    is really `4x + (−1250)`; a caption naming an equation's sides in the order
+    they were typed describes a state C7 may have reordered. Both are the
+    renderer bug this module exists to prevent, recommitted one line above the
+    fold — and neither would fail any round-trip, because captions are prose.
+
+    This enforces the cheap half: no operator glyph, no coefficient-variable
+    juxtaposition. The law is wider than the test.
+    """
+    import importlib
+    import re
+
+    module = importlib.import_module("render_derivations")
+    banned = set("=+−×÷")
+    offenders: list[str] = []
+    for note, _problem, _opening in module.fixtures():
+        # `\d[a-zA-Z]` with no space between: that is coefficient-variable
+        # juxtaposition ("3x"), not prose ("coefficient 1 vanishes", "base-625").
+        if banned & set(note) or re.search(r"\d[a-zA-Z]", note):
+            offenders.append(note)
+    assert not offenders, f"captions hand-format a state: {offenders}"
+
+
+def test_the_glyph_panel_declares_its_own_convention() -> None:
+    """The panel carries its epistemic tag, because its purpose invites confusion.
+
+    Its whole point is continuity with the real base-625 system, so an
+    unlabelled local convention looks like the system it is not — a subtler lie
+    than claiming reuse outright. See REGISTERED-ROUNDS.md ROUND-03.
+    """
+    panel = glyph_panel(1887)
+    assert "reckoner-local placeholder" in panel
+    assert "NOT base-625-canonical" in panel
+    assert "ROUND-03" in panel
+    assert panel.splitlines()[0].startswith("glyph convention:")
+
+
+def test_every_derivation_in_the_document_is_version_stamped() -> None:
+    """All 50, not one sampled. A derivation is denominated like everything else."""
+    text = DERIVATIONS_MD.read_text()
+    blocks = text.count("goal   ")
+    assert blocks == 50, f"expected 50 derivations, found {blocks}"
+    assert text.count(f"ruleset_version={RULESET_VERSION}") == 50
+    assert text.count(f"vocab_version={VOCAB_VERSION}") == 50
+    assert text.count("par_source=") == 50
+
+
+def test_document_is_byte_identical_across_processes() -> None:
+    """**Chunk 4 gate.** Deterministic output, across interpreters not just calls.
+
+    A proofread certifies a document. If regenerating it produces different
+    bytes, the signature certifies nothing — so this renders it in four fresh
+    processes under different hash seeds and compares digests.
+    """
+    import hashlib
+    import os
+    import tempfile
+
+    digests = set()
+    for seed in ("0", "1", "4242", "random"):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "d.md"
+            env = {**os.environ, "PYTHONHASHSEED": seed}
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO / "scripts" / "render_derivations.py"),
+                    "--out",
+                    str(out),
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+                env=env,
+            )
+            digests.add(hashlib.sha256(out.read_bytes()).hexdigest())
+    assert len(digests) == 1, f"document differed across processes: {digests}"
+    assert digests == {hashlib.sha256(DERIVATIONS_MD.read_bytes()).hexdigest()}, (
+        "the committed document does not match a fresh render"
+    )
+    print(f"\n  document digest (4 processes, 4 hash seeds): {digests.pop()}")
 
 
 def test_no_derivation_ran_away() -> None:

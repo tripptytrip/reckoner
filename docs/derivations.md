@@ -165,6 +165,7 @@ result x = 500
 base-625 panel for the largest numeral in this derivation:
 
 ```
+glyph convention: reckoner-local placeholder, NOT base-625-canonical (vendoring registered as ROUND-03)
 2200 = D3 D325
 ┌───┐ ┌───┐
 │0 0│ │2 3│
@@ -191,6 +192,7 @@ result x = 1250
 base-625 panel for the largest numeral in this derivation:
 
 ```
+glyph convention: reckoner-local placeholder, NOT base-625-canonical (vendoring registered as ROUND-03)
 8750 = D14 D0
 ┌───┐ ┌───┐
 │0 0│ │0 0│
@@ -219,6 +221,7 @@ result x = 875
 base-625 panel for the largest numeral in this derivation:
 
 ```
+glyph convention: reckoner-local placeholder, NOT base-625-canonical (vendoring registered as ROUND-03)
 2250 = D3 D375
 ┌───┐ ┌───┐
 │0 0│ │3 0│
@@ -245,6 +248,7 @@ result x = 390625
 base-625 panel for the largest numeral in this derivation:
 
 ```
+glyph convention: reckoner-local placeholder, NOT base-625-canonical (vendoring registered as ROUND-03)
 781250 = D2 D0 D0
 ┌───┐ ┌───┐ ┌───┐
 │0 0│ │0 0│ │0 0│
@@ -380,6 +384,7 @@ result 625
 base-625 panel for the largest numeral in this derivation:
 
 ```
+glyph convention: reckoner-local placeholder, NOT base-625-canonical (vendoring registered as ROUND-03)
 625 = D1 D0
 ┌───┐ ┌───┐
 │0 0│ │0 0│
@@ -406,6 +411,7 @@ result 1875
 base-625 panel for the largest numeral in this derivation:
 
 ```
+glyph convention: reckoner-local placeholder, NOT base-625-canonical (vendoring registered as ROUND-03)
 625 = D1 D0
 ┌───┐ ┌───┐
 │0 0│ │0 0│
@@ -564,6 +570,7 @@ result 1650x
 base-625 panel for the largest numeral in this derivation:
 
 ```
+glyph convention: reckoner-local placeholder, NOT base-625-canonical (vendoring registered as ROUND-03)
 950 = D1 D325
 ┌───┐ ┌───┐
 │0 0│ │2 3│
@@ -718,6 +725,7 @@ result 665
 base-625 panel for the largest numeral in this derivation:
 
 ```
+glyph convention: reckoner-local placeholder, NOT base-625-canonical (vendoring registered as ROUND-03)
 825 = D1 D200
 ┌───┐ ┌───┐
 │0 0│ │1 3│
@@ -828,6 +836,7 @@ result −1192
 base-625 panel for the largest numeral in this derivation:
 
 ```
+glyph convention: reckoner-local placeholder, NOT base-625-canonical (vendoring registered as ROUND-03)
 −820 = D1 D195
 ┌───┐ ┌───┐
 │0 0│ │1 2│
@@ -888,6 +897,7 @@ result 923
 base-625 panel for the largest numeral in this derivation:
 
 ```
+glyph convention: reckoner-local placeholder, NOT base-625-canonical (vendoring registered as ROUND-03)
 923 = D1 D298
 ┌───┐ ┌───┐
 │0 0│ │2 1│

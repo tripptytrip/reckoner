@@ -27,6 +27,21 @@ never decoratively, because a decorative paren is a claim about structure.
   * ``21 + (−6)`` — an ``ADD`` whose second addend is negative
   * ``21 − 6``  — a genuine ``SUB`` node, and *only* that
 
+One formatter of states, ever
+-----------------------------
+**A caption describes, or it calls** :func:`render_expr` **— there is no third
+path.** Hand-formatting a state anywhere outside this module is the renderer bug
+this module exists to prevent, recommitted one line above the fold: a heading
+reading ``4x − 1250`` describes a state that is really ``4x + (−1250)``, and a
+heading naming an equation's sides in the order they were typed describes a
+state that C7 may have reordered. Same family as the shared identity
+normalizer — one implementation of "how a state is written down", and every
+caller goes through it.
+
+``tests/test_interpreter.py::test_no_caption_hand_formats_a_state`` enforces the
+cheap half: no operator glyph and no coefficient-variable juxtaposition in a
+fixture caption. The law is wider than the test; the test is what is affordable.
+
 Rule ids are rendered beside rule names so a line of derivation text greps
 straight to the code that produced it, and every derivation is stamped with
 ``ruleset_version`` and ``vocab_version``: par is denominated in a rule system,
@@ -35,11 +50,16 @@ and so is a derivation.
 The glyph panel
 ---------------
 ``glyph_panel`` shows the base-625 digits of a numeral as 2×2 grids of base-5
-cells (625 = 5⁴). **This is an independent construction, not the upstream
-base-625 renderer** — that code was not available on this machine to vendor or
-match, and inventing a convention while claiming to reuse one would be the
-worse of the two options. It is off the main path: the derivation renderer does
-not depend on it, and a later chunk may replace it with the real one.
+cells (625 = 5⁴). **This is a reckoner-local convention, not the canonical
+base-625 renderer**, and the panel's own output says so on every render — the
+panel's purpose was continuity with the real base-625 system, so an unlabelled
+local convention would look like the system it is not, which is a subtler lie
+than claiming reuse outright.
+
+The upstream renderer lives in a public repository; it was deferred, not
+impossible. The vendoring pass is registered as ``REGISTERED-ROUNDS.md``
+ROUND-03 so the deferral has a name. Until then the panel is off the main path:
+the derivation renderer does not depend on it.
 """
 
 from __future__ import annotations
@@ -338,6 +358,10 @@ def glyph_panel(value: int) -> str:
     digits = to_digits_of(abs(value))
     sign = MINUS if value < 0 else ""
     header = f"{sign}{abs(value)} = " + " ".join(f"D{d}" for d in digits)
+    tag = (
+        "glyph convention: reckoner-local placeholder, NOT base-625-canonical "
+        "(vendoring registered as ROUND-03)"
+    )
     tops, bottoms = [], []
     for digit in digits:
         a, b, c, d = glyph_cells(digit)
@@ -345,7 +369,7 @@ def glyph_panel(value: int) -> str:
         bottoms.append(f"│{c} {d}│")
     rule_top = " ".join("┌───┐" for _ in digits)
     rule_bottom = " ".join("└───┘" for _ in digits)
-    return "\n".join([header, rule_top, " ".join(tops), " ".join(bottoms), rule_bottom])
+    return "\n".join([tag, header, rule_top, " ".join(tops), " ".join(bottoms), rule_bottom])
 
 
 def state_tokens_line(expr: Expr) -> str:

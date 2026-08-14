@@ -34,6 +34,15 @@ is pure branching tax.
 | `2x − 4 = 10` | 3 | 3 | 243 | 35 |
 | `5x + 3 = 2x + 18` | 5 | 5 | 9,378 | 167 |
 
+**It is not merely redundant — it is an active trap** (chunk 4). A scripted
+policy that merely *prefers* `add_both_sides` never terminates: the rule is
+always legal on any equation and only ever grows the state, so preference alone
+is an infinite loop. Chunk 4's first fixture draft produced six 12-step runaways
+from exactly this, and the coverage manifest is what caught them — no amount of
+reading the derivations would have. That promotes the rule from "costs branching"
+to "costs branching *and* is a hazard for every scripted solver, curriculum
+policy and heuristic opponent that will be written against this rule set."
+
 **Why it is not simply removed.** Plan §8 decision 2 pins the rule set. Removal
 is a spec change and therefore a registered round, not an edit.
 
@@ -94,3 +103,34 @@ a partial checker.
 in problems. The `DIV` token itself stays in the vocabulary — chunk 1's
 id-stability principle: ids never move, so an unused token is cheaper than a
 renumbering.
+
+---
+
+## ROUND-03 — Vendor the canonical base-625 glyph renderer
+
+**Registered:** 2026-08-14, from chunk 4.
+**Status:** registered, not run. The panel ships as a labelled local placeholder.
+
+**Claim.** `interpreter.glyph_panel` renders a base-625 digit as a 2×2 grid of
+base-5 cells (625 = 5⁴). That is a *reckoner-local* convention invented here,
+not the convention the base-625 and Symbolic-Transformers projects use.
+
+**Why it is a placeholder rather than a claim of reuse.** The upstream renderer
+was not present on this machine when chunk 4 was built, and inventing a
+convention while describing it as the existing one would have been the worse of
+the two available failures. But the panel's *purpose* is continuity with the
+real base-625 substrate, so an unlabelled local convention is misleading in a
+subtler way — it looks like the system it is not. Every render therefore carries
+its own status line, and the artifact carries its epistemic tag as always.
+
+**It was deferred, not impossible.** The upstream repository is public. This
+round names the deferral so it stops being invisible.
+
+**Evidence standard.** Vendor (or depend on) the upstream renderer, then show
+the two conventions side by side on the same numerals. If they agree, the local
+one was right by luck and the status line comes off. If they disagree, every
+glyph panel rendered before this round was a different notation than it
+appeared to be, and `docs/derivations.md` is regenerated and re-proofread.
+
+**Scope note.** The derivation renderer does not depend on the panel, so this
+round cannot change any derivation text — only the panels beside it.
