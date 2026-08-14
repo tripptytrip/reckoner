@@ -1,0 +1,42 @@
+{
+  "caveat": "policy targets are single BFS paths; where several optimal derivations exist this imprints BFS tie-break and site-enumeration order. Accepted for the warm start; Phase 2 improved-policy targets wash it out.",
+  "depth_histogram": {
+    "1": 20751,
+    "2": 33164,
+    "3": 42204,
+    "4": 116144,
+    "5": 80065,
+    "6": 21300
+  },
+  "digests": {
+    "action": "631dfdeb187a7f3e524a2d961eea88fc58a8a85d48481dcbec99f08511009cdc",
+    "depth": "0ce58bc6ddbd544f324534c585527f1d123043aed46983969b9a0ba8ebb1606d",
+    "goal": "e5c56103c620328d35eb4d4db54637eba2dfd1fa31d612294aa36a722f5f00ee",
+    "lengths": "664fe9338da8ff771986f05b28f0f141a740636cc4a7dc8247ba8516ac55e9cb",
+    "steps_remaining": "6abf88b40b2473a3dcca9b75982f04c6dfa4c1370cf178529e0be2f9a29154b4",
+    "tokens": "093134fdf5d4969009f230899ff391c98974fb0fe59bb39189bc947770957aed"
+  },
+  "git_sha": "5b5fd618bd0d7e93699dee48a2b4068a5a6a4340",
+  "goal_histogram": {
+    "14": 125898,
+    "15": 101349,
+    "16": 86381
+  },
+  "max_len": 64,
+  "mode": "phase1_supervision",
+  "n": 313628,
+  "problems": 100000,
+  "problems_dropped": 0,
+  "ruleset_version": 1,
+  "seconds": 518.6,
+  "source": "runs/data/train_100k",
+  "source_digests": {
+    "depth": "f75abe977039faa51d4794dc282bc84dffebbdf412abb31df197b96efe545be9",
+    "goal": "20886a2eb373f0bd42ef70f00b3787f649f38581436c325ea2fa8a8611360d6d",
+    "lengths": "e648895fc30d71d466107214c782cab5c204839d5347d2fcdf492110821d49a8",
+    "par": "f75abe977039faa51d4794dc282bc84dffebbdf412abb31df197b96efe545be9",
+    "target": "99fcac04cccdca57c549582920fac81c2cb40df6b7ef8dd6955948982f28cd23",
+    "tokens": "586c3bcdc37635e1fcf6ca326575f2a82578e237291413d451b3000e0a21d47e"
+  },
+  "vocab_version": 1
+}

@@ -149,3 +149,55 @@ model is sized for the rule set that exists, not the one a round might produce �
 the same discipline as computing par against the full set until ROUND-01 fires.
 The measurement is recorded so the round's cost/benefit is a number rather than
 a preference.
+
+---
+
+## F-06 — A search that did not search, and four gates that passed anyway
+
+**Found:** 2026-08-14, while building chunk 8's depth-≤2 gate.
+
+Chunk 7 shipped what its docstring called an array-tree MCTS. It expanded only
+the root's children and then re-backed-up their already-computed values:
+
+    sims=48, m=5  ->  nodes in tree: 2
+
+Forty-seven of forty-eight simulations did no work. It was a one-ply lookahead.
+
+**Every chunk-7 gate passed on it**, and each for a reason that had nothing to do
+with the defect:
+
+| gate | why it passed anyway |
+|---|---|
+| depth-1 suite 100% at m ≥ 5 | a depth-1 problem needs exactly one ply |
+| budget identity | visits are counted whether or not they do work |
+| sync vs batched, 16 cells | both paths were equally shallow |
+| 2-seed + cross-process determinism | unaffected by depth |
+
+That is the shape of the problem: the gates were chosen to catch specific
+hazards — negation, budget drift, batching skew, hash-order leakage — and a
+search that never descends is none of those. **No gate asked whether the search
+searched.**
+
+**Fixes:**
+
+* Real descent. A simulation now walks from the chosen root action down through
+  expanded nodes by the Gumbel-AZ non-root rule until it reaches an unexpanded
+  action, expands it, evaluates and backs up. Measured after: `sims=48` on a
+  branchy depth-5 SOLVE gives **49 nodes, max_depth 3**.
+* `SearchStats` gains `nodes` and `max_depth`, so the shape of the tree is in
+  every row rather than inferable from nothing.
+* **The missing gate exists now** — `test_the_tree_deepens_past_one_ply` asserts
+  more simulations build more tree, that the tree exceeds root-plus-children,
+  and that node count scales with sims rather than with `m`.
+* Batching moved to where it belongs: **across concurrent searches, not within
+  one**. Pooling leaves inside one tree would change what the tree does, because
+  simulation *k+1*'s selection depends on *k*'s backup — the old equivalence test
+  was exact only because the old search had no selection to corrupt. Across
+  trees there is no coupling, so parity stays an equality rather than a
+  tolerance, and it matches AGENTS.md §8's prescribed shape.
+
+**The general lesson, and it is not "add a test":** a gate suite assembled from
+known hazards has a blind spot exactly the shape of *the component doing its job
+at all*. Every chunk here has gates for how a thing can be subtly wrong; this is
+the first case where the thing was grossly absent and every subtle-wrongness
+check still went green.

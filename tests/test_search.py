@@ -21,7 +21,7 @@ from reckoner.config import Config
 from reckoner.dataset import read_suite, suite_problem
 from reckoner.episode import Problem
 from reckoner.expr import add, eq, mul, num, var
-from reckoner.search import _backup, _Tree, search, uniform_stub
+from reckoner.search import _backup, _Tree, run_batched, search, uniform_stub
 from reckoner.vocab import GOAL_SOLVE, VAR_X
 
 REPO = Path(__file__).resolve().parents[1]
@@ -66,13 +66,16 @@ def test_backup_is_max_and_never_negates() -> None:
     root = max(root's own, +1.0, +0.25) = +1.0. Visits count every backup that
     passed through a node.
     """
+    priors = np.zeros(2, dtype=np.float32)
     tree = _Tree(8)
-    root = tree.add(None, -1)
+    root = tree.add(PROBLEM.expr, -1, -1)
+    tree.open(root, [(0, 0), (0, 1)], priors)
     tree.value[root] = -1.0
-    a = tree.add(None, root)
-    b = tree.add(None, root)
-    b1 = tree.add(None, b)
-    b2 = tree.add(None, b)
+    a = tree.add(PROBLEM.expr, root, 0)
+    b = tree.add(PROBLEM.expr, root, 1)
+    tree.open(b, [(0, 0), (0, 1)], priors)
+    b1 = tree.add(PROBLEM.expr, b, 0)
+    b2 = tree.add(PROBLEM.expr, b, 1)
 
     _backup(tree, a, 1.0)  # terminal-solved
     _backup(tree, b, -0.5)  # value-estimated
@@ -98,8 +101,9 @@ def test_backup_is_max_and_never_negates() -> None:
 def test_backup_never_lowers_a_value() -> None:
     """Max backup is monotone: a later worse line cannot demote an earlier good one."""
     tree = _Tree(4)
-    root = tree.add(None, -1)
-    child = tree.add(None, root)
+    root = tree.add(PROBLEM.expr, -1, -1)
+    tree.open(root, [(0, 0)], np.zeros(1, dtype=np.float32))
+    child = tree.add(PROBLEM.expr, root, 0)
     _backup(tree, child, 1.0)
     _backup(tree, child, -1.0)
     assert tree.value[root] == pytest.approx(1.0)
@@ -182,26 +186,63 @@ def test_budget_identity(sims: int) -> None:
 
 @pytest.mark.parametrize("m", [3, 5, 12, 16])
 @pytest.mark.parametrize("sims", [6, 16, 31, 48])
-def test_sync_and_batched_agree_on_visits(m: int, sims: int) -> None:
-    """Batching changes *when* the evaluator is called, never what search does.
+def test_sequential_and_batched_agree_exactly(m: int, sims: int) -> None:
+    """Batching is across *searches*, so parity is exact rather than a tolerance.
 
-    Parametrised over the full m x sims grid from day one, odd pairs included —
-    the odd-parity lesson is pre-paid in the plan, and this is the test that
-    caught it in chess arriving with the port.
+    Pooling leaves inside one tree would change what the tree does — simulation
+    k+1's selection depends on k's backup — and the test would then compare two
+    algorithms. Across trees there is no coupling, so this is an equality.
+    Parametrised over the full m x sims grid, odd pairs included.
     """
     evaluator = uniform_stub(CFG)
-    sync = search(
-        PROBLEM, PROBLEM.expr, evaluator, CFG, random.Random(11), sims=sims, m=m, batch_leaves=1
+    problems = [PROBLEM] * 4
+    sequential = [
+        search(p, p.expr, evaluator, CFG, random.Random(20 + i), sims=sims, m=m)
+        for i, p in enumerate(problems)
+    ]
+    batched = run_batched(
+        [(p, p.expr, random.Random(20 + i)) for i, p in enumerate(problems)],
+        evaluator,
+        CFG,
+        sims=sims,
+        m=m,
+        batch_size=3,
     )
-    batched = search(
-        PROBLEM, PROBLEM.expr, evaluator, CFG, random.Random(11), sims=sims, m=m, batch_leaves=64
-    )
-    assert np.array_equal(sync.visits, batched.visits), f"visit parity failed at m={m} sims={sims}"
-    assert np.allclose(sync.values, batched.values)
-    assert sync.chosen == batched.chosen
-    assert sync.stats.sims_used == batched.stats.sims_used
-    assert sync.stats.evaluations == batched.stats.evaluations
-    assert sync.stats.batches >= batched.stats.batches
+    for a, b in zip(sequential, batched, strict=True):
+        assert np.array_equal(a.visits, b.visits), f"visit parity failed at m={m} sims={sims}"
+        assert np.allclose(a.values, b.values)
+        assert a.chosen == b.chosen
+        assert a.stats.sims_used == b.stats.sims_used
+        assert a.stats.nodes == b.stats.nodes
+        assert a.stats.evaluations == b.stats.evaluations
+
+
+# ---------------------------------------------------------------------------
+# The tree must actually deepen — the gate that F-06 was missing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not (SUITES / "solve_in_5.jsonl").exists(), reason="suites not generated")
+def test_the_tree_deepens_past_one_ply() -> None:
+    """**The gate F-06 was missing.** A search that does not search passes the rest.
+
+    The first version of the search expanded only the root's children and then
+    re-backed-up their values: 48 simulations produced 2 nodes. Every other gate
+    passed anyway — depth-1 needs one ply, budget identity counts visits
+    regardless, and sync-vs-batched compared two equally shallow paths.
+    """
+    rows = [r for r in read_suite(SUITES / "solve_in_5.jsonl") if r["goal"] == GOAL_SOLVE]
+    problem = suite_problem(rows[0])
+    evaluator = uniform_stub(CFG)
+
+    small = search(problem, problem.expr, evaluator, CFG, random.Random(1), sims=6, m=5)
+    large = search(problem, problem.expr, evaluator, CFG, random.Random(1), sims=48, m=5)
+
+    assert large.stats.nodes > small.stats.nodes, "more simulations built no more tree"
+    assert large.stats.nodes > 5 + 1, "the tree is only the root and its children"
+    assert large.stats.max_depth >= 2, f"max_depth {large.stats.max_depth} — one ply only"
+    # Every simulation must do work: nodes grow roughly with sims, not with m.
+    assert large.stats.nodes >= 0.5 * large.stats.sims_used
 
 
 # ---------------------------------------------------------------------------

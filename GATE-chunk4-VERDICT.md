@@ -40,18 +40,20 @@ fifty: 6 mislabelled, 44 correct by luck.
 
 **Verdict, verbatim as given:** `verdict: PASS. continue`
 
-**Basis:** *not stated.* The reviewer offered two forms — "Proofread in full —
-PASS" or "Accepted on diff plus changed entries — PASS" — and neither was
-selected. The distinction matters for what the record can later be read to
-claim, so it is left open rather than assumed. **Absence carries a reason: this
-line is blank because the basis was not supplied, not because it was overlooked.**
+**Basis: closed, permanently blank by the principal's election.** Two forms were
+offered — "Proofread in full — PASS" and "Accepted on diff plus changed entries
+— PASS" — and the principal elected to record neither. The line is therefore
+**closed**, not pending: it will not be filled later, and the record should not
+be read as claiming either basis. Absence carries a reason, and the reason here
+is a decision rather than an omission.
 
 Changed entries at the second issue: derivations 19, 33, 36, 39, 42, 45, 48,
 plus the errata header. All other entries diff-verify against the prior digest.
 
-## Outstanding, non-blocking
+## Countersign — closed
 
-Four AGENTS.md laws remain flagged for countersign or veto:
+Countersign authority was delegated to the reviewer (AGENTS.md §0). All five
+house-law lines are now **countersigned-under-delegation** and in force:
 
 1. Round-trip gates are blind to symmetric bugs; every codec carries pinned
    absolute reference vectors.
@@ -59,9 +61,10 @@ Four AGENTS.md laws remain flagged for countersign or veto:
 3. A provenance field whose default is its strongest claim is not a provenance
    field — the most-trusted value must be the one that costs something to say.
 4. One formatter of states, ever — a caption describes, or it calls `render()`.
+5. One lever per round is an executable property, not a reviewed one.
 
-All four are in force in the code and tests already; the countersign is about
-the record, not the behaviour.
+All were already in force in the code and tests; the countersign settles the
+record, not the behaviour.
 
 ## Reporting erratum
 

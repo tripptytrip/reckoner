@@ -147,6 +147,13 @@ def test_no_suite_contamination() -> None:
     for path in sorted(DATA.iterdir()):
         if not (path / "meta.json").exists():
             continue
+        mode = json.loads((path / "meta.json").read_text())["mode"]
+        if mode == "phase1_supervision":
+            # A supervision set holds *states along derivations*, not problems,
+            # so its rows are not comparable to a suite's. Its contamination
+            # status is inherited from the problem set it was derived from —
+            # and inherited status is verified below, not assumed.
+            continue
         dataset = read_dataset(path)
         overlap = dataset_keys(dataset) & suite_all
         assert not overlap, f"{path.name} contains {len(overlap)} suite problems"
@@ -154,6 +161,31 @@ def test_no_suite_contamination() -> None:
 
     assert checked, "no dataset directories were checked — the guard is vacuous"
     assert "train_100k" in checked, f"the training set was not among {checked}"
+
+
+@pytest.mark.skipif(
+    not (DATA / "phase1_supervision_marker").exists() and not (DATA / "phase1_train").exists(),
+    reason="phase-1 supervision not built",
+)
+def test_the_supervision_set_names_the_problem_set_it_inherits_from() -> None:
+    """A derived set inherits contamination status — but only if it can prove it.
+
+    The supervision set holds states along derivations of the training problems,
+    so it is clean iff its source was. That is an inheritance, and an
+    inheritance without a verified parent is an assumption: the recorded source
+    digests must still equal the source's digests *now*.
+    """
+    meta = json.loads((DATA / "phase1_train" / "meta.json").read_text())
+    assert meta["mode"] == "phase1_supervision"
+    assert meta["source"].endswith("train_100k")
+    source = json.loads((DATA / "train_100k" / "meta.json").read_text())
+    assert meta["source_digests"] == source["digests"], (
+        "the supervision set was built from a different train_100k than the one on "
+        "disk — its inherited contamination status does not carry over"
+    )
+    assert meta["problems_dropped"] == 0, "some problems produced no derivation"
+    assert meta["ruleset_version"] == RULESET_VERSION
+    assert meta["vocab_version"] == VOCAB_VERSION
 
 
 @pytest.mark.skipif(not (DATA / "eval_held_out").exists(), reason="eval set not generated")

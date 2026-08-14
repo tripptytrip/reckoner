@@ -9,6 +9,14 @@ why) and `experiment2_agent_plan.md` (the chunk plan, with DONE-WHEN gates).
 
 ---
 
+## 0. Countersign delegation
+
+The principal (Tom) has delegated countersign authority for house-law additions
+to the reviewer. Laws below marked **countersigned-under-delegation** carry that
+authority and are in force. The delegation covers *recording* a law that the
+work has already earned; it does not cover the manual gates themselves, which
+remain the principal's and are recorded in `GATE-*.md`.
+
 ## 1. Inherited law
 
 Reproduced **verbatim** from `experiment2_agent_plan.md`. It is in force from
@@ -164,18 +172,23 @@ then run CPU-only forever. This has burned real time more than once.
   **All tests must pass on CPU only** — GPU availability is never a test
   dependency. GPU-dependent checks live in benchmark scripts.
 - **Round-trip gates are blind to symmetric bugs; every codec carries pinned
-  absolute reference vectors.** A codec whose encoder and decoder are wrong in
+  absolute reference vectors.** *(countersigned-under-delegation)* A codec whose encoder and decoder are wrong in
   the same direction round-trips perfectly forever. Measured, not argued: in
   chunk 1, flipping base-625 digits to LSB-first in *both* `to_digits` and
   `from_digits` survived all 200,000 round-trips and died only on the pinned
   table (`625 → [1, 0]`). A round-trip proves the two halves agree; only an
   absolute vector proves they agree with reality.
-- **A gate must report what it covered, not only that it passed.** Publish the
+- **A gate must report what it covered, not only that it passed.** *(countersigned-under-delegation)*
+- **One formatter of states, ever — a caption describes, or it calls
+  `render_expr()`; there is no third path.** Hand-formatting a state outside the
+  renderer is the renderer bug the renderer exists to prevent, recommitted one
+  line above the fold, and no round-trip catches it because captions are prose.
+  *(countersigned-under-delegation)* Publish the
   coverage distribution beside the result — a 200K-iteration loop concentrated
   at two depths is a narrower gate than its iteration count advertises, and the
   count alone will never say so.
 - **A provenance field whose default is its strongest claim is not a provenance
-  field — the most-trusted value must be the one that costs something to say.**
+  field — the most-trusted value must be the one that costs something to say.** *(countersigned-under-delegation)*
   "Fields carry their epistemic status" guards the *read* path; a default is a
   write nobody performs, and nothing guarded that. Measured: `Problem.par_source`
   defaulted to `"bfs"`, and fifty derivations shipped claiming BFS-exact
@@ -195,7 +208,7 @@ then run CPU-only forever. This has burned real time more than once.
   defaults and code — `configs/default.yaml` must equal the dataclass defaults,
   and a test pins that identity. A campaign that needs different values gets its
   own file in `configs/`.
-- **One lever per round is an executable property, not a reviewed one.** Because
+- **One lever per round is an executable property, not a reviewed one.** *(countersigned-under-delegation)* Because
   `default.yaml` equals the defaults exactly, a campaign config's
   `config_diff(Config(), load_config("configs/<campaign>.yaml"))` **is** its
   lever list. Every campaign config ships with a

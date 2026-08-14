@@ -73,22 +73,41 @@ def main() -> int:
     )
 
     print(f"\n  B_max = {b_max}\n")
-    print(f"  {'m':>5} {'certain?':<10} {'worst-case P(consider winner)':<32} {'P(all 200)'}")
-    print("  " + "-" * 72)
+    # P(sweep) is the PRODUCT over problems of min(1, m/B), so the exponent is
+    # the count of problems where B > m — NOT the suite size. Most depth-1
+    # problems have exactly one legal action and are solved with certainty at any
+    # m; raising the worst-case probability to the suite size counts them as
+    # trials they never were. (Erratum, corrected in chunk 8.)
+    print(f"  {'m':>5} {'certain?':<10} {'worst-case P':<14} {'nontrivial':<12} {'P(sweep)'}")
+    print("  " + "-" * 68)
     for m in (3, 5, 12, 16, 24, b_max):
         certain = m >= b_max
-        p = 1.0 if certain else m / b_max
-        record.setdefault("m_table", {})[str(m)] = {"certain": certain, "p_worst": p}
+        nontrivial = sum(1 for b in overall if b > m)
+        p_sweep = 1.0
+        for b in overall:
+            p_sweep *= min(1.0, m / b)
+        worst = 1.0 if certain else m / b_max
+        record.setdefault("m_table", {})[str(m)] = {
+            "certain": certain,
+            "p_worst": worst,
+            "nontrivial_trials": nontrivial,
+            "p_sweep": p_sweep,
+        }
         print(
-            f"  {m:>5} {'YES' if certain else 'no':<10} {p:<32.4f} "
-            f"{'1.0' if certain else f'{p ** len(rows):.2e}'}"
+            f"  {m:>5} {'YES' if certain else 'no':<10} {worst:<14.4f} "
+            f"{nontrivial:<12} {p_sweep:.3e}"
         )
 
-    print(f"\n  ==> the depth-1 gate is reachable with certainty only at m >= {b_max}.")
+    print(f"\n  ==> the depth-{args.depth} gate is reachable with certainty only at m >= {b_max}.")
     print("      Below that the gate is probabilistic and its bound is stated above;")
     print("      a 100% gate at m < B_max would be a gate the arithmetic cannot support.")
-    args.out.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
-    print(f"  wrote {args.out.relative_to(REPO)}")
+    out = args.out if args.out.is_absolute() else REPO / args.out
+    out.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+    try:
+        shown = out.relative_to(REPO)
+    except ValueError:
+        shown = out
+    print(f"  wrote {shown}")
     return 0
 
 
