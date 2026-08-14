@@ -1,0 +1,64 @@
+{
+  "B_max": 5,
+  "by_goal": {
+    "EVALUATE": {
+      "max": 1,
+      "median": 1,
+      "min": 1,
+      "n": 84,
+      "p99": 1
+    },
+    "SIMPLIFY": {
+      "max": 1,
+      "median": 1,
+      "min": 1,
+      "n": 76,
+      "p99": 1
+    },
+    "SOLVE": {
+      "max": 5,
+      "median": 5,
+      "min": 5,
+      "n": 40,
+      "p99": 5
+    }
+  },
+  "depth": 1,
+  "histogram": {
+    "1": 160,
+    "5": 40
+  },
+  "m_table": {
+    "12": {
+      "certain": true,
+      "nontrivial_trials": 0,
+      "p_sweep": 1.0,
+      "p_worst": 1.0
+    },
+    "16": {
+      "certain": true,
+      "nontrivial_trials": 0,
+      "p_sweep": 1.0,
+      "p_worst": 1.0
+    },
+    "24": {
+      "certain": true,
+      "nontrivial_trials": 0,
+      "p_sweep": 1.0,
+      "p_worst": 1.0
+    },
+    "3": {
+      "certain": false,
+      "nontrivial_trials": 40,
+      "p_sweep": 1.3367494538843717e-09,
+      "p_worst": 0.6
+    },
+    "5": {
+      "certain": true,
+      "nontrivial_trials": 0,
+      "p_sweep": 1.0,
+      "p_worst": 1.0
+    }
+  },
+  "problems": 200
+}

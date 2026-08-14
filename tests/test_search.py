@@ -227,9 +227,15 @@ def test_the_tree_deepens_past_one_ply() -> None:
     """**The gate F-06 was missing.** A search that does not search passes the rest.
 
     The first version of the search expanded only the root's children and then
-    re-backed-up their values: 48 simulations produced 2 nodes. Every other gate
-    passed anyway — depth-1 needs one ply, budget identity counts visits
-    regardless, and sync-vs-batched compared two equally shallow paths.
+    re-backed-up their values, so ``nodes`` was flat across every budget: on a
+    6-action root at ``m=5`` it read 6, 6, 6, 6 for sims 6, 16, 31, 48. Every
+    other gate passed anyway — depth-1 needs one ply, budget identity counts
+    visits regardless, and sync-vs-batched compared two equally shallow paths.
+
+    ``nodes`` was in ``SearchStats`` the whole time. Nothing asserted on it.
+    That is what this test is for. (See ``ERRATA-chunk7.md`` §3 for why the
+    originally published exhibit — "48 simulations produced 2 nodes" — is not a
+    demonstration of the defect unless the problem is named.)
     """
     rows = [r for r in read_suite(SUITES / "solve_in_5.jsonl") if r["goal"] == GOAL_SOLVE]
     problem = suite_problem(rows[0])

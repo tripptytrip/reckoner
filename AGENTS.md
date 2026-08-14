@@ -187,6 +187,17 @@ then run CPU-only forever. This has burned real time more than once.
   coverage distribution beside the result — a 200K-iteration loop concentrated
   at two depths is a narrower gate than its iteration count advertises, and the
   count alone will never say so.
+- **A gate suite assembled from known hazards has a blind spot exactly the shape
+  of the component doing its job at all.** Measured: chunk 7's search expanded
+  only the root's children — 48 simulations, 2 nodes — and all four of its gates
+  passed, each for a reason unrelated to the defect (`FINDINGS.md` F-06). Every
+  gate asked how the search could be subtly wrong; none asked whether it
+  searched.
+  **Operational rider: the first gate written for any component measures it
+  doing its central job.** For a search, that it searches. For a generator, that
+  it generates the distribution it claims. For a checker, that it accepts a true
+  answer and rejects a false one. The known-hazard gates come second, forever.
+  *(countersigned-under-delegation)*
 - **A provenance field whose default is its strongest claim is not a provenance
   field — the most-trusted value must be the one that costs something to say.** *(countersigned-under-delegation)*
   "Fields carry their epistemic status" guards the *read* path; a default is a
@@ -208,7 +219,10 @@ then run CPU-only forever. This has burned real time more than once.
   defaults and code — `configs/default.yaml` must equal the dataclass defaults,
   and a test pins that identity. A campaign that needs different values gets its
   own file in `configs/`.
-- **One lever per round is an executable property, not a reviewed one.** *(countersigned-under-delegation)* Because
+- **One lever per round is an executable property, not a reviewed one.**
+  *(ratified as a ruling — judgment call 2, 2026-08-14 — and in force; NOT in the
+  countersign list, which named four. Marked here as ratified, not
+  countersigned, because the registry has to match the delegation record.)* Because
   `default.yaml` equals the defaults exactly, a campaign config's
   `config_diff(Config(), load_config("configs/<campaign>.yaml"))` **is** its
   lever list. Every campaign config ships with a

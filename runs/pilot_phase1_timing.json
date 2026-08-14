@@ -1,0 +1,109 @@
+{
+  "caveat": "throughput is flat across batch 64-256; the fastest cell is within noise of its neighbours and flipped between runs. Batch size is not a throughput lever on this box \u2014 pick it for gradient quality, not speed.",
+  "cells": [
+    {
+      "batch_size": 64,
+      "build_s_median": 0.0084,
+      "build_share": 0.015,
+      "device": "cpu",
+      "encode_skips": 0,
+      "examples_per_s": 113.6,
+      "optimise_s_median": 0.5548,
+      "step_s_median": 0.5632,
+      "step_s_p90": 0.6135,
+      "timed_steps": 12
+    },
+    {
+      "batch_size": 128,
+      "build_s_median": 0.0126,
+      "build_share": 0.012,
+      "device": "cpu",
+      "encode_skips": 0,
+      "examples_per_s": 124.3,
+      "optimise_s_median": 1.0172,
+      "step_s_median": 1.0298,
+      "step_s_p90": 1.0967,
+      "timed_steps": 12
+    },
+    {
+      "batch_size": 256,
+      "build_s_median": 0.0259,
+      "build_share": 0.012,
+      "device": "cpu",
+      "encode_skips": 0,
+      "examples_per_s": 117.1,
+      "optimise_s_median": 2.161,
+      "step_s_median": 2.1869,
+      "step_s_p90": 2.2811,
+      "timed_steps": 12
+    },
+    {
+      "batch_size": 512,
+      "build_s_median": 0.049,
+      "build_share": 0.01,
+      "device": "cpu",
+      "encode_skips": 0,
+      "examples_per_s": 105.1,
+      "optimise_s_median": 4.8211,
+      "step_s_median": 4.8701,
+      "step_s_p90": 5.1099,
+      "timed_steps": 12
+    }
+  ],
+  "config_fingerprint": "fa710889798f0cf1eed80e1a761a04111f690b29f0e5838db83dcda879590e7a",
+  "devices": [
+    "cpu"
+  ],
+  "examples": 313628,
+  "fastest": {
+    "batch_size": 128,
+    "build_s_median": 0.0126,
+    "build_share": 0.012,
+    "device": "cpu",
+    "encode_skips": 0,
+    "examples_per_s": 124.3,
+    "optimise_s_median": 1.0172,
+    "step_s_median": 1.0298,
+    "step_s_p90": 1.0967,
+    "timed_steps": 12
+  },
+  "git_sha": "97bf03546140528ffa3b2594853b28ce934aa4f1",
+  "not_priced": "checkpoint writes, held-out eval, the depth-<=2 search gate, startup",
+  "padding_crop": {
+    "batch_size": 128,
+    "cropped_s_median": 1.0922,
+    "cropped_width": 64,
+    "full_s_median": 23.8361,
+    "full_width": 512,
+    "outputs_bit_identical": true,
+    "speedup": 21.8,
+    "timed_steps": 12
+  },
+  "parameters": 5073156,
+  "priced": "batch construction + forward + backward + optimiser step",
+  "projections": [
+    {
+      "epochs": 0.816,
+      "examples": 256000,
+      "median_minutes": 34.3,
+      "p90_minutes": 36.6,
+      "steps": 2000
+    },
+    {
+      "epochs": 2.041,
+      "examples": 640000,
+      "median_minutes": 85.8,
+      "p90_minutes": 91.4,
+      "steps": 5000
+    },
+    {
+      "epochs": 4.081,
+      "examples": 1280000,
+      "median_minutes": 171.6,
+      "p90_minutes": 182.8,
+      "steps": 10000
+    }
+  ],
+  "throughput_spread_frac": 0.154,
+  "torch": "2.13.0+cpu"
+}

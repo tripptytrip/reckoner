@@ -157,11 +157,24 @@ a preference.
 **Found:** 2026-08-14, while building chunk 8's depth-≤2 gate.
 
 Chunk 7 shipped what its docstring called an array-tree MCTS. It expanded only
-the root's children and then re-backed-up their already-computed values:
+the root's children and then re-backed-up their already-computed values. On a
+root with 6 legal actions at `m = 5`, `nodes` was pinned at 6 for every budget it
+would ever be given:
 
-    sims=48, m=5  ->  nodes in tree: 2
+    sims   6  16  31  48   ->  nodes  6  6  6  6      (pre-F-06)
+    sims   6  16  31  48   ->  nodes  7 17 32 49      (fixed)
 
 Forty-seven of forty-eight simulations did no work. It was a one-ply lookahead.
+
+> **Erratum, 2026-08-14 (`ERRATA-chunk7.md` §3).** This finding first published
+> the exhibit as `sims=48, m=5 -> nodes in tree: 2`. That number is real but
+> under-specified to the point of being undemonstrative: 234 of the 1,200 frozen-
+> suite problems have a single legal root action, and on 160 of them `nodes = 2`
+> is the complete and correct tree under *both* searches, because the one action
+> solves the problem. The exhibit above replaces it — flat `nodes` **while
+> unexpanded actions remain** is the signature. The named-problem version of the
+> original figure is a depth-2 single-action root: pre-F-06 `nodes 2, evals 49,
+> terminal_solved 0` at `sims=48`; fixed, `nodes 3, evals 2, terminal_solved 1`.
 
 **Every chunk-7 gate passed on it**, and each for a reason that had nothing to do
 with the defect:
@@ -184,8 +197,11 @@ searched.**
   expanded nodes by the Gumbel-AZ non-root rule until it reaches an unexpanded
   action, expands it, evaluates and backs up. Measured after: `sims=48` on a
   branchy depth-5 SOLVE gives **49 nodes, max_depth 3**.
-* `SearchStats` gains `nodes` and `max_depth`, so the shape of the tree is in
-  every row rather than inferable from nothing.
+* `SearchStats` gains `max_depth`, so the shape of the tree is in every row.
+  **`nodes` did not have to be added — it was already there**, populated by the
+  chunk-7 code (`search.py:182,230` at `5b5fd61`), reading 6/6/6/6 in every stats
+  row it ever wrote, asserted on by no gate. (Corrected 2026-08-14; the first
+  publication of this finding said the field was gained. `ERRATA-chunk7.md` §3.)
 * **The missing gate exists now** — `test_the_tree_deepens_past_one_ply` asserts
   more simulations build more tree, that the tree exceeds root-plus-children,
   and that node count scales with sims rather than with `m`.
@@ -200,4 +216,73 @@ searched.**
 known hazards has a blind spot exactly the shape of *the component doing its job
 at all*. Every chunk here has gates for how a thing can be subtly wrong; this is
 the first case where the thing was grossly absent and every subtle-wrongness
-check still went green.
+check still went green. In force as house law, AGENTS.md §5, with the operational
+rider that the **first** gate written for any component measures it doing its
+central job.
+
+**And one turn sharper, from the re-measurement (`ERRATA-chunk7.md` §2):** the
+blind spot was not missing instrumentation. `SearchStats.nodes` was recorded in
+every row chunk 7 ever wrote, it was correct, and it was flat at 6. No gate
+asserted on it. A number nobody asserts on is not a gate — it is a comment that
+happens to be computed.
+
+**Where the re-measured evidence lives:** `ERRATA-chunk7.md` carries the full
+chunk-7 gate table re-run under the fixed search, the pre-vs-post comparison that
+settles which search produced the budget-identity figures (both — the quantity
+does not discriminate), and the decomposed test delta.
+
+---
+
+## F-07 — Phase 1 was paying for Phase 2's envelope, 22× over
+
+**Found:** 2026-08-14, chunk 8's required timing pre-flight, before any training
+step was taken in earnest. Record: `runs/pilot_phase1_timing.json`.
+
+`model.seq_len` is **512**, sized in chunk 6 from the *reachable*-state
+distribution — correctly, because Phase-2 self-play reaches 295-token states
+(F-05). `encode()` pads every state to it. But the Phase-1 supervision set's
+`max_len` is **64**, so every batch was 8× wider than its widest content, and
+attention is O(L²).
+
+Measured at batch 128, same batch, same model, medians over 12 timed steps:
+
+| | width | s/step | 10,000 steps |
+|---|---:|---:|---:|
+| as built | 512 | 23.8361 | **66.2 h** |
+| cropped to content | 64 | 1.0922 | **3.0 h** |
+
+**21.8×, and the outputs are bit-identical** — `torch.equal` on all three heads,
+not `allclose`. Cropping the all-PAD tail changes nothing the network computes:
+the trunk already masks PAD via `src_key_padding_mask`, `_masked_mean` pools over
+`ne(PAD)`, and positions are indexed from zero, so rows `0..width-1` of the
+position table are the same rows either way.
+
+**Why the width is 64 is the interesting part, and it is three findings meeting.**
+F-05: `add_both_sides` is the sole source of state growth. ROUND-01: optimal
+derivations never apply it. Therefore every state on a BFS-optimal derivation —
+which is every state in the supervision set — is bounded by the largest *start*
+state. `max_len 64` is not a property of the sample; it is a consequence, and the
+same mechanism that makes `seq_len 512` right for Phase 2 makes it 8× wasteful
+for Phase 1.
+
+**Do not "fix" this by lowering `model.seq_len`.** The envelope is right; the
+width is a property of a *batch*, not of the model. `_crop_to_content` is in
+`train.py`, gated by `test_cropping_padding_is_exact` on both polarities: the
+crop must fire *and* the outputs must be bit-identical. A crop test that only
+checked the outputs would go green on a crop that never cropped, which is F-06's
+shape one layer down.
+
+**Registered, not done:** the same crop is available to the search's evaluator
+path, where batched leaves are also padded to 512 and reachable states are
+usually far shorter. Not touched here — that is shipped chunk-7 code and this was
+a chunk-8 pre-flight.
+
+**What this says about the pre-flight itself.** F-03 recorded a projection that
+was 5× optimistic. This one was 22× pessimistic before it was read, and the value
+came from *splitting* the measurement rather than sharpening it: batch
+construction is 1.2% of a step, the forward/backward is the rest. That split is
+also the device answer — the tensor work is 98.8% of the step, which is exactly
+what an accelerator addresses. AGENTS.md §8's "GPU idle while CPU-bound Python
+saturates" is stated for *search* workloads and holds there; supervised Phase-1
+training is not one, and the pilot distinguishes them by measurement rather than
+by assumption.

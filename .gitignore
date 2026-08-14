@@ -49,6 +49,17 @@ runs/**
 !runs/state_extent.json
 !runs/par_delta.json
 !runs/suite_verification.json
+# Gate records: the arithmetic a gate was DECLARED on, and the table a gate was
+# re-run into. These three shipped untracked in chunks 7-8 — cited as evidence by
+# a report, matched by `runs/**`, and missed by the guard because a rule that is
+# never written is never tested (ERRATA-chunk7.md §5). The pattern is deliberately
+# a glob: the next gate record is covered the day it is written, not after.
+!runs/gate_*.json
+!runs/chunk*_gate_table.json
+# Pre-flight projections. F-03 is on record because a projection was wrong by 5x
+# and the estimate had not been kept; a projection that is not saved cannot be
+# scored against the run it projected.
+!runs/pilot_*.json
 
 # Root-scoped: a bare `data/` would also swallow runs/data/ as a *directory*
 # ignore, and git cannot descend into an ignored directory to reach the

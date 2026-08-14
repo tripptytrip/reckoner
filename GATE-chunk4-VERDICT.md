@@ -52,8 +52,9 @@ plus the errata header. All other entries diff-verify against the prior digest.
 
 ## Countersign — closed
 
-Countersign authority was delegated to the reviewer (AGENTS.md §0). All five
-house-law lines are now **countersigned-under-delegation** and in force:
+Countersign authority was delegated to the reviewer (AGENTS.md §0). **Four** law
+lines were countersigned; a fifth is in force by ruling and a sixth was
+countersigned later. The registry distinguishes them:
 
 1. Round-trip gates are blind to symmetric bugs; every codec carries pinned
    absolute reference vectors.
@@ -61,7 +62,18 @@ house-law lines are now **countersigned-under-delegation** and in force:
 3. A provenance field whose default is its strongest claim is not a provenance
    field — the most-trusted value must be the one that costs something to say.
 4. One formatter of states, ever — a caption describes, or it calls `render()`.
-5. One lever per round is an executable property, not a reviewed one.
+
+**Countersigned later (2026-08-14):**
+
+5. A gate suite assembled from known hazards has a blind spot exactly the shape
+   of the component doing its job at all — with the operational rider that the
+   first gate written for any component measures it doing its central job.
+
+**In force by ruling, not countersigned:**
+
+6. One lever per round is an executable property, not a reviewed one — ratified
+   as judgment call 2. A previous report claimed this as countersigned; it was
+   not, and the claim is corrected here rather than left to stand.
 
 All were already in force in the code and tests; the countersign settles the
 record, not the behaviour.

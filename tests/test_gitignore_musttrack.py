@@ -43,6 +43,7 @@ MUST_TRACK: list[str] = [
     "BRIEF-chunk5.md",  # fold-ins accumulated across four review rounds
     "BRIEF-chunk9.md",  # obligations registered by earlier chunks
     "GATE-*.md",  # manual-gate verdicts — the record a chunk closed on
+    "ERRATA-*.md",  # corrections to a shipped chunk report, nothing fixed silently
     "Makefile",
     "pyproject.toml",
     "uv.lock",  # without it, "green in a clean clone" tests resolution luck
@@ -80,6 +81,18 @@ MUST_REACH: list[str] = [
     "runs/data/eval_held_out/meta.json",
     "runs/rule_participation.json",
     "runs/par_delta.json",
+    # Chunks 7-8: gate records. These three EXISTED and were silently ignored —
+    # the guard missed them because nobody wrote the rule (ERRATA-chunk7.md §5).
+    # Listed as MUST_REACH rather than MUST_TRACK so the glob is tested for
+    # names that do not exist yet, which is the point of this list.
+    "runs/gate_arithmetic.json",
+    "runs/gate_arithmetic_d2.json",
+    "runs/chunk7_gate_table.json",
+    "runs/gate_a_future_instrument.json",
+    # Chunk 8: pre-flight projections, kept so they can be scored against the run
+    # they projected. F-03 exists because one was not.
+    "runs/pilot_phase1_timing.json",
+    "runs/pilot_a_future_preflight.json",
 ]
 
 # The counterpart polarity: things that must STAY ignored.
