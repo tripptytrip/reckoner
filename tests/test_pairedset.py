@@ -191,3 +191,22 @@ def test_source_census_keys_reads_a_real_set() -> None:
     keys = source_census_keys(data)
     assert len(keys) > 0
     assert all(isinstance(k[0], tuple) and isinstance(k[1], int) for k in keys)
+
+
+def test_a_single_level_census_is_refused() -> None:
+    """F-18's structural completion, both polarities.
+
+    "0 collisions against training, clean" was true, complete-sounding, and wrong
+    about the only level doing work. A one-level census answers a different
+    question in the voice of this one, so it cannot be constructed.
+    """
+    with pytest.raises(PairedSetError, match="state_sources is empty"):
+        census([a_problem(6)], problem_sources={"train": set()}, state_sources={})
+    with pytest.raises(PairedSetError, match="problem_sources is empty"):
+        census([a_problem(6)], problem_sources={}, state_sources={"sup": set()})
+
+
+def test_both_levels_present_is_accepted() -> None:
+    """The accepting polarity — a refusal that fires on everything gates nothing."""
+    result = census([a_problem(6)], problem_sources={"train": set()}, state_sources={"sup": set()})
+    assert result.clean_indices == [0]

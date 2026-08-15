@@ -1117,3 +1117,39 @@ scoring 0 — absence does not become a number here either.
 **Both verdicts stand.** The first smoke pass's S6 PASSed on the terms it was
 written on; this finding files beside it with the superseded numbers, and the
 re-run's S6 carries the corrected contrast of 79.
+
+### F-18 — disposition, 2026-08-15: **REMOVED PRE-FREEZE**
+
+Ruled by the principal on the two precedents; the preferred branch applies
+because its condition holds. **`f0b10fd1…` is the post-removal digest**, and that
+is verified rather than asserted from the code path: the frozen set was
+re-censused at both levels *after* the freeze, and the digest on disk was compared
+to the one in `ANCHORS`.
+
+| | |
+|---|---|
+| digest on disk | `f0b10fd113e32013b1088590fea78cbb300dd5a7876fc08357a389e3addbe1ec` |
+| digest in `runs/ANCHORS.sha256` | **identical** |
+| problems | 389 |
+| problem-level hits, post-freeze | **0** |
+| state-level hits, post-freeze | **0** |
+
+`runs/paired_census_postfreeze.json`. The eleven were dropped before the file
+existed, so `smoke_v1` was **born clean** and the F-09 pattern does not attach:
+there is no second number for a pass to report, because there is no contaminated
+remainder inside the instrument.
+
+The measured cost of cleaning was **11 rows of 400 (2.75%)**, which is what makes
+this the right branch rather than the convenient one — frozen-with-annotation
+buys nothing when removal is that cheap, and it would put a caveat on every
+future pass forever to save eleven problems once.
+
+### F-18 — structural completion
+
+`pairedset.census` now **raises on an empty `problem_sources` or `state_sources`**.
+A single-level census is not a smaller census; it answers a different question in
+the voice of this one. The refusal quotes F-18's own numbers, so the next reader
+meets the reason at the point of failure rather than in this file.
+
+Both polarities are tested. There is no other paired-set census path: `census` is
+the only entry point, and it is now total over the two levels.

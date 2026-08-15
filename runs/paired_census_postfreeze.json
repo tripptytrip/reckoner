@@ -1,0 +1,20 @@
+{
+  "candidates": 389,
+  "clean": 389,
+  "digest_in_anchors": "f0b10fd113e32013b1088590fea78cbb300dd5a7876fc08357a389e3addbe1ec",
+  "digest_on_disk": "f0b10fd113e32013b1088590fea78cbb300dd5a7876fc08357a389e3addbe1ec",
+  "disposition": "REMOVED PRE-FREEZE",
+  "paired_set": "runs/paired/smoke_v1.jsonl",
+  "problem_level": {
+    "train_100k": 0
+  },
+  "problem_level_hits": 0,
+  "problems": 389,
+  "rule": "a candidate colliding at either level is dropped BEFORE the freeze; contamination found after the freeze is a finding, never an edit",
+  "state_level": {
+    "phase1_train": 0
+  },
+  "state_level_beyond_problem_level": 0,
+  "state_level_hits": 0,
+  "what": "F-18 disposition: the FROZEN paired set re-censused at both levels"
+}

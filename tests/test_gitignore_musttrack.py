@@ -47,6 +47,7 @@ MUST_TRACK: list[str] = [
     "BRIEF-*.md",
     "GATE-*.md",  # manual-gate verdicts — the record a chunk closed on
     "ERRATA-*.md",  # corrections to a shipped chunk report, nothing fixed silently
+    "RULING-*.md",  # reviewer rulings, committed verbatim on receipt before acting
     "Makefile",
     "pyproject.toml",
     "uv.lock",  # without it, "green in a clean clone" tests resolution luck
@@ -74,7 +75,8 @@ MUST_REACH: list[str] = [
     # first pass runs — `git check-ignore` answers for hypothetical paths, and
     # `pairedset.freeze` asserts its own trackedness before the bytes land.
     "runs/paired/smoke_v1.jsonl",  # runs/paired/*.jsonl — the frozen paired set
-    "runs/paired_census.json",  # the two-level census that decided its contents
+    "runs/paired_census.json",  # runs/paired_census*.json — the two-level censuses
+    "runs/paired_census_postfreeze.json",  # the re-census proving it was born clean
     "runs/ladder_smoke_result.json",  # runs/**/*_result.json — the smoke verdicts
     # Beyond the plan's initial list, written now for the same reason: these are
     # named as deliverables by later chunks, and the negation is free today.

@@ -148,10 +148,23 @@ def census(
 
     The two dicts are passed pre-computed rather than as paths because reading
     311k supervision states is a script's job, not a library call's — the
-    exhaustive-in-script / bounded-in-test precedent. Both are required and may
-    be empty **only** if the caller means empty: a census against nothing is
-    reported as a census against nothing, never as a clean bill.
+    exhaustive-in-script / bounded-in-test precedent.
+
+    **Both levels are required, and neither may be empty.** F-18 measured what a
+    single-level census reports at this boundary: *"0 collisions against training,
+    clean"* — true, complete-sounding, and wrong about the only level doing work,
+    because all eleven hits were state-level. A one-level census is not a smaller
+    census, it is a census that answers a different question in the voice of this
+    one, so it is refused rather than permitted-with-a-caveat.
     """
+    for label, sources in (("problem_sources", problem_sources), ("state_sources", state_sources)):
+        if not sources:
+            raise PairedSetError(
+                f"{label} is empty. Both census levels are required: at the paired "
+                "set's own boundary the problem level found 0 and the state level "
+                "found 11 (FINDINGS.md F-18), so a single-level result reads clean "
+                "while the level that mattered was never asked."
+            )
     keys = [census_key(p) for p in candidates]
     problem_hits: set[int] = set()
     state_hits: set[int] = set()
