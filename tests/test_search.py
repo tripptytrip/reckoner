@@ -356,25 +356,21 @@ def test_root_noise_actually_varies_the_search() -> None:
 
 def test_search_is_byte_identical_across_processes() -> None:
     """Cross-process under varied PYTHONHASHSEED — the construction-gate standard."""
-    program = (
-        "import random, json;"
-        "from reckoner.config import Config;"
-        "from reckoner.episode import Problem;"
-        "from reckoner.expr import add, eq, mul, num, var;"
-        "from reckoner.search import search, uniform_stub;"
-        "from reckoner.vocab import GOAL_SOLVE, VAR_X;"
-        "X=var(VAR_X); cfg=Config();"
-        "p=Problem(goal=GOAL_SOLVE,target=VAR_X,par=3,par_source='bfs',"
-        "expr=eq(add(mul(num(3),X),num(6)),num(21)));"
-        "r=search(p,p.expr,uniform_stub(cfg),cfg,random.Random(5),sims=16,m=5);"
-        "print(json.dumps([r.visits.tolist(), r.chosen, r.stats.sims_used]))"
-    )
+    # The probe is a FILE, not an embedded string. It was a quoted `-c` program
+    # until a blind text edit matched inside the literal and broke it — twice.
+    # Documentation warns, methods help, helpers prevent: a program in its own
+    # file has nothing for an edit to corrupt silently, and it lints.
+    program = REPO / "tests" / "subprocess_probes" / "search_determinism.py"
     outputs = set()
     for seed in ("0", "1", "7777", "random"):
         env = {**os.environ, "PYTHONHASHSEED": seed}
         outputs.add(
             subprocess.run(
-                [sys.executable, "-c", program], capture_output=True, text=True, check=True, env=env
+                [sys.executable, str(program)],
+                capture_output=True,
+                text=True,
+                check=True,
+                env=env,
             ).stdout.strip()
         )
     assert len(outputs) == 1, f"search varied across PYTHONHASHSEED: {outputs}"

@@ -84,25 +84,15 @@ def main() -> int:
     )
 
     # --- determinism: cross-process -------------------------------------
-    program = (
-        "import random, json;"
-        "from reckoner.config import Config;"
-        "from reckoner.episode import Problem;"
-        "from reckoner.expr import add, eq, mul, num, var;"
-        "from reckoner.search import search, uniform_stub;"
-        "from reckoner.vocab import GOAL_SOLVE, VAR_X;"
-        "X=var(VAR_X); cfg=Config();"
-        "p=Problem(goal=GOAL_SOLVE,target=VAR_X,par=3,par_source='bfs',"
-        "expr=eq(add(mul(num(3),X),num(6)),num(21)));"
-        "r=search(p,p.expr,uniform_stub(cfg),cfg,random.Random(5),sims=48,m=5);"
-        "print(json.dumps([r.visits.tolist(), r.chosen, r.stats.sims_used, r.stats.nodes]))"
-    )
+    # The probe is a FILE (tests/subprocess_probes/search_determinism.py), not an
+    # embedded string — a blind text edit matched inside the old literal twice.
+    probe = REPO / "tests" / "subprocess_probes" / "search_determinism.py"
     seen = set()
     for seed in ("0", "1", "7777", "random"):
         env = {**os.environ, "PYTHONHASHSEED": seed}
         seen.add(
             subprocess.run(
-                [sys.executable, "-c", program], capture_output=True, text=True, check=True, env=env
+                [sys.executable, str(probe)], capture_output=True, text=True, check=True, env=env
             ).stdout.strip()
         )
     out["cross_process"] = {"distinct_outputs": len(seen), "value": sorted(seen)[0]}

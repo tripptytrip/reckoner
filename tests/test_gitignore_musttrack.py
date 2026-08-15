@@ -54,6 +54,7 @@ MUST_TRACK: list[str] = [
     "docs/*.md",  # generated reference (docs/vocab.md) — regenerable, but cited
     "src/reckoner/*.py",
     "tests/*.py",
+    "tests/subprocess_probes/*.py",  # probes are files, not embedded strings
     "scripts/*.py",
     "runs/state_extent.json",  # decision-bearing: it sized seq_len and max_sites
 ]

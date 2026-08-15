@@ -2,7 +2,9 @@
 
 The detector gates automation, so it gets two-sided validation before live use —
 the clamp-detector precedent. A criterion nobody has watched refuse is a
-criterion that will fire on anything.
+criterion that will fire on anything; a criterion nobody has watched fire is one
+that has disabled the lever it guards. This is a **ratcheting** detector, so both
+ends matter and the false-fire rate is priced.
 """
 
 from __future__ import annotations
@@ -13,14 +15,23 @@ import pytest
 
 from reckoner.valuegate import (
     MARGIN,
-    MIN_ACCURACY,
+    MIN_CLASS_SUPPORT,
     ValueGateError,
     ValueHeadState,
+    balanced_accuracy,
+    class_census,
     consider_switch,
-    majority_class_accuracy,
     switch_criterion,
     value_contribution,
 )
+
+SUPPORT = MIN_CLASS_SUPPORT
+
+
+def two_class(draws: int = SUPPORT * 3, losses: int = SUPPORT) -> list[int]:
+    """A draw-heavy two-class slice — this project's predicted early regime."""
+    return [0] * draws + [-1] * losses
+
 
 # ---------------------------------------------------------------------------
 # One declaration, two consumers
@@ -36,16 +47,10 @@ def test_a_trained_head_contributes_fully() -> None:
 
 
 def test_both_consumers_read_the_same_number() -> None:
-    """The structural claim, asserted rather than described.
-
-    A config flag consulted by the loss and forgotten by the search is the
-    two-gates-one-name hazard. Here there is one function; this pins that the
-    search-side scale and the loss-side scale are literally the same call.
-    """
+    """A config flag consulted by the loss and forgotten by the search is the
+    two-gates-one-name hazard. There is one function; this pins that."""
     state = ValueHeadState(live=False)
-    search_scale = value_contribution(state)
-    loss_scale = value_contribution(state)
-    assert search_scale == loss_scale == 0.0
+    assert value_contribution(state) == value_contribution(state) == 0.0
     live = ValueHeadState(live=True)
     assert value_contribution(live) == value_contribution(live) == 1.0
 
@@ -56,25 +61,45 @@ def test_the_head_starts_untrusted() -> None:
 
 
 # ---------------------------------------------------------------------------
-# The floor, and why it is also the null
+# The four-tuple's slots keep their definitions
 # ---------------------------------------------------------------------------
 
 
-def test_majority_class_is_the_floor() -> None:
-    assert majority_class_accuracy([0, 0, 0, -1]) == pytest.approx(0.75)
-    assert majority_class_accuracy([0, -1]) == pytest.approx(0.5)
+def test_floor_is_zero_and_marked_uninformative() -> None:
+    """An accuracy has no structural minimum — an anti-correlated head scores
+    below the trivial model. The slot is filled, not merged into the null."""
+    result = switch_criterion(two_class(), [0] * (SUPPORT * 4))
+    assert result["floor"] == 0.0
+    assert result["floor_is_uninformative"] is True
 
 
-def test_floor_and_null_are_reported_as_one_number_with_two_names() -> None:
-    """A property of this metric, not a mistake — the constant predictor IS the null."""
-    result = switch_criterion([0, 0, 0, -1], [0, 0, 0, 0])
-    assert result["floor"] == result["null"]
-    assert result["null_is_the_floor"] is True
+def test_null_is_one_over_k_whatever_the_imbalance() -> None:
+    """This is what makes the bar firable in a draw-heavy regime."""
+    balanced = switch_criterion([0] * SUPPORT + [-1] * SUPPORT, [0] * (SUPPORT * 2))
+    skewed = switch_criterion([0] * (SUPPORT * 9) + [-1] * SUPPORT, [0] * (SUPPORT * 10))
+    assert balanced["null"] == pytest.approx(0.5)
+    assert skewed["null"] == pytest.approx(0.5), "the null must not move with imbalance"
+    assert balanced["threshold"] == skewed["threshold"] == pytest.approx(0.5 + MARGIN)
+
+
+def test_the_class_census_is_recorded_so_k_is_data() -> None:
+    result = switch_criterion(two_class(), [0] * (SUPPORT * 4))
+    assert result["class_census"] == {-1: SUPPORT, 0: SUPPORT * 3}
+    assert result["k_classes_with_support"] == 2
+
+
+def test_a_third_class_moves_the_null_and_the_bar() -> None:
+    """Once pool par exists, z can be +1 and K becomes 3."""
+    labels = [0] * SUPPORT + [-1] * SUPPORT + [1] * SUPPORT
+    result = switch_criterion(labels, [0] * (SUPPORT * 3))
+    assert result["k_classes_with_support"] == 3
+    assert result["null"] == pytest.approx(1 / 3)
+    assert result["threshold"] == pytest.approx(1 / 3 + MARGIN)
 
 
 def test_an_empty_held_out_set_is_refused() -> None:
     with pytest.raises(ValueGateError, match="cannot be evaluated on nothing"):
-        majority_class_accuracy([])
+        class_census([])
 
 
 def test_a_misaligned_pair_is_refused() -> None:
@@ -83,54 +108,76 @@ def test_a_misaligned_pair_is_refused() -> None:
 
 
 # ---------------------------------------------------------------------------
-# The detector, on both polarities — it must fire, and it must refuse
+# The detector, both ends — it must fire, and it must refuse
 # ---------------------------------------------------------------------------
 
 
 def test_a_perfect_head_clears() -> None:
-    labels = [0] * 60 + [-1] * 40
+    labels = two_class()
     assert switch_criterion(labels, labels)["clears"] is True
 
 
-def test_a_majority_class_head_does_not_clear() -> None:
-    """The sharpest rejecting case: reproducing the base rate is not learning z.
-
-    A head that always says "draw" scores exactly the floor, so it must miss by
-    the whole margin. If this ever passes, the bar has collapsed onto its floor.
-    """
-    labels = [0] * 60 + [-1] * 40
-    result = switch_criterion(labels, [0] * 100)
-    assert result["measured"] == pytest.approx(result["floor"])
+def test_a_constant_head_scores_exactly_the_null_and_does_not_clear() -> None:
+    """The collapsed-bar sentinel. A constant predictor ties 1/K by construction,
+    so if this ever passes the bar has collapsed onto its null."""
+    labels = two_class()
+    result = switch_criterion(labels, [0] * len(labels))
+    assert result["measured"] == pytest.approx(result["null"])
     assert result["clears"] is False
 
 
 def test_a_random_head_does_not_clear() -> None:
     rng = random.Random(0)
-    labels = [rng.choice([0, -1]) for _ in range(400)]
-    guesses = [rng.choice([0, -1]) for _ in range(400)]
+    labels = two_class()
+    guesses = [rng.choice([0, -1]) for _ in labels]
     assert switch_criterion(labels, guesses)["clears"] is False
 
 
-def test_the_absolute_floor_stops_a_degenerate_split_from_trivialising_the_bar() -> None:
-    """Nearly-all-draws would make "beat the majority class" easy for a constant.
+def test_the_draw_heavy_regime_is_firable_at_all() -> None:
+    """**The correction's whole point.** Under raw accuracy a 75/25 split demanded
+    0.85 and a 98/2 split demanded 1.08 — unreachable, so the switch could never
+    fire and the lever would be disabled by its own qualifying exam.
 
-    With 98% draws the floor is 0.98 and the threshold is floor + MARGIN, which
-    exceeds 1.0 — unreachable, correctly. MIN_ACCURACY guards the other end.
+    Under balanced accuracy the same slice is cleared by a head that is merely
+    *good*, not perfect: 90% recall on each class.
     """
-    labels = [0] * 98 + [-1] * 2
-    result = switch_criterion(labels, [0] * 100)
-    assert result["threshold"] == pytest.approx(0.98 + MARGIN)
-    assert result["clears"] is False
-    assert result["threshold"] > MIN_ACCURACY
+    labels = two_class()
+    rng = random.Random(1)
+    predictions = [cls if rng.random() < 0.9 else (0 if cls == -1 else -1) for cls in labels]
+    result = switch_criterion(labels, predictions)
+    assert result["measured"] > result["threshold"]
+    assert result["clears"] is True
 
 
-def test_the_bar_moves_with_the_label_distribution_and_is_recorded_with_it() -> None:
-    """A bar quoted without its floor is not interpretable later."""
-    balanced = switch_criterion([0] * 50 + [-1] * 50, [0] * 100)
-    skewed = switch_criterion([0] * 90 + [-1] * 10, [0] * 100)
-    assert balanced["threshold"] != skewed["threshold"]
-    for result in (balanced, skewed):
-        assert {"floor", "null", "threshold", "measured", "n"} <= set(result)
+# ---------------------------------------------------------------------------
+# Abstention — "not evaluable yet" is not "evaluated and refused"
+# ---------------------------------------------------------------------------
+
+
+def test_a_thin_minority_class_abstains_rather_than_judging() -> None:
+    """Balanced accuracy on two minority samples is not a measurement — minority
+    recall can only be 0, 0.5 or 1."""
+    labels = [0] * 500 + [-1] * 2
+    result = switch_criterion(labels, labels)
+    assert result["evaluable"] is False
+    assert result["clears"] is False, "a perfect head must still not clear on 2 samples"
+    assert result["smallest_class_support"] == 2
+
+
+def test_abstention_is_recorded_distinctly_from_failure() -> None:
+    labels = [0] * 500 + [-1] * 2
+    state, event = consider_switch(ValueHeadState(), labels, labels, iteration=4)
+    assert state.live is False
+    assert event["abstained"] is True and event["fired"] is False
+
+    enough = two_class()
+    _, judged = consider_switch(ValueHeadState(), enough, [0] * len(enough), iteration=4)
+    assert judged["abstained"] is False and judged["fired"] is False
+
+
+def test_support_at_the_boundary_is_evaluable() -> None:
+    labels = [0] * SUPPORT + [-1] * SUPPORT
+    assert switch_criterion(labels, labels)["evaluable"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +186,7 @@ def test_the_bar_moves_with_the_label_distribution_and_is_recorded_with_it() -> 
 
 
 def test_it_fires_once_and_records_the_event() -> None:
-    labels = [0] * 60 + [-1] * 40
+    labels = two_class()
     state, event = consider_switch(ValueHeadState(), labels, labels, iteration=7)
     assert state.live is True
     assert state.switched_at_iteration == 7
@@ -148,19 +195,26 @@ def test_it_fires_once_and_records_the_event() -> None:
 
 
 def test_a_live_head_stays_live_even_if_the_criterion_would_now_fail() -> None:
-    """The ratchet. Flickering would make consecutive iterations incomparable —
-    the corpus each produces would be denominated in a different search."""
-    labels = [0] * 60 + [-1] * 40
+    """Flickering would make consecutive iterations incomparable — the corpus each
+    produces would be denominated in a different search."""
+    labels = two_class()
     state, _ = consider_switch(ValueHeadState(), labels, labels, iteration=3)
-    later, event = consider_switch(state, labels, [0] * 100, iteration=9)
+    later, event = consider_switch(state, labels, [0] * len(labels), iteration=9)
     assert later.live is True
     assert later.switched_at_iteration == 3, "the ratchet must not re-date itself"
     assert event["fired"] is False and event["already_live"] is True
 
 
 def test_a_failing_criterion_leaves_the_head_untrusted() -> None:
-    labels = [0] * 60 + [-1] * 40
-    state, event = consider_switch(ValueHeadState(), labels, [0] * 100, iteration=1)
+    labels = two_class()
+    state, event = consider_switch(ValueHeadState(), labels, [0] * len(labels), iteration=1)
     assert state.live is False
     assert event["fired"] is False
     assert value_contribution(state) == 0.0
+
+
+def test_balanced_accuracy_is_mean_per_class_recall() -> None:
+    labels = [0, 0, 0, -1]
+    assert balanced_accuracy(labels, [0, 0, 0, 0]) == pytest.approx(0.5)
+    assert balanced_accuracy(labels, labels) == pytest.approx(1.0)
+    assert balanced_accuracy(labels, [-1, -1, -1, -1]) == pytest.approx(0.5)

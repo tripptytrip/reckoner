@@ -26,10 +26,38 @@ criterion**, four-tupled per rider (c), on held-out z accuracy. It fires **once*
 and **ratchets** — the head does not flicker between trusted and not — and it is
 logged as an event row rather than inferred from a behaviour change.
 
-A note on the four-tuple that is a property of this metric rather than a mistake:
-the **floor** (what a constant predictor achieves) and the **null** (the
-majority-class model, run) *coincide* here, because the constant predictor **is**
-the null. They are reported as one number with both names, not padded apart.
+The four-tuple's slots keep their countersigned definitions even when one carries
+no information — otherwise the next metric that arrives, where they genuinely
+differ, gets mis-filled by habit:
+
+* **floor** — what the metric can return *regardless of skill*. For an accuracy
+  it is **0**: nothing guarantees a minimum, because an anti-correlated head
+  scores *below* the trivial model. The slot is filled and marked uninformative.
+* **null** — the best *trivial* model, run. Here that is the constant predictor,
+  and under balanced accuracy it scores exactly **1/K**.
+
+An earlier draft merged the two and called majority-class accuracy "the floor".
+The tell was in its own validation sentence — *"it ties the floor exactly"*
+describes the **null** arm.
+
+Why balanced accuracy, and not raw
+-----------------------------------
+Raw accuracy with a bar of ``max(0.60, null + margin)`` is **structurally
+unfirable in this project's own predicted early regime.** Training problems are
+100% ``par_source="bfs"`` and nothing beats exact par, so early z is two-class by
+construction — ``{0, -1}``, with no ``+1`` until pool or scripted par exists. A
+value-silent iteration-0 search that solves most problems at par (which the
+chunk-8 baselines say it will) makes z draw-heavy: at 85/15 the bar would be
+**0.95** held-out accuracy, and at 98/2 it would be **1.08**. Calling 1.08
+"unreachable, correctly" was wrong — a bar the expected regime makes unreachable
+means the switch never fires, value stays silent for the whole campaign, and the
+lever the loop is named for is disabled by its own qualifying exam. **A
+never-firable trigger is the always-firing detector's mirror image**; rider (b)'s
+corollary has two ends and this criterion was sitting on the other one.
+
+Balanced accuracy over the classes with support asks the thing worth asking —
+*does the head know anything beyond the base rate* — without demanding
+near-perfection on the majority to prove competence on the minority.
 """
 
 from __future__ import annotations
@@ -37,14 +65,28 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-#: Absolute floor for the switch bar. Without it a degenerate label split — an
-#: iteration where nearly every episode draws — would make "beat the majority
-#: class by a margin" satisfiable by a near-constant predictor.
-MIN_ACCURACY = 0.60
+#: Margin above the null (1/K) that the head must clear, in balanced accuracy.
+#:
+#: **Priced as the error rate of a one-way door**, because the switch ratchets and
+#: a false fire is permanent. With ``MIN_CLASS_SUPPORT`` samples in the rarest
+#: class, se(balanced accuracy) under the null is ``0.5 * sqrt(2 * 0.25 / n)``:
+#:
+#:     support  margin  se       z     P(fire | null)  over 20 iterations
+#:      30      0.10    0.0645   1.55  6.07%           71.4%
+#:      50      0.15    0.0500   3.00  0.135%           2.67%
+#:     100      0.15    0.0354   4.24  0.001%           0.02%
+#:
+#: 0.10 at support 30 spuriously fires in **71% of 20-iteration campaigns**, which
+#: is not a detector. 0.15 at support 100 is 0.02%. Abstention costs time; a false
+#: fire costs the campaign, so the door is conservative.
+MARGIN = 0.15
 
-#: Margin the head must clear ABOVE the majority class. A head that only
-#: reproduces the base rate has learned the base rate, not z.
-MARGIN = 0.10
+#: Minimum samples in the RAREST class before the criterion will judge at all.
+#: Balanced accuracy on two minority samples is not a measurement — minority
+#: recall can only be 0, 0.5 or 1. Below this the criterion ABSTAINS, which is
+#: recorded distinctly from failing: "not evaluable yet" and "evaluated and
+#: refused" are different states and only one of them is evidence.
+MIN_CLASS_SUPPORT = 100
 
 
 class ValueGateError(ValueError):
@@ -90,47 +132,70 @@ def value_contribution(state: ValueHeadState) -> float:
     return 1.0 if state.live else 0.0
 
 
-def majority_class_accuracy(labels: Sequence[int]) -> float:
-    """What a constant predictor achieves. **Both the floor and the null.**"""
+def class_census(labels: Sequence[int]) -> dict[int, int]:
+    """Support per class. Logged in the switch event so K is data, not a caption."""
     if not labels:
         raise ValueGateError("no held-out labels — the criterion cannot be evaluated on nothing")
     counts: dict[int, int] = {}
     for z in labels:
         counts[z] = counts.get(z, 0) + 1
-    return max(counts.values()) / len(labels)
+    return dict(sorted(counts.items()))
+
+
+def balanced_accuracy(labels: Sequence[int], predictions: Sequence[int]) -> float:
+    """Mean per-class recall over the classes with support.
+
+    A constant predictor scores exactly ``1/K`` here whatever the imbalance,
+    which is what makes the bar firable in a draw-heavy regime.
+    """
+    census = class_census(labels)
+    recalls = []
+    for cls, support in census.items():
+        hits = sum(1 for a, b in zip(labels, predictions, strict=True) if a == cls and b == cls)
+        recalls.append(hits / support)
+    return sum(recalls) / len(recalls)
 
 
 def switch_criterion(labels: Sequence[int], predictions: Sequence[int]) -> dict:
     """The pre-registered switch bar, as a four-tuple.
 
-    ``floor`` / ``null``   majority-class accuracy on this held-out set. They are
-                           the same number because the constant predictor IS the
-                           null model — reported once, named twice.
-    ``threshold``          ``max(MIN_ACCURACY, floor + MARGIN)``.
-    ``measured``           the head's accuracy.
+    ``floor``       **0.0** — an accuracy has no structural minimum, because an
+                    anti-correlated head scores below the trivial model. Filled
+                    and marked uninformative rather than merged into the null.
+    ``null``        ``1/K`` — the constant predictor's balanced accuracy, where K
+                    is the number of classes WITH SUPPORT in this slice.
+    ``threshold``   ``1/K + MARGIN``.
+    ``measured``    the head's balanced accuracy.
 
-    Returns the whole tuple, always, so a row records what the bar *was* on the
-    set it was evaluated against — the bar moves with the label distribution, so
-    a bar quoted without its floor is not interpretable later.
+    Returns the whole tuple plus the class census, always, so a row records what
+    the bar *was* and what K it was judged against. Abstains (``evaluable``
+    False) when the rarest class has fewer than ``MIN_CLASS_SUPPORT`` samples.
     """
     if len(labels) != len(predictions):
         raise ValueGateError(
             f"{len(labels)} labels against {len(predictions)} predictions — the "
             "criterion cannot be evaluated on a misaligned pair"
         )
-    floor = majority_class_accuracy(labels)
-    threshold = max(MIN_ACCURACY, floor + MARGIN)
-    correct = sum(1 for a, b in zip(labels, predictions, strict=True) if a == b)
-    measured = correct / len(labels)
+    census = class_census(labels)
+    k = len(census)
+    smallest = min(census.values())
+    null = 1.0 / k
+    threshold = null + MARGIN
+    measured = balanced_accuracy(labels, predictions)
+    evaluable = smallest >= MIN_CLASS_SUPPORT
     return {
-        "metric": "held-out z accuracy",
+        "metric": "held-out z balanced accuracy",
         "n": len(labels),
-        "floor": round(floor, 6),
-        "null": round(floor, 6),
-        "null_is_the_floor": True,
+        "class_census": census,
+        "k_classes_with_support": k,
+        "smallest_class_support": smallest,
+        "floor": 0.0,
+        "floor_is_uninformative": True,
+        "null": round(null, 6),
         "threshold": round(threshold, 6),
         "measured": round(measured, 6),
-        "clears": measured >= threshold,
+        "evaluable": evaluable,
+        "clears": bool(evaluable and measured >= threshold),
     }
 
 
@@ -149,6 +214,13 @@ def consider_switch(
     """
     result = switch_criterion(labels, predictions)
     event = {"iteration": iteration, "already_live": state.live, **result}
+    if not result["evaluable"]:
+        # Abstaining is not failing. "Not evaluable yet" and "evaluated and
+        # refused" are different states, and only one of them is evidence.
+        event["fired"] = False
+        event["abstained"] = True
+        return state, event
+    event["abstained"] = False
     if state.live or not result["clears"]:
         event["fired"] = False
         return state, event
