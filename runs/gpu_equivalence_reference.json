@@ -1,0 +1,16 @@
+{
+  "derivation": "PREREG-chunk9-part0.md amendment A3; measured at git 6dbb019",
+  "device": "AMD Radeon 8060S gfx1151",
+  "dtype": "fp32",
+  "global_max_abs_policy_logits": 0.0037212371826171875,
+  "n_per_bucket": 128,
+  "note": "Tier 1 is the gate and is exact. This file is tier 2's REFERENCE: a change detector compares against a measured baseline, not against an estimate the measurement falsified. A future run at ~3.7e-3 is unchanged; one at ~7e-3 is within bound but drifting, and only the second reading is information the absolute bound alone cannot carry.",
+  "per_bucket_max_abs_policy_logits": {
+    "1-64": 0.0027589797973632812,
+    "129-256": 0.0036597251892089844,
+    "257-max": 0.0030241012573242188,
+    "65-128": 0.0037212371826171875
+  },
+  "recalibrated_bound": 0.0075,
+  "torch": "2.13.0+rocm7.2"
+}

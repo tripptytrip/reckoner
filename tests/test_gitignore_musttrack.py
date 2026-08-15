@@ -106,6 +106,7 @@ MUST_REACH: list[str] = [
     "runs/m1/check_env.txt",
     "runs/phase1/anchor.json",  # the anchor every later pass is compared against
     "runs/gpu_equivalence_smoke.json",  # chunk 9 part 0b
+    "runs/gpu_equivalence_reference.json",  # tier-2 drift reference (A3)
 ]
 
 # The counterpart polarity: things that must STAY ignored.

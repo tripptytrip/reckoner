@@ -39,8 +39,13 @@ from reckoner.train import SupervisionSet, _crop_to_content
 
 REPO = Path(__file__).resolve().parents[1]
 
-# Frozen in PREREG-chunk9-part0.md. Read, never chosen here.
-TIER2 = {"policy_logits": 1e-3, "value_probs": 1e-4, "steps": 1e-3}
+# Frozen in PREREG-chunk9-part0.md. Read, never chosen here. The policy-logit
+# bound was recalibrated by amendment A3 from 1e-3 (an estimate) to 2x the observed
+# maximum, with F-12 as its derivation — a bound that always fires is not a gate
+# (AGENTS.md rider (b) corollary). The other two channels never fired and are
+# unchanged. Tier 1 is untouched and remains exact.
+TIER2 = {"policy_logits": 7.5e-3, "value_probs": 1e-4, "steps": 1e-3}
+REFERENCE = "runs/gpu_equivalence_reference.json"
 BUCKETS = ((1, 64), (65, 128), (129, 256), (257, 10_000))
 PER_BUCKET = 128
 

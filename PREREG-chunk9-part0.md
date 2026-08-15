@@ -356,3 +356,84 @@ stratification is not what surfaced it.
 
 bf16, informational and ungated: argmax agreement **0.998047** (511/512) at max
 abs Δ **1.369e-01**.
+
+---
+
+# Amendment A3 — 2026-08-15, tier-2 recalibration under the principal's signature
+
+**Written after a measurement**, and it is a recalibration of a bound that fired,
+so the policy header applies in full: the numbers in F-12 were known when this was
+written, and they are its derivation.
+
+**This is not the author widening a bound that inconvenienced them.** The freeze
+was honoured: tier 2 was reported EXCEEDED, the bound was left at 1e-3, and the
+result shipped as a finding. The change below carries the principal's signature by
+the same path as gate 10b's amendment, and it rests on a principle that cuts the
+other way from convenience — **a bound that always fires is not a gate** (AGENTS.md
+§5, rider (b) corollary). An estimate the measurement falsified by 3.7× is not a
+reference; the measurement is.
+
+| | before | after |
+|---|---:|---:|
+| tier-2 policy-logit bound | 1e-3 *(estimate)* | **7.5e-3** *(2 × observed max 3.721e-3)* |
+| tier-2 value-probability bound | 1e-4 | 1e-4 — **unchanged**, measured 3.779e-05 |
+| tier-2 steps bound | 1e-3 | 1e-3 — **unchanged**, measured 3.204e-04 |
+
+Only the channel that fired moves. **Tier 1 is untouched and remains exact** —
+tier 1 is the gate; tier 2 is a change detector, and a detector compares against a
+baseline.
+
+**The four-bucket table becomes the committed drift reference.**
+`runs/gpu_equivalence_reference.json` carries the per-bucket maxima measured at
+`6dbb019`, and tier 2 now reports drift against that reference as well as against
+the absolute bound. A future run that comes in at 3.7e-3 is *unchanged*; one that
+comes in at 7e-3 is *within bound but drifting*, and only the second reading is
+information the absolute bound alone could never carry.
+
+# Amendment A4 — 2026-08-15, A1.3's arithmetic was wrong and is corrected here
+
+**Not a response to a measurement** — no GPU run has happened. This corrects a
+derivation I stated and the principal asked to see shown rather than referenced.
+Showing it is what exposed the error.
+
+A1.3 put per-token saved activations at "~1.1 GiB". That undercounts by ~5×.
+Per token per layer a `norm_first` encoder layer retains roughly
+`6·d_model + 2·d_ff` = 6·256 + 2·1024 = **3,584 floats**, not the ~700 the earlier
+figure implies.
+
+**At the tensor bound, B = 128, L = 512, H = 8, 6 layers:**
+
+| term | elements | fp32 | bf16 |
+|---|---:|---:|---:|
+| attention scores, `B·H·L²·layers` | 1,610,612,736 | 6.00 GiB | 3.00 GiB |
+| per-token activations, `3584·(B·L)·layers` | 1,409,286,144 | 5.25 GiB | 2.62 GiB |
+| params + grads + AdamW (fp32 master) | — | 0.08 GiB | 0.08 GiB |
+| **subtotal** | | **11.33 GiB** | **5.70 GiB** |
+| pessimistic (softmax input *and* output retained) | | **17.33 GiB** | **8.70 GiB** |
+
+**fp32 at the tensor bound exceeds the 16 GiB ceiling.** The earlier table said
+13.2 GiB and cleared it. That conclusion was wrong.
+
+**At the measured reachable width** — `state_extent.json` p100 is **332 tokens**,
+and 512 is the envelope, not an attainable state:
+
+| | fp32 | bf16 |
+|---|---:|---:|
+| L = 332 subtotal | 6.00 GiB | 3.04 GiB |
+| L = 332 pessimistic | 8.53 GiB | 4.30 GiB |
+
+**The ceiling holds, and the reason is now stated precisely rather than
+approximately:** 16 GiB clears bf16 at *any* width and fp32 at every *reachable*
+width. It does not clear fp32 at a width no state can reach. Since AGENTS.md §4.5
+prescribes bf16 for GPU training anyway, the ceiling is not load-bearing on the
+unreachable case — but the previous table implied a safety margin that did not
+exist, and a margin nobody has is worse than a margin nobody claimed.
+
+**Corrected classification bands:**
+
+| observed peak | reading |
+|---|---|
+| ≤ 4.5 GiB | expected: bf16 at reachable widths |
+| 4.5–9 GiB | expected: bf16 at the tensor bound, or fp32 at reachable widths |
+| 9–16 GiB | **premise change** — fp32 at or near the tensor bound. Check dtype and batch width before checking for leaks |
+| > 16 GiB | alarm: exceeds what any declared configuration needs |

@@ -66,7 +66,7 @@
     "top8_agreement": 1.0,
     "top8_set_identical": 512
   },
-  "git_sha": "abc765c77b17b6dea5a7a9ce88f0d30306099708",
+  "git_sha": "6dbb01952d78e492c594a278510fe7edcf702116",
   "narrow_only_spans": false,
   "null_perturbed": {
     "argmax_agreement": 0.314453,
@@ -80,7 +80,7 @@
   },
   "spans_all_buckets": true,
   "tier2_bounds": {
-    "policy_logits": 0.001,
+    "policy_logits": 0.0075,
     "steps": 0.001,
     "value_probs": 0.0001
   },

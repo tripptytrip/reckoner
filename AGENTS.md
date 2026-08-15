@@ -202,6 +202,16 @@ then run CPU-only forever. This has burned real time more than once.
   `SearchStats.nodes` existed in chunk 7, was populated correctly, was written
   into every stats row, and read 6, 6, 6, 6 across an 8× budget increase. The
   instrument was not missing — it was mute. Adding a field is not adding a gate.
+  **Corollary (2026-08-15, countersigned): a bound that always fires is not a gate
+  either.** Both are comments — one nobody reads, one nobody can act on. A
+  detector that has triggered on every run since it was written has stopped
+  carrying information, and the fix is to recalibrate it against the measured
+  baseline rather than to keep recording the alarm. Measured: chunk 9's tier-2
+  logit bound was declared at 1e-3 from an estimate and measured at 3.721e-3 on
+  every width bucket (`FINDINGS.md` F-12); it was refused a widening under freeze,
+  then recalibrated by ruling to 2× the observed maximum with the measurement as
+  its derivation. **A detector's reference is the measured baseline, never an
+  estimate the measurement has already falsified.**
   **Operational rider (c): a threshold nobody computed the floor of is not a gate
   either.** A gate has two failure modes — *unreachable* and *unmissable* — and
   only the first announces itself by failing; the second ships green. Measured:
