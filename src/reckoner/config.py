@@ -243,6 +243,32 @@ class TrainConfig:
 
 
 @dataclass
+class NumericsConfig:
+    """[chunk 9 part 0] Which dtype produced a number — decided once, here.
+
+    Two regimes, and they are not interchangeable:
+
+    * ``measure_dtype`` — **fp32**. This is the regime the GPU/CPU equivalence
+      gate licensed: tier 1 held at 512/512 argmax and top-8 across all four
+      width buckets in fp32 (`FINDINGS.md` F-12). Every gate number, eval pass
+      and ladder measurement runs here, so "which dtype produced this?" has one
+      answer and it is the answer that was checked.
+    * ``train_dtype`` — **bf16**, per AGENTS.md §4.5 (bf16 autocast, fp32 master
+      weights). Training is guarded by the NaN-skip kit and its loss curve, not
+      by cross-device identity, so it does not need the licensed regime and does
+      need the throughput.
+
+    bf16's only cross-device measurement is informational: 511/512 argmax
+    agreement at max abs delta 1.369e-01. That is why it trains and does not
+    measure. ``validate()`` rejects a measurement regime the equivalence gate
+    never licensed.
+    """
+
+    measure_dtype: str = "fp32"
+    train_dtype: str = "bf16"
+
+
+@dataclass
 class GeneratorConfig:
     """[plan chunk 5] the procedural problem generator and the frozen instruments."""
 
@@ -294,6 +320,7 @@ class Config:
     model: ModelConfig = field(default_factory=ModelConfig)
     search: SearchConfig = field(default_factory=SearchConfig)
     train: TrainConfig = field(default_factory=TrainConfig)
+    numerics: NumericsConfig = field(default_factory=NumericsConfig)
     generator: GeneratorConfig = field(default_factory=GeneratorConfig)
     ladder: LadderConfig = field(default_factory=LadderConfig)
 
@@ -328,6 +355,18 @@ def validate(cfg: Config) -> None:
         raise ValueError(
             f"model.param_budget_min ({cfg.model.param_budget_min}) exceeds "
             f"param_budget_max ({cfg.model.param_budget_max})."
+        )
+    if cfg.numerics.measure_dtype != "fp32":
+        raise ValueError(
+            f"numerics.measure_dtype must be 'fp32'; got {cfg.numerics.measure_dtype!r}. "
+            "fp32 is the regime the chunk-9 equivalence gate licensed (tier 1 exact, "
+            "512/512, all width buckets). bf16 has only an informational cross-device "
+            "number (511/512). Measuring in an unlicensed regime would make every gate "
+            "number's provenance a question nobody checked."
+        )
+    if cfg.numerics.train_dtype not in ("fp32", "bf16"):
+        raise ValueError(
+            f"numerics.train_dtype must be 'fp32' or 'bf16'; got {cfg.numerics.train_dtype!r}"
         )
     if cfg.train.lr_schedule not in ("constant", "cosine"):
         raise ValueError(

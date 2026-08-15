@@ -97,6 +97,19 @@ train:
   nan_abort_frac: 0.01       # [plan chunk 8] NaN-skip guard + abort
   nan_abort_min_steps: 20
 
+# --- numerics [chunk 9 part 0] ----------------------------------------------
+# Which dtype produced a number, decided once so it is never a question later.
+numerics:
+  # fp32 is the regime the GPU/CPU equivalence gate LICENSED — tier 1 exact,
+  # 512/512 argmax and top-8, all four width buckets (F-12). Every gate number,
+  # eval pass and ladder measurement runs here. The loader rejects anything else.
+  measure_dtype: fp32
+  # bf16 per AGENTS.md §4.5 (autocast, fp32 master weights). Training is guarded
+  # by the NaN-skip kit and its loss curve, not by cross-device identity, so it
+  # does not need the licensed regime and does need the throughput. bf16's only
+  # cross-device number is informational: 511/512 argmax at max|delta| 1.369e-01.
+  train_dtype: bf16
+
 # --- generator and the frozen instruments [plan chunk 5] --------------------
 generator:
   max_bfs_depth: 6            # depth labels are MEASURED by BFS, not assumed

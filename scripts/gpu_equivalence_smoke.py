@@ -29,7 +29,7 @@ from pathlib import Path
 
 import torch
 
-from reckoner.config import Config
+from reckoner.config import Config, validate
 from reckoner.dataset import git_sha, read_suite, sample_indices, suite_problem, write_record
 from reckoner.episode import Problem, decode_state, encode_state
 from reckoner.expr import Expr
@@ -200,7 +200,17 @@ def main() -> int:
         raise SystemExit("no accelerator — 0b requires the ROCm stack")
 
     cfg = Config()
-    out: dict = {"git_sha": git_sha(REPO), "torch": torch.__version__, "tier2_bounds": TIER2}
+    validate(cfg)
+    # The licensed regime, read from config rather than assumed here. This whole
+    # smoke is what licensed it, so it must not silently run as anything else.
+    assert cfg.numerics.measure_dtype == "fp32", cfg.numerics.measure_dtype
+    out: dict = {
+        "git_sha": git_sha(REPO),
+        "torch": torch.__version__,
+        "tier2_bounds": TIER2,
+        "measure_dtype": cfg.numerics.measure_dtype,
+        "train_dtype_informational": cfg.numerics.train_dtype,
+    }
 
     # --- A1.1(i) comparator self-check, guaranteed by construction ---------
     # The probe must be exactly representable, or `x - (x + 1)` is not exactly
