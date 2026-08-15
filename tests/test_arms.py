@@ -181,3 +181,30 @@ def test_an_absent_cas_is_a_smaller_ladder_not_a_failed_pass() -> None:
     solver = SympySolver(CFG)
     assert solver.available is False, "available must be False before entering"
     solver.probe()  # must not raise when unavailable
+
+
+@needs_suites
+def test_the_variance_probe_asserts_its_own_branching_premise() -> None:
+    """A degenerate fixture would make the probe fail on CORRECT behaviour.
+
+    On B = 1 a legitimately stochastic arm collapses 24 seeds to one outcome, so
+    the non-collapse check must refuse the fixture rather than report a defect
+    that is not there. The subsampler test asserts its span for the same reason.
+    """
+    from reckoner.episode import Problem
+    from reckoner.expr import num
+    from reckoner.rules import legal_actions
+    from reckoner.vocab import GOAL_EVALUATE
+
+    degenerate = Problem(goal=GOAL_EVALUATE, expr=num(5), par=1, par_source="bfs")
+    assert len(legal_actions(degenerate.expr)) < 2, "this fixture must be degenerate"
+    with pytest.raises(ArmError, match="needs a branching fixture"):
+        RandomRewriter().probe(degenerate, CFG)
+
+
+@needs_suites
+def test_the_probe_fixture_actually_branches() -> None:
+    """And the fixture the real probe uses satisfies the premise."""
+    from reckoner.rules import legal_actions
+
+    assert len(legal_actions(a_problem().expr)) > 1

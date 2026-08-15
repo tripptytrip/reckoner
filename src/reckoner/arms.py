@@ -126,7 +126,22 @@ class RandomRewriter:
         deterministic arm with a seed parameter — and its rows would carry
         ``nondeterministic=True`` while behaving otherwise, which is a label
         that lies. Same seed must also reproduce, or the reps are not poolable.
+
+        **The probe asserts its own premise first.** On a single-legal-action
+        problem a legitimately stochastic arm collapses 24 seeds to one outcome
+        *correctly*, so running the non-collapse check on a degenerate fixture
+        would fail on correct behaviour — the descent-obligation lesson landing on
+        a probe's precondition. The premise is part of the probe, and it fails
+        loudly rather than lying in either direction.
         """
+        branching = len(legal_actions(problem.expr))
+        if branching < 2:
+            raise ArmError(
+                f"{self.name}'s variance probe needs a branching fixture and got "
+                f"B={branching}. On a single-action problem a correctly stochastic "
+                "arm collapses to one outcome, so this probe would fail on correct "
+                "behaviour. Choose a fixture with B > 1."
+            )
         if (r := self.play(problem, cfg, 1)) != self.play(problem, cfg, 1):
             raise ArmError(f"{self.name}: the same seed did not reproduce ({r})")
         outcomes = {
