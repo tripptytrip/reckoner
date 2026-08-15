@@ -19,15 +19,19 @@ import pytest
 from reckoner.config import Config
 from reckoner.dataset import (
     FIELDS,
+    InstrumentAsTrainingSource,
     RecordWouldBeUntracked,
+    assert_training_source,
     dataset_keys,
     problem_key,
     read_dataset,
     read_suite,
     sample_indices,
     sha256_file,
+    source_role,
     state_keys,
     suite_problem,
+    training_problems,
     write_dataset,
     write_record,
     write_suite,
@@ -596,3 +600,66 @@ def test_the_sampler_reaches_every_stratum() -> None:
     assert {int(depth[i]) for i in range(2_000)} != {1, 2, 3, 4, 5, 6}, (
         "the prefix now spans all depths — this test's premise has changed"
     )
+
+
+# ---------------------------------------------------------------------------
+# The runtime boundary — every consumer re-opens the question its producers closed
+# ---------------------------------------------------------------------------
+
+
+def test_a_frozen_instrument_is_refused_as_an_episode_source() -> None:
+    """The censuses guard datasets at BIRTH; nothing guarded the RUNTIME source.
+
+    The chunk-9 shakedown drew from `solve_in_2` and did no harm — nothing
+    trained — but demonstrated that the loop would happily consume its own
+    measuring stick. A config slip in a real run trains on the suites and poisons
+    every measurement downstream, including the ones used to detect it.
+    """
+    with pytest.raises(InstrumentAsTrainingSource, match="role 'instrument'"):
+        assert_training_source(REPO / "runs" / "suites")
+
+
+def test_the_held_out_set_is_an_instrument_too() -> None:
+    """Held-out measures; it never trains. Same refusal, different artifact."""
+    with pytest.raises(InstrumentAsTrainingSource):
+        assert_training_source(DATA / "eval_held_out")
+
+
+@pytest.mark.skipif(not (DATA / "train_100k").exists(), reason="training set not generated")
+def test_a_training_source_is_accepted() -> None:
+    """The other polarity — otherwise the guard would just mean 'refuse everything'."""
+    assert_training_source(DATA / "train_100k")
+    assert source_role(DATA / "train_100k") == "training"
+
+
+def test_an_unclassified_artifact_refuses_rather_than_defaulting(tmp_path: Path) -> None:
+    """F-02's shape at the runtime boundary: the permissive answer must not be free.
+
+    Defaulting an unclassified artifact to "training" would hand it the trusted
+    status nobody granted it.
+    """
+    stray = tmp_path / "mystery"
+    stray.mkdir()
+    with pytest.raises(InstrumentAsTrainingSource, match="declares no role"):
+        source_role(stray)
+
+
+def test_a_declared_role_in_meta_wins_over_the_registry(tmp_path: Path) -> None:
+    """New artifacts carry their role natively; the registry is only for the
+    frozen ones that cannot be rewritten without breaking their own digests."""
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    (fresh / "meta.json").write_text(json.dumps({"role": "instrument"}))
+    assert source_role(fresh) == "instrument"
+    with pytest.raises(InstrumentAsTrainingSource):
+        assert_training_source(fresh)
+
+
+@pytest.mark.skipif(not (DATA / "train_100k").exists(), reason="training set not generated")
+def test_the_episode_loader_refuses_before_it_reads_anything() -> None:
+    """The guard is the FIRST thing training_problems does, not a later check."""
+    with pytest.raises(InstrumentAsTrainingSource):
+        training_problems(DATA / "eval_held_out", 4, seed=0)
+    problems = training_problems(DATA / "train_100k", 4, seed=0)
+    assert len(problems) == 4
+    assert all(p.par_source == "bfs" and p.par >= 1 for p in problems)

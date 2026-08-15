@@ -22,7 +22,7 @@ import numpy as np
 import torch
 
 from reckoner.config import Config, config_fingerprint, save_config, validate
-from reckoner.dataset import git_sha, read_suite, sample_indices, suite_problem, write_record
+from reckoner.dataset import git_sha, training_problems, write_record
 from reckoner.logschema import (
     ITERATION_FIELDS,
     SCHEMA_ERA,
@@ -136,14 +136,17 @@ def main() -> int:
     head = ValueHeadState()
     rows_path = run / "iterations.jsonl"
     switch_path = run / "value_switch.jsonl"
-    suite_rows = read_suite(REPO / "runs" / "suites" / "solve_in_2.jsonl")
+    # A TRAINING source, through the guard. The chunk-9 shakedown drew from
+    # solve_in_2 — a frozen instrument — which did no harm because nothing
+    # trained, but demonstrated that the loop would happily consume its own
+    # measuring stick. training_problems() refuses instruments first thing.
+    source = REPO / "runs" / "data" / "train_100k"
     solve_by_depth: list[dict] = []
     pool_sizes: list[int] = []
 
     for n in range(args.iterations):
         rng = random.Random(1000 + n)
-        picked = sample_indices(len(suite_rows), args.episodes, seed=n)
-        problems = [suite_problem(suite_rows[i]) for i in picked]
+        problems = training_problems(source, args.episodes, seed=n)
 
         evaluator = model_evaluator(model, cfg, value_contribution(head))
         stats = run_iteration(problems, evaluator, cfg, ring, sims=args.sims, m=args.m, seed=n)

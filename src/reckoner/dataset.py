@@ -84,6 +84,96 @@ def git_sha(repo: Path) -> str:
         return "unknown"
 
 
+class InstrumentAsTrainingSource(ValueError):
+    """A frozen measuring stick was about to be used as a training source."""
+
+
+#: Roles for artifacts that predate the role tag. **Frozen instruments cannot
+#: carry it natively**: `runs/suites/*.jsonl` and the dataset `meta.json` files
+#: are digested in `runs/ANCHORS.sha256`, so writing a field into them would
+#: change the digest and un-freeze the instrument to add a label saying it is
+#: frozen. So the role is declared here for what already exists, and stamped in
+#: meta from birth for what comes next.
+SOURCE_ROLES: dict[str, str] = {
+    "runs/suites": "instrument",  # the measuring stick — never a training source
+    "runs/data/train_100k": "training",
+    "runs/data/phase1_train": "training",
+    "runs/data/eval_held_out": "instrument",  # held-out: measures, never trains
+    "runs/data/phase1_eval": "instrument",
+}
+
+
+def source_role(path: Path, repo: Path | None = None) -> str:
+    """Instrument or training source. **An unknown role refuses; it does not default.**
+
+    Defaulting to "training" would be F-02's shape at the runtime boundary: the
+    permissive answer given for free to an artifact nobody classified. The
+    trusted value is declared or the call fails.
+    """
+    repo = repo or Path(__file__).resolve().parents[2]
+    meta_path = Path(path) / "meta.json"
+    if meta_path.exists():
+        declared = json.loads(meta_path.read_text()).get("role")
+        if declared:
+            return str(declared)
+    try:
+        key = str(Path(path).resolve().relative_to(repo.resolve()))
+    except ValueError:
+        key = str(path)
+    for prefix, role in SOURCE_ROLES.items():
+        if key == prefix or key.startswith(prefix + "/"):
+            return role
+    raise InstrumentAsTrainingSource(
+        f"{path} declares no role and matches no entry in SOURCE_ROLES. An "
+        "unclassified artifact is not assumed to be a training source — add it to "
+        "the registry, or stamp `role` in its meta.json if it is new."
+    )
+
+
+def assert_training_source(path: Path, repo: Path | None = None) -> None:
+    """Refuse a frozen instrument as an episode source.
+
+    The contamination censuses guard datasets **at birth**; nothing guarded the
+    **runtime** source, and the chunk-9 shakedown demonstrated the hazard by
+    happily consuming `solve_in_2` as a problem source. No harm there — nothing
+    trained — but a config slip in a real run would train on the suites and
+    poison every measurement downstream, including the ones used to detect it.
+
+    Every consumer re-opens the question its producers closed.
+    """
+    role = source_role(path, repo)
+    if role != "training":
+        raise InstrumentAsTrainingSource(
+            f"{path} has role {role!r} and must not be an episode source. Frozen "
+            "instruments measure; training sources train. A run that trains on its "
+            "own measuring stick reports improvement it did not make."
+        )
+
+
+def training_problems(path: Path, k: int, seed: int, repo: Path | None = None) -> list[Problem]:
+    """Episode sources for the loop. **Refuses a frozen instrument, first thing.**
+
+    This is the runtime boundary the contamination censuses could not reach: they
+    prove a dataset is clean at birth, and say nothing about what a running loop
+    points at.
+    """
+    assert_training_source(path, repo)
+    dataset = read_dataset(path)
+    out: list[Problem] = []
+    for i in dataset.sample(k, seed):
+        goal, target, expr = decode_state(dataset.state(i))
+        out.append(
+            Problem(
+                goal=goal,
+                expr=expr,
+                par=int(dataset.par[i]),
+                target=target,
+                par_source="bfs",
+            )
+        )
+    return out
+
+
 def sample_indices(total: int, k: int, seed: int) -> list[int]:
     """**The** subsampler for any stratified artifact in this project.
 
@@ -202,7 +292,14 @@ class Dataset:
 
 
 def write_dataset(
-    path: Path, problems: list[Problem], cfg: Config, *, mode: str, seed: int, repo: Path
+    path: Path,
+    problems: list[Problem],
+    cfg: Config,
+    *,
+    mode: str,
+    seed: int,
+    repo: Path,
+    role: str = "training",
 ) -> dict:
     """Write a memmap training set with its provenance sidecar."""
     if not problems:
@@ -249,6 +346,10 @@ def write_dataset(
 
     meta = {
         "mode": mode,
+        # Stamped from birth for every artifact written after the role tag
+        # existed. `source_role` falls back to SOURCE_ROLES only for the frozen
+        # artifacts that predate it and cannot be rewritten.
+        "role": role,
         "n": n,
         "max_len": max_len,
         "seed": seed,

@@ -23,7 +23,7 @@ from pathlib import Path
 import torch
 
 from reckoner.config import Config, config_fingerprint, validate
-from reckoner.dataset import git_sha, read_suite, sample_indices, suite_problem
+from reckoner.dataset import git_sha, training_problems
 from reckoner.logschema import (
     ITERATION_FIELDS,
     SCHEMA_ERA,
@@ -68,14 +68,15 @@ def main() -> int:
     ring = ReplayRing(4096, cfg)
     pool = CheckpointPool(cfg)
     head = ValueHeadState()
-    suite_rows = read_suite(REPO / "runs" / "suites" / "solve_in_2.jsonl")
+    # A TRAINING source, through the guard. The chunk-9 shakedown drew from
+    # solve_in_2 — a frozen instrument — which did no harm because nothing
+    # trained, but demonstrated that the loop would happily consume its own
+    # measuring stick. training_problems() refuses instruments first thing.
+    source = REPO / "runs" / "data" / "train_100k"
     checks: list[tuple[str, bool, str]] = []
 
     for n in range(args.iterations):
-        problems = [
-            suite_problem(suite_rows[i])
-            for i in sample_indices(len(suite_rows), args.episodes, seed=n)
-        ]
+        problems = training_problems(source, args.episodes, seed=n)
         stats = run_iteration(problems, uniform_stub(cfg), cfg, ring, sims=8, m=5, seed=n)
         stats.check_descent_identity()
 
@@ -123,8 +124,16 @@ def main() -> int:
     )
 
     # Enrollment: the mechanism par escalation depends on.
-    pool.enroll(Reckoner(cfg), 1, head, run / "snap.pt")
-    checks.append(("pool enrollment grows the pool", len(pool) == 1, str(pool.composition())))
+    # ENROLLMENT REGRESSION joins the class of things a run cannot silently lack.
+    # The chunk-9 expectations gated mismatch refusal and provenance — the known
+    # hazards — while nothing asserted the pool POPULATES, so composition() sat in
+    # the report as a number nobody asserted on. Rider (a) and rider (b) in one
+    # miss; this is the fix at the liveness layer.
+    before = len(pool)
+    for step in (1, 2, 3):
+        pool.enroll(Reckoner(cfg), step, head, run / f"snap-{step}.pt")
+    grew = len(pool) == before + 3
+    checks.append(("pool composition GROWS with enrollment", grew, str(pool.composition())))
 
     elapsed = time.perf_counter() - started
     shutil.rmtree(run)

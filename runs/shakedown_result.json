@@ -6,7 +6,7 @@
   },
   "episodes_per_iteration": 40,
   "expectations_frozen_at": "93868dd",
-  "git_sha": "384a1ef05ba1308bbf60ed3a4e7418e780309e76",
+  "git_sha": "ddf66f6ae9bdce6d5695a3f3b13902cc90446641",
   "iterations": 3,
   "m": 5,
   "pool": {
@@ -28,7 +28,7 @@
     "refused_paths": [
       "/home/michael/Documents/dev/Experiment_Two/runs/shakedown/mismatched.pt"
     ],
-    "seconds_solving": 3.713
+    "seconds_solving": 1.003
   },
   "pool_enrollment": {
     "seeded_with_anchor": true,
@@ -65,18 +65,18 @@
       "pool_par_solved": 30,
       "sample_tagged_pool": [
         {
-          "par": 2,
+          "par": 1,
           "par_asof": 5002,
           "par_source": "pool"
         },
         {
-          "par": 2,
-          "par_asof": 5001,
+          "par": 1,
+          "par_asof": 5000,
           "par_source": "pool"
         },
         {
-          "par": 2,
-          "par_asof": 5000,
+          "par": 1,
+          "par_asof": 5001,
           "par_source": "pool"
         }
       ],
@@ -88,16 +88,16 @@
       "expectation": "criterion four-tupled, evaluated where support allows",
       "rows": [
         {
-          "abstain_reason": "no_variance: z took one value in this slice, so nothing distinguishes a head from a constant",
+          "abstain_reason": "thin_minority: rarest class has 1 samples, below 100",
           "abstained": true,
           "clears": false,
           "floor": 0.0,
           "iteration": 0,
-          "k_classes_with_support": 1,
-          "measured": 1.0,
-          "null": 1.0,
-          "smallest_class_support": 40,
-          "threshold": 1.15
+          "k_classes_with_support": 2,
+          "measured": 0.5,
+          "null": 0.5,
+          "smallest_class_support": 1,
+          "threshold": 0.65
         },
         {
           "abstain_reason": "no_variance: z took one value in this slice, so nothing distinguishes a head from a constant",
@@ -142,19 +142,34 @@
         {
           "iteration": 0,
           "rates": {
-            "2": 1.0
+            "1": 1.0,
+            "2": 1.0,
+            "3": 1.0,
+            "4": 0.933333,
+            "5": 1.0,
+            "6": 1.0
           }
         },
         {
           "iteration": 1,
           "rates": {
-            "2": 1.0
+            "1": 1.0,
+            "2": 1.0,
+            "3": 1.0,
+            "4": 1.0,
+            "5": 1.0,
+            "6": 1.0
           }
         },
         {
           "iteration": 2,
           "rates": {
-            "2": 1.0
+            "1": 1.0,
+            "2": 1.0,
+            "3": 1.0,
+            "4": 1.0,
+            "5": 1.0,
+            "6": 1.0
           }
         }
       ],
@@ -171,9 +186,9 @@
       "verdict": "PASS"
     }
   },
-  "wall_clock_seconds": 23.02,
+  "wall_clock_seconds": 54.47,
   "wall_clock_split": {
-    "pool_solving": 3.713,
-    "self_play": 19.158
+    "pool_solving": 1.003,
+    "self_play": 53.311
   }
 }
