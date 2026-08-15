@@ -755,18 +755,59 @@ Re-pinned on three fixtures, exactly:
    `stats.terminal_solved > 0`, which is what its arithmetic was always about —
    *was the winning action considered and found* — and is independent of the
    value scale. Both polarities still hold at m = 5 and m = 3.
-2. **`root_value` is `max(the root's own evaluation, best line)`**, so a neutral
-   root prior floors it at 0.0 and an all-losing root reports 0.0 rather than
-   −1.0. The over-par fixture therefore uses a pessimistic evaluator. This is
-   pre-existing chunk-7 behaviour, **not** changed here — a stale prior
-   outranking proven evidence is arguably the same family of defect, and
-   changing it was not what was ruled. **Registered as an open question.**
+2. **`root_value` was `max(the root's own evaluation, best line)`**, so a neutral
+   root prior floored it at 0.0 and an all-losing root reported 0.0 rather than
+   −1.0. Registered as an open question, then **ruled: the family identification
+   was right, and it is fixed.** See the amendment below.
 
 **Measurements this invalidates.** Anything whose numbers came from search
 *choices* under the old scale must be re-measured: the chunk-7 gate table's
 descent/determinism rows and chunk 8's gate-11 solve rates. The gates' *definitions*
 are unaffected — gate 11 reads the checker, not a value — but the search now
 prefers shorter lines, so the numbers are not carried over by assertion.
+
+### Amendment, 2026-08-15 — own-eval scoped, and proofs propagate
+
+Ruled after the fix above. Own-eval was doing two jobs and only one is legitimate:
+
+* **Legitimate:** a proxy for actions *not yet tried*. While a node has unexpanded
+  actions, its own estimate stands in for what those might yield, and taking part
+  in the max is epistemically sound.
+* **Illegitimate:** a permanent floor over *explored, proven* lines. Once a node's
+  legal set is fully expanded, own-eval represents nothing, and the node is worth
+  `max(children)` alone.
+
+So: **own-eval participates in the backup only while unexpanded actions remain at
+that node**, and **proofs propagate** — a terminal's z is a proof, and a fully
+expanded node whose children are all proven is itself proven at `max(children)`.
+That is the single-agent MCTS-Solver, one paragraph in a max tree.
+
+**Why it was worth ruling rather than registering.** With a *trained* evaluator
+the floor means `root_q` can never report a position as worse than the net already
+believed — the net's belief floors its own MSE target. That is self-referential
+optimism aimed squarely at the half of the blend the currency ruling exists to keep
+from fighting the other half. Same clock as the currency: cheap before the first
+row, expensive after.
+
+**Same defect family, named:** chess's FINALE bug was proven evidence mishandled
+at action *selection*; this is the same thing at value *aggregation* — a stale
+prior outranking a proof. The project has now paid for that family twice.
+
+**Consequences in the tests, both named rather than absorbed:**
+
+* The over-par fixture is **sharpened**: it now uses the *neutral* stub at
+  `m = 16`, so the −1 must emerge from proofs alone with no cooperation from the
+  evaluator. It is therefore the regression test for the rule itself — if
+  own-eval leaks back into a fully expanded node's max, that fixture goes
+  green-to-red.
+* `test_backup_never_lowers_a_value` is **removed, and its premise was the
+  defect.** It asserted that a later worse line could never demote an earlier
+  value. That monotonicity was a *consequence* of max-accumulating into a floor
+  the node could not escape. Under the ruled semantics a proof is allowed to lower
+  a node — and must be, or a trained net's optimism could never be contradicted by
+  evidence. Replaced by
+  `test_a_proof_may_lower_a_node_below_its_own_estimate`, which asserts the
+  opposite property on purpose.
 
 **The lesson, and it is about the test rather than the code:** this defect was
 found by an assertion that **passed**. `root_value == 1.0` pinned the semantics

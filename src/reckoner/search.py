@@ -109,6 +109,8 @@ class _Tree:
     __slots__ = (
         "visits",
         "value",
+        "own_eval",
+        "proven",
         "terminal",
         "depth",
         "parent",
@@ -125,6 +127,13 @@ class _Tree:
     def __init__(self, capacity: int) -> None:
         self.visits = np.zeros(capacity, dtype=np.int32)
         self.value = np.full(capacity, -1.0, dtype=np.float32)
+        # The node's OWN evaluation, kept apart from its value. It is a proxy for
+        # what unexplored actions might yield, and it participates in the max only
+        # while such actions exist — see `_recompute`.
+        self.own_eval = np.full(capacity, -1.0, dtype=np.float32)
+        # A node whose value is a PROOF, not an estimate: a terminal, or a fully
+        # expanded node all of whose children are proven.
+        self.proven = np.zeros(capacity, dtype=bool)
         self.terminal = np.zeros(capacity, dtype=bool)
         self.depth = np.zeros(capacity, dtype=np.int32)
         self.parent = np.full(capacity, -1, dtype=np.int32)
@@ -154,19 +163,81 @@ class _Tree:
         self.child_values[node] = np.full(len(actions), -1.0, dtype=np.float32)
 
 
+def _recompute(tree: _Tree, node: int) -> None:
+    """A node's value from its children, its own estimate, and its expansion state.
+
+    **Own-eval has exactly one legitimate role: a proxy for actions not yet
+    tried.** While a node still has unexpanded actions, its own estimate stands in
+    for what those might yield, and taking part in the max is epistemically sound.
+    Once the legal set is fully expanded there is nothing left for it to
+    represent, and a fully expanded node is worth ``max(children)`` alone.
+
+    Letting own-eval floor a fully expanded node is a **stale prior outranking a
+    proof** — the same defect family as chess's FINALE bug, which was proven
+    evidence mishandled at action *selection*; this is the same thing at value
+    *aggregation* (`FINDINGS.md` F-13). With a trained evaluator it is worse than
+    untidy: ``root_q`` could never report a position as worse than the net already
+    believed, so the net's belief would floor its own MSE target — self-referential
+    optimism aimed at exactly the half of the blend the currency ruling exists to
+    keep from fighting the other half.
+
+    **Proofs propagate.** A terminal's z is a proof; a fully expanded node whose
+    children are all proven is itself proven at ``max(children)``. That is the
+    single-agent MCTS-Solver, in a max tree, in a paragraph.
+    """
+    if tree.terminal[node]:
+        tree.proven[node] = True
+        return
+    children = tree.children[node]
+    if children is None:  # opened for nothing, or not yet opened
+        tree.value[node] = tree.own_eval[node]
+        tree.proven[node] = False
+        return
+
+    best = -np.inf
+    unexpanded = False
+    all_proven = True
+    for child in children:
+        index = int(child)
+        if index == -1:
+            unexpanded = True
+            all_proven = False
+            continue
+        best = max(best, float(tree.value[index]))
+        if not tree.proven[index]:
+            all_proven = False
+
+    if unexpanded:
+        best = max(best, float(tree.own_eval[node]))
+    if best == -np.inf:
+        best = float(tree.own_eval[node])
+
+    tree.value[node] = best
+    tree.proven[node] = bool(all_proven and len(children) > 0)
+
+
 def _backup(tree: _Tree, node: int, value: float) -> None:
-    """To the root: visits increment, **values take the max**, nothing negates."""
+    """To the root: visits increment, values **recompute**, nothing negates.
+
+    The leaf's value is set from ``value``; every ancestor is recomputed rather
+    than max-accumulated, because "fully expanded" is a property that changes as
+    the tree grows and a running max cannot un-floor itself once it has taken an
+    own-eval it should no longer be holding.
+    """
+    if not tree.terminal[node]:
+        tree.own_eval[node] = value
+    tree.value[node] = value if tree.terminal[node] else max(value, float(tree.value[node]))
+    _recompute(tree, node)
+
     current = node
     while current != -1:
         tree.visits[current] += 1
-        if value > tree.value[current]:
-            tree.value[current] = value
         parent = int(tree.parent[current])
         if parent != -1:
             slot = int(tree.from_slot[current])
             tree.child_visits[parent][slot] += 1  # type: ignore[index]
-            if value > tree.child_values[parent][slot]:  # type: ignore[index]
-                tree.child_values[parent][slot] = value  # type: ignore[index]
+            _recompute(tree, parent)
+            tree.child_values[parent][slot] = tree.value[current]  # type: ignore[index]
         current = parent
 
 
@@ -271,6 +342,7 @@ def _simulate(
     stats.evaluations += 1
     logits = _priors_for(raw, root_actions, cfg).astype(np.float64)
     tree.open(root, root_actions, logits.astype(np.float32))
+    tree.own_eval[root] = root_value
     tree.value[root] = root_value
 
     gumbel = (

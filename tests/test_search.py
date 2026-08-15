@@ -43,42 +43,56 @@ PROBLEM = Problem(
 # ---------------------------------------------------------------------------
 
 
+def _wire(tree, parent, slot, expr):
+    """Add a child AND wire it into its parent's slot.
+
+    The pre-F-13 fixture added children without wiring them, which the
+    max-accumulate backup did not notice because it never looked at
+    `children`. Recompute does look, so the fixture now builds the tree it
+    always claimed to.
+    """
+    child = tree.add(expr, parent, slot)
+    tree.children[parent][slot] = child
+    return child
+
+
 def test_backup_is_max_and_never_negates() -> None:
     """A hand-computed three-level tree with **both** leaf kinds in it.
 
-    Layout (values are what each leaf backs up):
-
-        root
-        ├── A          terminal-solved leaf        +1.0
-        └── B          value-estimated leaf        −0.5
+        root  (own-eval -1.0, fully expanded)
+        ├── A          terminal-solved leaf        +1.0   proven
+        └── B          own-eval -0.5, fully expanded
             ├── B1     value-estimated leaf        +0.25
-            └── B2     terminal (too large) leaf   −1.0
+            └── B2     terminal (too large) leaf   -1.0   proven
 
-    Two distinct mistakes a blind port makes, and this catches both:
+    Three distinct mistakes a blind port makes, and this catches all three:
 
-    * **negation per ply** would make root = −1 × max(children) — the sign of
-      the whole tree flips, and the search prefers its worst line.
-    * **mean backup** would make root = mean(+1, −0.5, +0.25, −1) = −0.0625
-      instead of +1.0 — quietly pessimistic, averaging a winning line against
-      siblings we would never choose.
+    * **negation per ply** would make root = -1 x max(children).
+    * **mean backup** would make root = mean(+1, -0.5, +0.25, -1) = -0.0625.
+    * **own-eval flooring** would let a fully expanded node keep its own
+      estimate in the max — the stale-prior-over-proof defect (F-13).
 
-    Expected, by hand: B1 = +0.25, B2 = −1.0, B = max(−0.5, +0.25, −1.0) = +0.25,
-    root = max(root's own, +1.0, +0.25) = +1.0. Visits count every backup that
-    passed through a node.
+    By hand under the ruled semantics: B is fully expanded, so its own -0.5 does
+    NOT participate and B = max(+0.25, -1.0) = +0.25. root is fully expanded, so
+    its own -1.0 does not participate either, and root = max(+1.0, +0.25) = +1.0.
     """
     priors = np.zeros(2, dtype=np.float32)
     tree = _Tree(8)
     root = tree.add(PROBLEM.expr, -1, -1)
     tree.open(root, [(0, 0), (0, 1)], priors)
-    tree.value[root] = -1.0
-    a = tree.add(PROBLEM.expr, root, 0)
-    b = tree.add(PROBLEM.expr, root, 1)
+    tree.own_eval[root] = -1.0
+    a = _wire(tree, root, 0, PROBLEM.expr)
+    b = _wire(tree, root, 1, PROBLEM.expr)
     tree.open(b, [(0, 0), (0, 1)], priors)
-    b1 = tree.add(PROBLEM.expr, b, 0)
-    b2 = tree.add(PROBLEM.expr, b, 1)
+    b1 = _wire(tree, b, 0, PROBLEM.expr)
+    b2 = _wire(tree, b, 1, PROBLEM.expr)
+
+    tree.terminal[a] = True
+    tree.terminal[b2] = True
+    tree.value[a] = 1.0
+    tree.value[b2] = -1.0
 
     _backup(tree, a, 1.0)  # terminal-solved
-    _backup(tree, b, -0.5)  # value-estimated
     _backup(tree, b1, 0.25)  # value-estimated
     _backup(tree, b2, -1.0)  # terminal, too large
 
@@ -87,27 +101,85 @@ def test_backup_is_max_and_never_negates() -> None:
     assert tree.value[b] == pytest.approx(0.25), "B must be the max under B, not the mean"
     assert tree.value[root] == pytest.approx(1.0), "root must be the max, and unnegated"
 
-    assert tree.visits[a] == 1
-    assert tree.visits[b1] == 1 and tree.visits[b2] == 1
-    assert tree.visits[b] == 3, "B is on the path of its own backup plus both children"
-    assert tree.visits[root] == 4
-
     # The negation a blind port would introduce would have produced this:
     assert tree.value[root] != pytest.approx(-1.0)
     # ...and the mean a different blind port would have produced, this:
     assert tree.value[root] != pytest.approx(np.mean([1.0, -0.5, 0.25, -1.0]))
 
 
-def test_backup_never_lowers_a_value() -> None:
-    """Max backup is monotone: a later worse line cannot demote an earlier good one."""
+def test_own_eval_participates_only_while_actions_remain() -> None:
+    """**The ruled rule, both polarities, in one tree.**
+
+    Own-eval is a proxy for what UNTRIED actions might yield. While one exists it
+    belongs in the max; once the legal set is fully expanded it represents
+    nothing and must drop out. Here own-eval is deliberately optimistic (+0.9)
+    against a single child worth -1.0.
+    """
+    priors = np.zeros(2, dtype=np.float32)
+    tree = _Tree(8)
+    root = tree.add(PROBLEM.expr, -1, -1)
+    tree.open(root, [(0, 0), (0, 1)], priors)
+    tree.own_eval[root] = 0.9
+
+    first = _wire(tree, root, 0, PROBLEM.expr)
+    tree.terminal[first] = True
+    tree.value[first] = -1.0
+    _backup(tree, first, -1.0)
+    # Polarity one: slot 1 is still untried, so the optimistic prior stands in.
+    assert tree.value[root] == pytest.approx(0.9), "own-eval must hold while an action is untried"
+
+    second = _wire(tree, root, 1, PROBLEM.expr)
+    tree.terminal[second] = True
+    tree.value[second] = -1.0
+    _backup(tree, second, -1.0)
+    # Polarity two: fully expanded, so the prior has nothing left to represent.
+    assert tree.value[root] == pytest.approx(-1.0), (
+        "a fully expanded node kept its own estimate — stale prior over proof (F-13)"
+    )
+
+
+def test_a_proof_may_lower_a_node_below_its_own_estimate() -> None:
+    """Replaces the old monotonicity test, whose premise was the defect.
+
+    The pre-F-13 test asserted a later worse line could never demote an earlier
+    value. That monotonicity was a CONSEQUENCE of max-accumulating into a floor
+    the node could not escape. Under the ruled semantics a proof is allowed to
+    lower a node, and must be — otherwise a trained net's optimism could never be
+    contradicted by evidence.
+    """
+    priors = np.zeros(1, dtype=np.float32)
     tree = _Tree(4)
     root = tree.add(PROBLEM.expr, -1, -1)
-    tree.open(root, [(0, 0)], np.zeros(1, dtype=np.float32))
-    child = tree.add(PROBLEM.expr, root, 0)
-    _backup(tree, child, 1.0)
+    tree.open(root, [(0, 0)], priors)
+    tree.own_eval[root] = 0.8
+    child = _wire(tree, root, 0, PROBLEM.expr)
+    tree.terminal[child] = True
+    tree.value[child] = -1.0
     _backup(tree, child, -1.0)
-    assert tree.value[root] == pytest.approx(1.0)
-    assert tree.visits[root] == 2
+    assert tree.value[root] == pytest.approx(-1.0)
+    assert tree.visits[root] == 1
+
+
+def test_proofs_propagate_to_a_fully_expanded_parent() -> None:
+    """A terminal's z is a proof; a fully expanded node of proven children is proven."""
+    priors = np.zeros(2, dtype=np.float32)
+    tree = _Tree(8)
+    root = tree.add(PROBLEM.expr, -1, -1)
+    tree.open(root, [(0, 0), (0, 1)], priors)
+    tree.own_eval[root] = 0.0
+
+    a = _wire(tree, root, 0, PROBLEM.expr)
+    tree.terminal[a] = True
+    tree.value[a] = 0.0
+    _backup(tree, a, 0.0)
+    assert not tree.proven[root], "one proven child of two is not a proof"
+
+    b = _wire(tree, root, 1, PROBLEM.expr)
+    tree.terminal[b] = True
+    tree.value[b] = -1.0
+    _backup(tree, b, -1.0)
+    assert tree.proven[root], "every child proven and fully expanded — the node is proven"
+    assert tree.value[root] == pytest.approx(0.0), "proven at max(children)"
 
 
 # ---------------------------------------------------------------------------

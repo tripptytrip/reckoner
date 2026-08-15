@@ -199,21 +199,6 @@ def test_an_absent_value_refuses_to_be_read_as_a_zero() -> None:
 # win-versus-loss; it was at-par-versus-under-par.
 
 
-def _pessimistic(cfg: Config):
-    """Flat priors, value -1.0.
-
-    `root_value` is `max(the root's own evaluation, best line)`, so a NEUTRAL
-    evaluator floors it at 0.0 and an over-par line can never show through. The
-    fixture is about the terminal scale, so the root's prior must not mask it.
-    """
-    width = 7 * cfg.model.max_sites
-
-    def evaluate(leaves):
-        return [(np.zeros(width, dtype=np.float32), -1.0) for _ in leaves]
-
-    return evaluate
-
-
 @pytest.mark.skipif(not (SUITES / "solve_in_1.jsonl").exists(), reason="suites not generated")
 def test_root_q_is_plus_one_when_the_solve_beats_par() -> None:
     """Under par pays +1. Fixture par, since nothing beats real BFS par."""
@@ -239,20 +224,32 @@ def test_root_q_is_zero_when_the_solve_only_matches_par() -> None:
 
 @pytest.mark.skipif(not (SUITES / "solve_in_1.jsonl").exists(), reason="suites not generated")
 def test_root_q_is_minus_one_when_the_line_runs_over_par() -> None:
-    """Over par pays -1, identically to the cap (plan chunk 3)."""
+    """Over par pays -1 — and with a NEUTRAL evaluator, so it comes from proofs.
+
+    The sharper pin. Before the own-eval ruling this fixture needed a pessimistic
+    evaluator, because `root_value` was `max(own evaluation, best line)` and a
+    neutral 0.0 floored it. Now own-eval drops out of a fully expanded node, so
+    the -1 must EMERGE FROM PROOFS ALONE with no cooperation from the evaluator.
+
+    That makes this the regression test for the rule itself: if own-eval ever
+    leaks back into a fully expanded node's max, this goes green-to-red.
+    """
     row = read_suite(SUITES / "solve_in_1.jsonl")[0]
     problem = suite_problem(row)
     result = search(
         problem,
         problem.expr,
-        _pessimistic(CFG),
+        uniform_stub(CFG),  # neutral: value 0.0 everywhere
         CFG,
         random.Random(0),
         sims=16,
-        m=5,
+        m=16,  # every legal action considered, so the root can be fully expanded
         steps_taken=problem.par,  # the episode already spent its whole budget
     )
-    assert result.root_value == pytest.approx(-1.0)
+    assert result.root_value == pytest.approx(-1.0), (
+        f"root_q is {result.root_value} with every line proven over par and a "
+        "neutral evaluator — own-eval is flooring a fully expanded node"
+    )
 
 
 @pytest.mark.skipif(not (SUITES / "solve_in_1.jsonl").exists(), reason="suites not generated")
