@@ -437,3 +437,38 @@ exist, and a margin nobody has is worse than a margin nobody claimed.
 | 4.5–9 GiB | expected: bf16 at the tensor bound, or fp32 at reachable widths |
 | 9–16 GiB | **premise change** — fp32 at or near the tensor bound. Check dtype and batch width before checking for leaks |
 | > 16 GiB | alarm: exceeds what any declared configuration needs |
+
+---
+
+# Amendment P0-A5 — 2026-08-15, label disambiguation
+
+**Not a response to a measurement.** This fixes a naming collision I created.
+
+`A1`–`A4` exist in **two documents with unrelated referents**:
+
+| label | in `BRIEF-chunk8.md` | in this file |
+|---|---|---|
+| A1 | supervision contamination census | the null / width-span / VRAM-ceiling amendment |
+| A2 | this run: CPU; ROCm swap is chunk 9 Part 0 | the comparator-probe correction |
+| A3 | `batch_leaves` → `batch_searches` | tier-2 recalibration |
+| A4 | **extension bound: 5,000 steps, one extension to 10,000** | **A1.3's arithmetic corrected** |
+
+So `grep A4` returns two unrelated rulings, and a reference to "A4" is ambiguous
+without naming its document. That is **same-name-different-referent** — the dedup
+key hazard inverted, and just as fatal to a grep. One spelling per referent
+(AGENTS.md §6) covers amendment labels, and it did not occur to me that it did
+until the collision was pointed out.
+
+**Convention, in force from here:** amendments to a PREREG are labelled
+`P0-A<n>` — document prefix, then number. The four already committed above are to
+be read as **`P0-A1` … `P0-A4`**, and this table is the mapping. They are **not
+renamed in place**: amendments append and are never edited, and that rule does not
+get suspended for the convenience of the person who broke the naming.
+
+**Which amendment said what**, since I also mis-cited one in a report: the
+resource envelope was first declared in **`P0-A1.3`** and its arithmetic was
+corrected in **`P0-A4`**. A report of mine referred to "A4" for the
+resource-arithmetic lesson; within this file that was right, and globally it was
+ambiguous, because `A4` also names the brief's extension bound. Both halves of the
+correction are recorded: the reference was under-qualified, and the label was
+mine to have qualified.

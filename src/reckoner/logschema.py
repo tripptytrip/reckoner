@@ -156,8 +156,15 @@ ITERATION_FIELDS: tuple[Field, ...] = (
         "steps_minus_par_histogram",
         dict,
         "outcome",
-        "(steps - par) -> count, over solved episodes. Registered at chunk-8 "
-        "close: the median alone says at least half drew; this is the loss tail.",
+        "(steps - par) -> count. **Population: SOLVED episodes only.** Registered "
+        "at chunk-8 close — the median alone says at least half drew; this is the "
+        "loss tail. Capped and stuck episodes do NOT appear here, in any bin: an "
+        "unsolved episode has no steps-to-solve, and filing it under '6+' would "
+        "pool two different diseases into one instrument. Draw-inflation (the 0 "
+        "bin rising) and timeout-composition (episodes_capped rising) have "
+        "different causes and different fixes, so they are counted separately and "
+        "the totals are cross-checked: sum(bins) == episodes_solved, and "
+        "episodes_solved + episodes_capped + episodes_stuck == episodes.",
     ),
     # --- diagnostic -------------------------------------------------------
     Field(
@@ -192,6 +199,29 @@ ITERATION_FIELDS: tuple[Field, ...] = (
     # --- counters ---------------------------------------------------------
     Field("episodes", int, "counter", "Episodes completed this iteration."),
     Field(
+        "episodes_solved",
+        int,
+        "counter",
+        "Episodes the CHECKER accepted. The population of "
+        "steps_minus_par_histogram, and asserted equal to its total.",
+    ),
+    Field(
+        "episodes_capped",
+        int,
+        "counter",
+        "Episodes that hit episode.step_cap unsolved. Distinct from over-par "
+        "solves: both give z = -1, and pooling them hides which is happening.",
+    ),
+    Field(
+        "episodes_stuck",
+        int,
+        "counter",
+        "Episodes that ran out of legal actions before solving. An EPISODE "
+        "outcome — not to be confused with `terminal_no_actions`, which counts "
+        "no-action nodes encountered INSIDE a search tree and does not end an "
+        "episode.",
+    ),
+    Field(
         "search_nodes_total",
         int,
         "counter",
@@ -203,7 +233,13 @@ ITERATION_FIELDS: tuple[Field, ...] = (
         "counter",
         "Summed SearchStats.evaluations; equals nodes when every node is evaluated once.",
     ),
-    Field("terminal_no_actions", int, "counter", "States with no legal action."),
+    Field(
+        "terminal_no_actions",
+        int,
+        "counter",
+        "No-action nodes met inside search trees. Search-internal; an episode "
+        "ending with no legal move is `episodes_stuck`, a different column.",
+    ),
     # --- health -----------------------------------------------------------
     Field(
         "state_too_large",
@@ -305,6 +341,7 @@ def validate_row(row: dict[str, Any], fields: tuple[Field, ...] = ITERATION_FIEL
 
     _check_pinned_bins(row)
     _check_exact_par_cannot_be_beaten(row)
+    _check_splits_sum(row)
 
 
 def _check_pinned_bins(row: dict[str, Any]) -> None:
@@ -320,6 +357,35 @@ def _check_pinned_bins(row: dict[str, Any]) -> None:
             f"missing {missing}, unexpected {extra}. Every bin is present in every row "
             "including the zeros, so rows are directly comparable and a missing bin is "
             "never read as a zero that was measured."
+        )
+
+
+def _check_splits_sum(row: dict[str, Any]) -> None:
+    """Every episode lands in exactly one outcome, and the histogram's population
+    is named rather than inferred.
+
+    This is the brief's "splits sum" plumbing expectation, enforced by the schema
+    instead of by a reviewer reading a row. A split that does not sum is either a
+    lost episode or a double-counted one, and both look like a plausible number.
+    """
+    needed = ("episodes", "episodes_solved", "episodes_capped", "episodes_stuck")
+    if any(k not in row for k in needed):
+        return
+    total = row["episodes_solved"] + row["episodes_capped"] + row["episodes_stuck"]
+    if total != row["episodes"]:
+        raise SchemaError(
+            f"outcomes do not sum: solved {row['episodes_solved']} + capped "
+            f"{row['episodes_capped']} + stuck {row['episodes_stuck']} = {total}, "
+            f"but episodes = {row['episodes']}. An episode ends in exactly one "
+            "outcome; a split that does not sum is a lost or double-counted episode."
+        )
+    hist = row.get("steps_minus_par_histogram")
+    if hist is not None and sum(hist.values()) != row["episodes_solved"]:
+        raise SchemaError(
+            f"steps_minus_par_histogram totals {sum(hist.values())} but "
+            f"episodes_solved = {row['episodes_solved']}. The histogram's "
+            "population is SOLVED episodes only — capped and stuck episodes have "
+            "no steps-to-solve and must not be filed in any bin."
         )
 
 

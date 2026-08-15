@@ -47,6 +47,9 @@ def good_row(**overrides) -> dict:
         "entropy_target_step1_start": 0.8,
         "entropy_target_step1_reached": 0.7,
         "episodes": 6,
+        "episodes_solved": 5,
+        "episodes_capped": 1,
+        "episodes_stuck": 0,
         "search_nodes_total": 96,
         "search_evaluations_total": 96,
         "terminal_no_actions": 0,
@@ -315,3 +318,38 @@ def test_a_non_exact_source_may_legitimately_beat_its_par() -> None:
     row = good_row()
     row["z_by_par_source"]["pool"] = {"+1": 4, "0": 2, "-1": 1}
     validate_row(row)
+
+
+# ---------------------------------------------------------------------------
+# Splits sum, and the histogram's population is named rather than inferred
+# ---------------------------------------------------------------------------
+
+
+def test_outcomes_sum_to_episodes() -> None:
+    validate_row(good_row())
+
+
+def test_a_split_that_does_not_sum_is_refused() -> None:
+    """A lost or double-counted episode looks like a plausible number otherwise."""
+    with pytest.raises(SchemaError, match="outcomes do not sum"):
+        validate_row(good_row(episodes_capped=2))
+
+
+def test_the_histogram_population_is_solved_episodes_only() -> None:
+    """Capped episodes must not be filed in any bin.
+
+    Draw-inflation (the 0 bin rising) and timeout-composition (episodes_capped
+    rising) are different diseases with different fixes. A histogram that pools
+    them is two instruments sharing a name.
+    """
+    row = good_row()
+    row["steps_minus_par_histogram"]["6+"] = 1  # the capped episode, mis-filed
+    with pytest.raises(SchemaError, match="population is SOLVED episodes only"):
+        validate_row(row)
+
+
+def test_the_histogram_must_account_for_every_solved_episode() -> None:
+    row = good_row()
+    row["steps_minus_par_histogram"]["0"] = 4  # one solved episode unaccounted
+    with pytest.raises(SchemaError, match="episodes_solved"):
+        validate_row(row)
