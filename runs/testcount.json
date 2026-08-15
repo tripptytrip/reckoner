@@ -1,14 +1,14 @@
 {
-  "collected": 819,
+  "collected": 13,
   "error": 0,
   "exitstatus": 0,
   "failed": 0,
-  "passed": 819,
+  "passed": 13,
   "selected": [
-    "tests"
+    "tests/test_midstrata.py"
   ],
   "skipped": 0,
-  "whole_suite": true,
+  "whole_suite": false,
   "xfailed": 0,
   "xpassed": 0
 }

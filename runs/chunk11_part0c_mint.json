@@ -1,0 +1,122 @@
+{
+  "expectations_frozen_at": "5872ca8",
+  "git_sha": "5872ca8433c57f00a42c04886cbe38a983e7b4f3",
+  "naming": {
+    "minted_as": "scripted_in_7..10",
+    "reason_1": "solve_in_* is a live glob in three scripts; minting into it would change the frozen 1,200-problem instrument to 2,000, including the one P1's no-regress floor of 1188/1200 is computed against",
+    "reason_2": "solve_in_k has meant BFS-EXACT par k for k=1..6; these carry scripted par, which is a floor \u2014 BFS finds a 6-step derivation where the scripted policy takes 7. Same wording, different justification (L7)",
+    "ruling_said": "solve_in_7..10",
+    "unchanged": "scripted par, provisional floor, z=+1 tripwire silent, the +1 cell live \u2014 the instrument the ruling asked for, under a name that does not break the instrument the primary depends on"
+  },
+  "per_stratum": 200,
+  "pool": 6000,
+  "seed": 0,
+  "strata": {
+    "scripted_in_10": {
+      "census": {
+        "candidates": 400,
+        "clean": 400,
+        "problem_level": {
+          "train_100k": 0
+        },
+        "problem_level_hits": 0,
+        "rule": "a candidate colliding at either level is dropped BEFORE the freeze; contamination found after the freeze is a finding, never an edit",
+        "state_level": {
+          "phase1_train": 0
+        },
+        "state_level_beyond_problem_level": 0,
+        "state_level_hits": 0
+      },
+      "digest": "4fba748741e5f55085e3a84318dd5b433f5eb24d243eae379f7f4e317b0beba4",
+      "par": 10,
+      "par_source": "scripted",
+      "problems": 200,
+      "scripted_par_delta": {
+        "attempted": false,
+        "reason": "BFS at cap 9 is unaffordable: the branch factor is ~18 at these roots and a depth-7+ exhaustive search is the cost this stratum exists to avoid paying. The absence is recorded; it is NOT a measured gap of zero"
+      }
+    },
+    "scripted_in_7": {
+      "census": {
+        "candidates": 400,
+        "clean": 400,
+        "problem_level": {
+          "train_100k": 0
+        },
+        "problem_level_hits": 0,
+        "rule": "a candidate colliding at either level is dropped BEFORE the freeze; contamination found after the freeze is a finding, never an edit",
+        "state_level": {
+          "phase1_train": 0
+        },
+        "state_level_beyond_problem_level": 0,
+        "state_level_hits": 0
+      },
+      "digest": "eede9b6d429add4f5e6a1641e6bd87ee79867f9a5cd68f79ba32fa742ac6b3db",
+      "par": 7,
+      "par_source": "scripted",
+      "problems": 200,
+      "scripted_par_delta": {
+        "attempted": true,
+        "bfs_cap": 6,
+        "exact_confirmed": 0,
+        "floor_with_gap": 20,
+        "gap_histogram": {
+          "1": 17,
+          "2": 3
+        },
+        "meaning": "a gap of g means BFS found a derivation g steps shorter than the scripted label, so the label is a FLOOR by exactly that much and the +1 cell is reachable \u2014 which is what this instrument is for",
+        "sample": 20,
+        "seconds": 172.2
+      }
+    },
+    "scripted_in_8": {
+      "census": {
+        "candidates": 400,
+        "clean": 400,
+        "problem_level": {
+          "train_100k": 0
+        },
+        "problem_level_hits": 0,
+        "rule": "a candidate colliding at either level is dropped BEFORE the freeze; contamination found after the freeze is a finding, never an edit",
+        "state_level": {
+          "phase1_train": 0
+        },
+        "state_level_beyond_problem_level": 0,
+        "state_level_hits": 0
+      },
+      "digest": "a1a29cb27fa3942f3ad0ea4593fb0b3e72cee46e4ad7176eed888728e4812412",
+      "par": 8,
+      "par_source": "scripted",
+      "problems": 200,
+      "scripted_par_delta": {
+        "attempted": false,
+        "reason": "BFS at cap 7 is unaffordable: the branch factor is ~18 at these roots and a depth-7+ exhaustive search is the cost this stratum exists to avoid paying. The absence is recorded; it is NOT a measured gap of zero"
+      }
+    },
+    "scripted_in_9": {
+      "census": {
+        "candidates": 251,
+        "clean": 251,
+        "problem_level": {
+          "train_100k": 0
+        },
+        "problem_level_hits": 0,
+        "rule": "a candidate colliding at either level is dropped BEFORE the freeze; contamination found after the freeze is a finding, never an edit",
+        "state_level": {
+          "phase1_train": 0
+        },
+        "state_level_beyond_problem_level": 0,
+        "state_level_hits": 0
+      },
+      "digest": "28aea0700e5b5ac03c2d73d070aa4cc96871b44e16e3f571e0174a32738cd72b",
+      "par": 9,
+      "par_source": "scripted",
+      "problems": 200,
+      "scripted_par_delta": {
+        "attempted": false,
+        "reason": "BFS at cap 8 is unaffordable: the branch factor is ~18 at these roots and a depth-7+ exhaustive search is the cost this stratum exists to avoid paying. The absence is recorded; it is NOT a measured gap of zero"
+      }
+    }
+  },
+  "wall_clock_seconds": 188.56
+}

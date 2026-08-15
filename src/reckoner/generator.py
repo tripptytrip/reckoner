@@ -366,3 +366,74 @@ def variable_tokens(expr: Expr) -> tuple[int, ...]:
         elif isinstance(node, Op):
             stack.extend(node.children)
     return tuple(sorted(seen))
+
+
+# ---------------------------------------------------------------------------
+# Mid-strata templates — SCRIPTED par, and the label is a floor
+# ---------------------------------------------------------------------------
+#
+# `label()` above emits only within the BFS-exact band and says so: "Scripted par
+# is for the middle strata a later round adds." This is that round.
+#
+# Every template here builds its equation FROM a chosen integer solution `k`, so
+# the final `div_both_sides` divides exactly and the scripted policy can finish.
+# The alternative — draw coefficients freely and discard what does not divide —
+# throws away most candidates and biases the survivors toward small coefficients.
+
+
+def t_solve_mid_two_terms(rng: random.Random) -> Problem:
+    """``a·x + b + c = d·x + (p × q)``. Scripted par ~7."""
+    a = _nz(rng)
+    d = _nz(rng, exclude=(a,))
+    k, b, p, q = _n(rng, -9, 10), _n(rng), _nz(rng), _n(rng)
+    c = p * q - (a - d) * k - b
+    return _solve(eq(add(mul(num(a), X), num(b), num(c)), add(mul(num(d), X), mul(num(p), num(q)))))
+
+
+def t_solve_mid_three_terms(rng: random.Random) -> Problem:
+    """``a·x + b·x + (p × q) = d·x + e + f``. Scripted par ~8."""
+    a, b = _nz(rng), _nz(rng)
+    d = _nz(rng, exclude=(a + b,))
+    k, p, q, e = _n(rng, -9, 10), _nz(rng), _n(rng), _n(rng)
+    f = (a + b - d) * k + p * q - e
+    return _solve(
+        eq(
+            add(mul(num(a), X), mul(num(b), X), mul(num(p), num(q))),
+            add(mul(num(d), X), num(e), num(f)),
+        )
+    )
+
+
+def t_solve_mid_four_terms(rng: random.Random) -> Problem:
+    """``a·x + b·x + (p × q) + g = d·x + e·x + (u × v)``. Scripted par ~9-10."""
+    a, b, d, e = _nz(rng), _nz(rng), _nz(rng), _nz(rng)
+    if a + b == d + e:
+        e = _nz(rng, exclude=(e, d + e - a - b))
+    k, p, q, u, v = _n(rng, -9, 10), _nz(rng), _n(rng), _nz(rng), _n(rng)
+    g = (d + e - a - b) * k + u * v - p * q
+    return _solve(
+        eq(
+            add(mul(num(a), X), mul(num(b), X), mul(num(p), num(q)), num(g)),
+            add(mul(num(d), X), mul(num(e), X), mul(num(u), num(v))),
+        )
+    )
+
+
+#: The mid-strata set, kept SEPARATE from ``TEMPLATES``. A generation plan that
+#: drew from one dict would silently mix BFS-labelled and scripted-labelled
+#: candidates, and the two carry different epistemic status — the `z = +1`
+#: tripwire fires against one and not the other.
+MID_TEMPLATES: dict[str, Template] = {
+    "solve_mid_two_terms": t_solve_mid_two_terms,  # ~7
+    "solve_mid_three_terms": t_solve_mid_three_terms,  # ~8
+    "solve_mid_four_terms": t_solve_mid_four_terms,  # ~9-10
+}
+
+
+def emit_mid(template: str, rng: random.Random) -> Problem:
+    return check_emission_and_return(MID_TEMPLATES[template](rng))
+
+
+def check_emission_and_return(problem: Problem) -> Problem:
+    check_emission(problem)
+    return problem
