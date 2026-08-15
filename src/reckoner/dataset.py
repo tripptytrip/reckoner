@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -81,6 +82,31 @@ def git_sha(repo: Path) -> str:
         ).stdout.strip()
     except (subprocess.CalledProcessError, FileNotFoundError):
         return "unknown"
+
+
+def sample_indices(total: int, k: int, seed: int) -> list[int]:
+    """**The** subsampler for any stratified artifact in this project.
+
+    Every dataset here is laid out **stratum by stratum**, so ``range(k)`` is not
+    a small sample of the set — it is the whole of the shallowest stratum and
+    none of the rest. That has now caused three separate defects: F-03's pilot
+    measured a distribution the real run would not see; ``build_phase1_data.py``
+    shipped a ``--limit`` that took a prefix; and F-10's tie-break diagnostic
+    sampled ``range(256)`` and got 256 depth-1 states with one legal action each,
+    making every statistic degenerate.
+
+    Documentation warns; helpers prevent. The first two were fixed by writing a
+    warning, and the third happened anyway, to someone who had read it. So this
+    exists and **raw prefix-slicing of a dataset is a review flag** — if a caller
+    wants "some rows", it goes through here.
+
+    Returns sorted indices so memmap reads stay sequential. ``k >= total``
+    returns everything, which is the honest answer to "sample more than exists"
+    rather than an error nobody wants at a call site.
+    """
+    if k >= total:
+        return list(range(total))
+    return sorted(random.Random(seed).sample(range(total), k))
 
 
 class RecordWouldBeUntracked(RuntimeError):
@@ -162,6 +188,11 @@ class Dataset:
     target: np.ndarray
     par: np.ndarray
     depth: np.ndarray
+
+    def sample(self, k: int, seed: int) -> list[int]:
+        """Indices sampled across the whole set. Never a prefix — see
+        :func:`sample_indices`."""
+        return sample_indices(len(self), k, seed)
 
     def __len__(self) -> int:
         return int(self.meta["n"])

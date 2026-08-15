@@ -495,9 +495,18 @@ the achieved value is 1.0.
 > | 391 rows are duplicate states, so it is one observation | count distinct `(identity_key, goal)` | **rejected** — 391 rows, **391 distinct states** |
 >
 > So the concentration is not a tie-break artifact and not over-counted
-> evidence. It stands **open and measured**: 381 of 391 distinct 9-action states
+> evidence. **Tag: STANDING-UNEXPLAINED** — not superseded (the measurement holds
+> as taken) and not shown to be an artifact (four candidate artifacts were tested
+> and rejected). It stands open and measured: 381 of 391 distinct 9-action states
 > put the BFS target at rank exactly 2 under a randomly initialised network. No
-> mechanism is on offer. It does not affect the gate verdict — the floor and the
+> mechanism is on offer.
+>
+> The cheap test that would discriminate, named but **not run** so the tag stays
+> honest: re-measure the rank distribution across several init seeds. The
+> untrained arm is a *single* random draw (seed 0), so the concentration may be
+> one network's idiosyncratic interaction with site-position structure rather
+> than anything general. Persisting across seeds ⇒ structural; varying ⇒ one
+> draw. Until that is run, "standing-unexplained" is the whole claim. It does not affect the gate verdict — the floor and the
 > untrained 1.0000 settle that independently — but it is the second unexplained
 > regularity in this data (F-08's depth-2 zero is the first).
 >

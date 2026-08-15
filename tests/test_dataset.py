@@ -24,6 +24,7 @@ from reckoner.dataset import (
     problem_key,
     read_dataset,
     read_suite,
+    sample_indices,
     sha256_file,
     state_keys,
     suite_problem,
@@ -545,3 +546,53 @@ def test_write_record_skips_the_check_outside_a_repo(tmp_path: Path) -> None:
     out = tmp_path / "nested" / "record.json"
     write_record(out, {"ok": True}, repo=tmp_path)
     assert json.loads(out.read_text()) == {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# The blessed subsampler — one implementation, never a prefix
+# ---------------------------------------------------------------------------
+
+
+def test_sample_indices_is_not_a_prefix() -> None:
+    """The defect this exists to kill, asserted directly.
+
+    Three defects came from ``range(k)`` on a stratum-ordered artifact. A sample
+    that happens to be a prefix is the failure, so the test is not "it returns k
+    indices" — it is "it does not return the first k".
+    """
+    picked = sample_indices(10_000, 50, seed=0)
+    assert len(picked) == 50
+    assert picked != list(range(50)), "the sampler returned a prefix"
+    assert picked == sorted(picked), "indices must be sorted for sequential reads"
+    assert len(set(picked)) == 50, "sampling must be without replacement"
+    # It reaches the far end of the set, which a prefix never does.
+    assert max(picked) > 5_000
+
+
+def test_sample_indices_is_seed_stable_and_seed_sensitive() -> None:
+    """Both polarities: reproducible on a seed, different across seeds."""
+    assert sample_indices(1_000, 20, seed=7) == sample_indices(1_000, 20, seed=7)
+    assert sample_indices(1_000, 20, seed=7) != sample_indices(1_000, 20, seed=8)
+
+
+def test_sample_indices_returns_everything_when_asked_for_too_much() -> None:
+    assert sample_indices(5, 5, seed=0) == [0, 1, 2, 3, 4]
+    assert sample_indices(5, 99, seed=0) == [0, 1, 2, 3, 4]
+
+
+@needs_supervision
+def test_the_sampler_reaches_every_stratum() -> None:
+    """The property that matters: a sample of a stratum-ordered set is mixed.
+
+    ``phase1_train`` is laid out depth 1 first; a prefix of 2,000 rows is 2,000
+    depth-1-and-2 states. This asserts the blessed sampler sees all six depths,
+    which is the thing the three defects each failed to do.
+    """
+    meta = json.loads((DATA / "phase1_train" / "meta.json").read_text())
+    n = meta["n"]
+    depth = np.memmap(DATA / "phase1_train" / "depth.i32", dtype=np.int32, mode="r", shape=(n,))
+    picked = sample_indices(n, 2_000, seed=0)
+    assert {int(depth[i]) for i in picked} == {1, 2, 3, 4, 5, 6}
+    assert {int(depth[i]) for i in range(2_000)} != {1, 2, 3, 4, 5, 6}, (
+        "the prefix now spans all depths — this test's premise has changed"
+    )

@@ -33,6 +33,7 @@ import torch
 from torch import nn
 
 from reckoner.config import Config
+from reckoner.dataset import sample_indices
 from reckoner.episode import Problem, decode_state
 from reckoner.model import N_RULES, Reckoner, StateTooLarge, encode, policy_loss, steps_loss
 from reckoner.vocab import PAD
@@ -85,6 +86,11 @@ class SupervisionSet:
         self.steps_remaining = load("steps_remaining", (n,))
         self.depth = load("depth", (n,))
         self.goal = load("goal", (n,))
+
+    def sample(self, k: int, seed: int) -> list[int]:
+        """Indices sampled across the whole set. Never a prefix — the supervision
+        set is laid out stratum by stratum, so a prefix is a depth-1 pilot."""
+        return sample_indices(len(self), k, seed)
 
     def __len__(self) -> int:
         return int(self.meta["n"])

@@ -76,14 +76,10 @@ def build(source: Path, out: Path, workers: int, limit: int | None, seed: int = 
     records: a pilot that measures a distribution the real run will not see. A
     seeded sample across the whole set costs nothing and is representative.
     """
-    import random as _random
-
     from reckoner.dataset import read_dataset
 
     dataset = read_dataset(source)
-    indices = list(range(len(dataset)))
-    if limit is not None and limit < len(indices):
-        indices = sorted(_random.Random(seed).sample(indices, limit))
+    indices = dataset.sample(limit, seed) if limit is not None else list(range(len(dataset)))
     n = len(indices)
     work = [
         (

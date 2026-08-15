@@ -213,7 +213,16 @@ then run CPU-only forever. This has burned real time more than once.
   institutionalised this arithmetic for search budgets; it generalises to every
   metric this project will ever gate on. The null is a *run*, not an estimate:
   the uniform-prior stub at the same budget on the same problems.
-  *(countersigned-under-delegation)*
+  **Precedent under rider (c): a null computed with shared randomness is not a
+  null.** All harness randomness is a per-problem (and per-step) derived seed
+  fan-out, never one stream and never a constant re-seed. Measured: passing a
+  fresh `random.Random(0)` to every search made the root Gumbel draw a function
+  of the action *count*, so every 5-action problem chose the same slot — which
+  silently replaced "uniform-random action" with "always the first legal action",
+  a **stronger** null that made a discriminating gate read as vacuous
+  (`FINDINGS.md` F-11). Reproducibility belongs in the seed *schedule*, recorded;
+  seeding every draw identically is not reproducibility, it is a different
+  policy. *(countersigned-under-delegation)*
 - **A provenance field whose default is its strongest claim is not a provenance
   field — the most-trusted value must be the one that costs something to say.** *(countersigned-under-delegation)*
   "Fields carry their epistemic status" guards the *read* path; a default is a
@@ -271,6 +280,18 @@ then run CPU-only forever. This has burned real time more than once.
   Dashboards and analysis are pure readers with zero imports from training code.
 - **Determinism**: one seed in config fans out to all RNGs; library code takes
   explicit `rng`/`Generator` parameters, never global random state.
+- **One subsampler, and raw prefix-slicing of a dataset is a review flag.**
+  `dataset.sample_indices(total, k, seed)` — or `.sample(k, seed)` on a `Dataset`
+  or `SupervisionSet` — is the only way to take "some rows". Every artifact here
+  is laid out stratum by stratum, so `range(k)` is the whole of the shallowest
+  stratum and none of the rest. Three defects, not one: F-03's pilot measured a
+  distribution the real run would not see, `build_phase1_data.py` shipped a
+  prefix-taking `--limit`, and F-10's tie-break diagnostic sampled `range(256)`
+  and got 256 single-legal-action depth-1 states, degenerating every statistic.
+  The first two were fixed by writing a warning; the third happened anyway, to
+  someone who had read it. **Documentation warns, helpers prevent** — when a
+  hazard recurs after being documented, the fix is a mono-instance, not a
+  louder comment.
 - **Large data**: `numpy.memmap` binary layouts with a small `meta.json`
   sidecar, over JSON/pickle/HDF5. On this box memmap is a memory-pressure tool,
   not a convenience: multi-GB datasets must be mapped or streamed, never fully
