@@ -20,6 +20,7 @@ from reckoner.logschema import (
     STEPS_MINUS_PAR_BINS,
     Field,
     SchemaError,
+    alarm_census,
     append_row,
     describe,
     field_map,
@@ -386,9 +387,10 @@ def test_a_premise_zero_writes_and_alarms(tmp_path: Path) -> None:
     alarms = append_row(path, row)
 
     assert len(alarms) == 1
-    assert "episodes_stuck = 1" in alarms[0]
-    assert "premises that can break" in alarms[0]
-    assert "ROUND-02" in alarms[0], "the alarm must name candidate premises"
+    assert alarms[0]["field"] == "episodes_stuck"
+    assert alarms[0]["value"] == 1
+    assert alarms[0]["expected"] == 0
+    assert "ROUND-02" in alarms[0]["premises"], "the alarm must name candidate premises"
 
     written = read_rows(path)
     assert len(written) == 1, "the row must land — it is the evidence"
@@ -413,3 +415,38 @@ def test_only_a_premise_zero_may_name_premises() -> None:
 def test_an_unknown_zero_species_is_refused() -> None:
     with pytest.raises(SchemaError, match="zero_class must be"):
         Field("x", int, "counter", "doc", zero_class="probably")
+
+
+# ---------------------------------------------------------------------------
+# The alarm census — the last leg: fired at write, carried in the row, surfaced
+# at the run. Without this, an alarm written is an alarm stored.
+# ---------------------------------------------------------------------------
+
+
+def test_census_is_empty_when_nothing_fired(tmp_path: Path) -> None:
+    """`{}` is the expectation line a run report asserts against: alarms: 0."""
+    path = tmp_path / "iterations.jsonl"
+    append_row(path, good_row(iteration=0))
+    append_row(path, good_row(iteration=1))
+    assert alarm_census(read_rows(path)) == {}
+
+
+def test_census_counts_by_field_across_rows(tmp_path: Path) -> None:
+    path = tmp_path / "iterations.jsonl"
+    append_row(path, good_row(iteration=0))
+    for i in (1, 2):
+        row = good_row(iteration=i, episodes_solved=4, episodes_stuck=1)
+        row["steps_minus_par_histogram"] = dict.fromkeys(STEPS_MINUS_PAR_BINS, 0) | {"0": 4}
+        append_row(path, row)
+    assert alarm_census(read_rows(path)) == {"episodes_stuck": 2}
+
+
+def test_census_survives_a_round_trip_through_disk(tmp_path: Path) -> None:
+    """The census reads what landed, not what a writer returned in memory."""
+    path = tmp_path / "iterations.jsonl"
+    row = good_row(episodes_solved=4, episodes_stuck=1)
+    row["steps_minus_par_histogram"] = dict.fromkeys(STEPS_MINUS_PAR_BINS, 0) | {"0": 4}
+    returned = append_row(path, row)
+    from_disk = alarm_census(read_rows(path))
+    assert from_disk == {"episodes_stuck": 1}
+    assert len(returned) == 1

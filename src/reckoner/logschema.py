@@ -385,19 +385,52 @@ def validate_row(row: dict[str, Any], fields: tuple[Field, ...] = ITERATION_FIEL
     return _premise_zero_alarms(row, known)
 
 
-def _premise_zero_alarms(row: dict[str, Any], known: dict[str, Field]) -> list[str]:
-    """Premise-dependent zeros that came back nonzero — the row still ships."""
+def _premise_zero_alarms(row: dict[str, Any], known: dict[str, Field]) -> list[dict[str, Any]]:
+    """Premise-dependent zeros that came back nonzero — the row still ships.
+
+    **Structured, not prose.** An alarm the census has to parse out of a sentence
+    is an alarm the census can misattribute; the field name is a key, so counting
+    by field is exact rather than regex-shaped.
+    """
     alarms = []
     for name, spec in known.items():
         if spec.zero_class != "premise" or name not in row:
             continue
         if row[name]:
             alarms.append(
-                f"{name} = {row[name]}, expected 0. This zero holds only under "
-                f"premises that can break: {spec.zero_premises} The row is written "
-                "and flagged rather than refused — it is the evidence."
+                {
+                    "field": name,
+                    "value": row[name],
+                    "expected": 0,
+                    "premises": spec.zero_premises,
+                    "message": (
+                        f"{name} = {row[name]}, expected 0. This zero holds only under "
+                        "premises that can break. The row is written and flagged rather "
+                        "than refused — it is the evidence."
+                    ),
+                }
             )
     return alarms
+
+
+def alarm_census(rows: list[dict[str, Any]]) -> dict[str, int]:
+    """Alarms by field across rows. The last leg of the alarm's journey.
+
+    Fired at write, carried in the row, **surfaced at the run**. Without this an
+    alarm written is an alarm stored: the first nonzero would be found by whoever
+    happened to grep the JSONL, which is not a level anyone acts at. Rider (b),
+    one more layer up — a signal nobody aggregates is a comment that happens to
+    be recorded.
+
+    Returns ``{}`` when nothing fired, and ``{}`` is the expectation line a run
+    report asserts against: ``alarms: 0``.
+    """
+    census: dict[str, int] = {}
+    for row in rows:
+        for alarm in row.get("alarms", []):
+            field_name = alarm["field"] if isinstance(alarm, dict) else str(alarm)
+            census[field_name] = census.get(field_name, 0) + 1
+    return census
 
 
 def _check_pinned_bins(row: dict[str, Any]) -> None:
