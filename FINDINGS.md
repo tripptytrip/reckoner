@@ -1033,3 +1033,87 @@ arm**, so a collision from any future source is loud rather than silent.
 `pairedset.freeze` refuses a duplicated problem at write time, which is the
 earlier of the two places to catch it — a duplicate in the instrument mis-pairs
 every pass ever run on it, not only the one that notices.
+
+---
+
+## F-18 — At the paired set's boundary, the problem-level census caught nothing and the state-level census caught eleven
+
+**Measured:** 2026-08-15, `runs/paired_census.json`, seed 0, 400 candidates drawn
+from `runs/data/eval_held_out` through `sample_indices`.
+
+| level | reference | keys | candidates hit |
+|---|---|---|---|
+| problem-level | `runs/data/train_100k` | 100,000 | **0** |
+| state-level | `runs/data/phase1_train` | 259,053 | **11** |
+| **state-level beyond problem-level** | | | **11** — all of them |
+
+**2.75% of candidates**, and the problem-level test would have passed every one.
+`clean` = 389, which is the frozen paired set.
+
+This is F-08's mechanism, re-measured at a new boundary and confirming L7 in the
+direction L7 predicts: the rule "census the paired set against training" carried
+across from the dataset boundary keeps its wording and loses its justification.
+At the dataset boundary the problem-level question was the load-bearing one. Here
+it answers *zero* and the state-level question does all the work — because
+`eval_held_out` was **built** disjoint from `train_100k` at the problem level, and
+nothing was ever built to make it disjoint from `phase1_train`'s *derivations*.
+
+**Note what a single-level census would have reported:** "0 collisions against
+training, clean." True, complete-sounding, and wrong about the thing that
+matters. The count is not large; the point is that the level that caught
+everything is the one a carried-over rule would have dropped.
+
+`state_level_beyond_problem_level` is a **premise-dependent zero** in the schema
+sense — it may legitimately read 0 on a future set, and 0 there means the
+derivations happened not to pass through those states, not that the question was
+skipped. It is reported explicitly for that reason.
+
+---
+
+## F-19 — The self-match null was denominated in solved-flat while the comparison it was a null for was denominated in z
+
+**Found:** 2026-08-15, reading the first smoke pass's own output — S6 and S7 side
+by side in `runs/ladder_smoke_result.json`. Both had already returned PASS.
+
+`ladder.self_match` took a caller-supplied `play(problem, cfg, seed) -> (score,
+steps)`. The smoke pass supplied:
+
+```python
+return float(result.solved) * 2 - 1, result.steps      # solved-flat, ±1
+```
+
+and the resulting `PairScore` was tagged `CURRENCY_Z`. So S6 — **the null run**,
+the thing rider (c) requires to be a *run* rather than an estimate — measured
+solved-vs-unsolved, while S7's metric was mean paired difference **in z**. The
+null was in the wrong currency for the number it was the null for.
+
+**Why nothing downstream could catch it.** Solved-flat scores land in {−1, +1}
+and z lands in {−1, 0, +1}. Both are `CURRENCY_Z`-shaped, both pair, both
+bootstrap, and both give exactly 0 under a deterministic self-match. Every
+guard the currency ruling installed passed, correctly: the ruling separates
+*z from solve-vs-budget*, and this was neither — it was a third denomination
+with no name, inside the currency that has one. F-13's shape (the tree scored
+solved-flat while training scored z-vs-par) reappearing one layer up.
+
+**What it cost, measured.** The contrast case is the detector's own
+non-vacuousness check, and it is where the error showed:
+
+| self-play contrast, of 389 problems | non-zero differences |
+|---|---|
+| solved-flat (as run) | **1** |
+| z (corrected) | **79** |
+
+A contrast of 1/389 passes `any(d != 0)` and is a hair from vacuous — the
+self-match null was very nearly a detector that reports zero for every
+configuration, which is the exact failure its contrast case exists to exclude.
+
+**Fixed structurally, not by correcting the call site.** `self_match` now takes
+an arm's `play` directly and **computes z itself** from the problem's own par;
+the caller no longer supplies a score and so cannot supply a currency. No
+validation downstream could have distinguished the two denominations, so the
+choice was removed rather than checked. A problem without par raises rather than
+scoring 0 — absence does not become a number here either.
+
+**Both verdicts stand.** The first smoke pass's S6 PASSed on the terms it was
+written on; this finding files beside it with the superseded numbers, and the
+re-run's S6 carries the corrected contrast of 79.

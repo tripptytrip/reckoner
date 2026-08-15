@@ -35,8 +35,8 @@ from statistics import fmean
 import numpy as np
 
 from reckoner.config import Config
-from reckoner.episode import Problem
-from reckoner.expr import identity_key
+from reckoner.dataset import problem_key
+from reckoner.episode import Problem, outcome_z
 from reckoner.logschema import CURRENCY_BUDGET, CURRENCY_Z
 
 
@@ -74,8 +74,18 @@ class PairedComparison:
 
 
 def problem_key_of(problem: Problem) -> str:
-    """The paired set's identity, through the one shared normalizer."""
-    return ",".join(str(t) for t in identity_key(problem.expr)) + f"|{problem.goal}"
+    """The paired set's identity, through **the** shared normalizer.
+
+    Delegates to :func:`reckoner.dataset.problem_key` — the project's one dedup
+    and contamination key — and only renders it as a string for the JSONL column.
+
+    The first version of this built its own key from ``(identity_key(expr), goal)``,
+    which is the *census* key and is deliberately looser: canonicalisation makes
+    ``3x + 6 = 21`` and ``6 + 3x = 21`` a single identity, so two distinct rows of
+    a paired set could share one key and :func:`pair` would match a score against
+    the wrong partner without saying so. FINDINGS.md F-17.
+    """
+    return ",".join(str(t) for t in problem_key(problem))
 
 
 def pair(scores_a: list[PairScore], scores_b: list[PairScore]) -> PairedComparison:
@@ -93,6 +103,15 @@ def pair(scores_a: list[PairScore], scores_b: list[PairScore]) -> PairedComparis
             "not our steps, and their difference has no units. Compare within a "
             "currency, or compare the arms on a statistic both can carry."
         )
+    for side in (scores_a, scores_b):
+        keys = [s.problem_key for s in side]
+        if len(set(keys)) != len(keys):
+            raise LadderError(
+                f"{side[0].arm} scored {len(keys) - len(set(keys))} problem(s) more "
+                "than once. A duplicate key makes pairing choose a partner by write "
+                "order while the count check still balances — a silent mis-pairing, "
+                "which is the failure mode this key's strictness exists to prevent."
+            )
     by_key_b = {s.problem_key: s for s in scores_b}
     missing = [s.problem_key for s in scores_a if s.problem_key not in by_key_b]
     if missing:
@@ -160,26 +179,45 @@ def self_match(
     profile: str,
     seed: int = 0,
 ) -> PairedComparison:
-    """The model against itself over the paired set.
+    """The model against itself over the paired set, **scored in z**.
 
-    ``play(problem, cfg, seed) -> (score, steps)``. Under the **eval** profile
-    the two passes must be identical and every difference exactly 0; under
-    **self_play** they must not be, or the detector is vacuous.
+    ``play(problem, cfg, seed)`` returns anything with ``.solved`` and ``.steps``
+    — an :class:`reckoner.arms.ArmResult`. **z is computed here, from the
+    problem's own par**, and the caller does not get to supply a score.
+
+    That is deliberate and it is a fix, not a convenience. The first version took
+    ``(score, steps)`` from the caller, and the smoke pass duly handed it
+    ``solved * 2 - 1`` — a solved-flat score, wearing ``CURRENCY_Z``, standing as
+    the null for a z-denominated comparison. F-13's exact shape: the null and the
+    metric it is a null for, denominated differently, with nothing able to tell
+    because both land in {-1, 0, +1}. No validation can catch that downstream, so
+    the choice is removed from the caller instead. See FINDINGS.md F-19.
+
+    Under the **eval** profile the two passes must be identical and every
+    difference exactly 0; under **self_play** they must not be, or the detector
+    is vacuous.
     """
     if profile not in ("eval", "self_play"):
         raise LadderError(f"unknown profile {profile!r}")
     left, right = [], []
     for i, problem in enumerate(problems):
         key = problem_key_of(problem)
+        if problem.par is None:
+            raise LadderError(
+                "a self-match null needs par to score z, and this problem has none. "
+                "Absence does not ship, and it does not become a zero here either."
+            )
         # Under the eval profile BOTH passes get the same derived seed, because
         # the claim is that the model is a function of the state. Under self-play
         # they differ, because the claim there is that it is not.
         seed_a = seed * 1_000_003 + i
         seed_b = seed_a if profile == "eval" else seed_a + 500_009
-        sa, ta = play(problem, cfg, seed_a)
-        sb, tb = play(problem, cfg, seed_b)
-        left.append(PairScore(key, "self_a", CURRENCY_Z, sa, ta, seed_a))
-        right.append(PairScore(key, "self_b", CURRENCY_Z, sb, tb, seed_b))
+        a = play(problem, cfg, seed_a)
+        b = play(problem, cfg, seed_b)
+        za = outcome_z(solved=a.solved, steps=a.steps, par=problem.par)
+        zb = outcome_z(solved=b.solved, steps=b.steps, par=problem.par)
+        left.append(PairScore(key, "self_a", CURRENCY_Z, float(za), a.steps, seed_a))
+        right.append(PairScore(key, "self_b", CURRENCY_Z, float(zb), b.steps, seed_b))
     return pair(left, right)
 
 

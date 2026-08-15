@@ -55,7 +55,8 @@ Where each clause lives in this repo, as of chunk 0:
 | Detectors validated on both polarities | Every guard in `tests/` has its accepting case beside its rejecting one, including a self-check that the gitignore probe itself can return both answers |
 | `git -C` in multi-command shells | `tests/test_gitignore_musttrack.py::_check_ignored` |
 | Provenance in every checkpoint / `meta.json` | `config_fingerprint()` exists from chunk 0; the writers arrive in chunks 5–6 |
-| `logschema.py`, `pair_scores`, PREREG headers, paired bootstrap | Chunks 9–11 — the negations that let them into git are already in `.gitignore` |
+| `logschema.py`, `pair_scores`, PREREG headers, paired bootstrap | **Landed.** `src/reckoner/logschema.py` (chunk 9); `src/reckoner/ladderpass.py::run_pass` writes `pair_scores` from row one; `src/reckoner/ladder.py::paired_bootstrap` is the test of record; `PREREG-chunk9-part0.md`, `PREREG-chunk9-shakedown.md`, `PREREG-chunk10-smoke.md` carry the amendment header. The `.gitignore` negations predated all of them, which is the point of writing them first |
+| Paired sets are instruments, not data | `src/reckoner/pairedset.py::freeze` (writes once, anchors, asserts its own trackedness), `::load` (re-digests on the read path), `dataset.SOURCE_ROLES["runs/paired"] = "instrument"` so the runtime guard refuses one as a training source |
 
 ## 2. Decisions already made (do not silently revisit)
 

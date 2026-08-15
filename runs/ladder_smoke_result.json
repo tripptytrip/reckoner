@@ -1,0 +1,120 @@
+{
+  "candidates_drawn": 400,
+  "expectations_frozen_at": "8f30cb7",
+  "git_sha": "f5fc548e4eb945ed56a51add283e6b18eca301b0",
+  "paired_set": "runs/paired/smoke_v1.jsonl",
+  "paired_set_size": 389,
+  "pass_record": {
+    "pass_index": 0,
+    "rows": 1029,
+    "rows_by_arm": {
+      "greedy": 389,
+      "random": 389,
+      "sympy": 251
+    },
+    "rows_resumed": 0,
+    "rows_written_this_attempt": 1029,
+    "seconds_by_arm": {
+      "greedy": 0.291,
+      "random": 0.343,
+      "sympy": 0.1
+    },
+    "seconds_total": 0.743,
+    "skipped_by_arm": {
+      "sympy": 138
+    }
+  },
+  "seed": 0,
+  "verdicts": {
+    "S1": {
+      "expectation": "frozen at birth, verified at read",
+      "note": "already frozen; re-loaded and digest-verified",
+      "problems": 389,
+      "verdict": "PASS"
+    },
+    "S2": {
+      "expectation": "censused at both levels before the freeze",
+      "note": "census ran at the freeze; see runs/paired_census.json",
+      "verdict": "PASS"
+    },
+    "S3": {
+      "cas_version": "1.14.0",
+      "expectation": "each arm scored completely on its OWN declared subset",
+      "problems": 389,
+      "rows_by_arm": {
+        "greedy": 389,
+        "random": 389,
+        "sympy": 251
+      },
+      "skipped_by_arm": {
+        "sympy": 138
+      },
+      "sympy_available": true,
+      "verdict": "PASS"
+    },
+    "S4": {
+      "expectation": "pair_scores land from row one, not at the end",
+      "rows_on_disk_at_greedy_units_1_and_5": [
+        1,
+        5
+      ],
+      "verdict": "PASS"
+    },
+    "S5": {
+      "duplicate_units": 0,
+      "expectation": "a SIGKILLed pass resumes to an identical row set",
+      "identical_to_uninterrupted": true,
+      "killed_after_units": 259,
+      "marker_present": true,
+      "rows_after_resume": 778,
+      "rows_in_uninterrupted_run": 778,
+      "rows_resumed": 258,
+      "rows_surviving_the_kill": 258,
+      "signal": "SIGKILL",
+      "verdict": "PASS"
+    },
+    "S6": {
+      "contrast_nonzero_differences": 79,
+      "expectation": "self-match under eval is EXACTLY zero; self-play is not",
+      "floor": -2.0,
+      "measured_max_abs_difference": 0.0,
+      "measured_mean": 0.0,
+      "measured_saturated": true,
+      "null": 0.0,
+      "null_is_a_run": true,
+      "rigged_null_synthetic_elo": 0.5,
+      "threshold": "every paired difference exactly 0, bootstrap saturated",
+      "verdict": "PASS"
+    },
+    "S7": {
+      "ci": [
+        0.254499,
+        0.347044
+      ],
+      "expectation": "greedy > random, CI excludes zero (direction pre-stated)",
+      "floor": -2.0,
+      "measured": 0.300771,
+      "metric": "mean paired difference in z, greedy - random",
+      "n_pairs": 389,
+      "note": "chunk 10's DONE-WHEN does not depend on this direction; a FINDING here is a fact about the heuristic, pre-stated as such in PREREG-chunk10-smoke.md",
+      "null": 0.0,
+      "rendering_note": "ordinary percentile interval over resampled paired differences",
+      "saturated": false,
+      "synthetic_elo_greedy_vs_random": 0.650386,
+      "threshold": "95% CI excludes zero AND mean > 0",
+      "verdict": "PASS"
+    }
+  },
+  "wall_clock_seconds": 3.51,
+  "wall_clock_split": {
+    "census_and_freeze": 0.02,
+    "kill_point_resume": 1.4,
+    "null_run_and_contrast": 1.17,
+    "pass": 0.87,
+    "pass_by_arm": {
+      "greedy": 0.291,
+      "random": 0.343,
+      "sympy": 0.1
+    }
+  }
+}

@@ -96,6 +96,7 @@ class InstrumentAsTrainingSource(ValueError):
 #: meta from birth for what comes next.
 SOURCE_ROLES: dict[str, str] = {
     "runs/suites": "instrument",  # the measuring stick — never a training source
+    "runs/paired": "instrument",  # the ladder's paired sets — same species, same rule
     "runs/data/train_100k": "training",
     "runs/data/phase1_train": "training",
     "runs/data/eval_held_out": "instrument",  # held-out: measures, never trains
@@ -203,6 +204,34 @@ class RecordWouldBeUntracked(RuntimeError):
     """A record was about to be written to a path git ignores."""
 
 
+def assert_tracked(path: Path, repo: Path | None = None) -> None:
+    """Refuse to write something git will not keep. **The mechanism, extracted.**
+
+    It lived inside :func:`write_record`, which meant it protected JSON records
+    and nothing else. A frozen paired set is written by :func:`write_suite` and is
+    a strictly worse thing to lose than a record: every number the ladder reports
+    is measured against it. So the check is a function, and each writer that
+    produces evidence calls it.
+
+    Outside a git repository the check is skipped rather than failed: a clean
+    checkout used as a library is not the situation this guards.
+    """
+    repo = repo or Path(__file__).resolve().parents[2]
+    if not (repo / ".git").exists():
+        return
+    ignored = subprocess.run(
+        ["git", "-C", str(repo), "check-ignore", "-q", str(path)],
+        capture_output=True,
+        check=False,
+    )
+    if ignored.returncode == 0:
+        raise RecordWouldBeUntracked(
+            f"{path} is ignored by .gitignore — a record that git will not keep is "
+            f"not a record. Add a negation (prefer a glob covering its kind) and a "
+            f"MUST_REACH entry in tests/test_gitignore_musttrack.py, then rerun."
+        )
+
+
 def write_record(path: Path, payload: dict, *, repo: Path | None = None) -> Path:
     """Write a JSON record, refusing to write one git would ignore.
 
@@ -222,20 +251,8 @@ def write_record(path: Path, payload: dict, *, repo: Path | None = None) -> Path
     Outside a git repository the check is skipped rather than failed: a clean
     checkout used as a library is not the situation this guards.
     """
-    repo = repo or Path(__file__).resolve().parents[2]
     path = Path(path)
-    if (repo / ".git").exists():
-        ignored = subprocess.run(
-            ["git", "-C", str(repo), "check-ignore", "-q", str(path)],
-            capture_output=True,
-            check=False,
-        )
-        if ignored.returncode == 0:
-            raise RecordWouldBeUntracked(
-                f"{path} is ignored by .gitignore — a record that git will not keep is "
-                f"not a record. Add a negation (prefer a glob covering its kind) and a "
-                f"MUST_REACH entry in tests/test_gitignore_musttrack.py, then rerun."
-            )
+    assert_tracked(path, repo)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     return path

@@ -1,0 +1,15 @@
+{
+  "candidates": 400,
+  "clean": 389,
+  "problem_level": {
+    "train_100k": 0
+  },
+  "problem_level_hits": 0,
+  "rule": "a candidate colliding at either level is dropped BEFORE the freeze; contamination found after the freeze is a finding, never an edit",
+  "seed": 0,
+  "state_level": {
+    "phase1_train": 11
+  },
+  "state_level_beyond_problem_level": 11,
+  "state_level_hits": 11
+}

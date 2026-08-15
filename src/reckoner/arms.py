@@ -26,15 +26,27 @@ not, so it scores solve-vs-budget and its rows can never be read as z rows.
 
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass
 from typing import Protocol
 
 from reckoner.config import Config
 from reckoner.episode import Problem, verify
-from reckoner.expr import Expr
+from reckoner.expr import Expr, Num, Op, Var, make_op
 from reckoner.logschema import CURRENCY_BUDGET, CURRENCY_Z
 from reckoner.rules import apply, legal_actions
+from reckoner.vocab import (
+    ADD,
+    DIV,
+    EQ,
+    GOAL_EVALUATE,
+    GOAL_SOLVE,
+    MUL,
+    SUB,
+    VARIABLE_TOKENS,
+    token_name,
+)
 
 
 class ArmError(RuntimeError):
@@ -56,6 +68,48 @@ class Arm(Protocol):
     nondeterministic: bool
 
     def play(self, problem: Problem, cfg: Config, seed: int) -> ArmResult: ...
+
+    def plays(self, problem: Problem) -> bool:
+        """Which problems this rung is **asked**. Default: all of them.
+
+        An arm that cannot express a goal declares it here, and the pass records
+        a skip with a reason. The alternative — playing anyway and scoring the
+        failure — reports a rung as weak for a reason that has nothing to do
+        with its skill, and a paired set silently stops being one set.
+        """
+        ...
+
+
+def plays(arm, problem: Problem) -> bool:
+    """An arm's playable predicate, defaulting to yes for arms that never say."""
+    return arm.plays(problem) if hasattr(arm, "plays") else True
+
+
+#: Our operator tokens to sympy's constructors. A translation into another
+#: algebra, deliberately **not** a second text renderer: `interpreter.render_expr`
+#: stays the one way this project turns a state into characters.
+_SYMPY_OPS = {
+    ADD: lambda s, xs: sum(xs[1:], xs[0]),
+    SUB: lambda s, xs: xs[0] - xs[1],
+    MUL: lambda s, xs: math.prod(xs[1:], start=xs[0]),
+    DIV: lambda s, xs: xs[0] / xs[1],
+    EQ: lambda s, xs: s.Eq(xs[0], xs[1]),
+}
+
+
+def _to_sympy(sympy, expr: Expr):
+    """Our tree, in sympy's algebra. Total over v1 states or it raises."""
+    if isinstance(expr, Num):
+        return sympy.Integer(expr.value)
+    if isinstance(expr, Var):
+        if expr.token not in VARIABLE_TOKENS:
+            raise ArmError(f"{token_name(expr.token)} is not a variable token")
+        return sympy.Symbol(token_name(expr.token).removeprefix("VAR_").lower())
+    if isinstance(expr, Op):
+        if expr.kind not in _SYMPY_OPS:
+            raise ArmError(f"no sympy translation for {token_name(expr.kind)}")
+        return _SYMPY_OPS[expr.kind](sympy, [_to_sympy(sympy, c) for c in expr.children])
+    raise ArmError(f"no sympy translation for {type(expr).__name__}")
 
 
 def _play_greedy(problem: Problem, cfg: Config, budget: int) -> ArmResult:
@@ -189,6 +243,71 @@ class SympySolver:
 
     def __exit__(self, *exc) -> None:
         self._module = None
+
+    def plays(self, problem: Problem) -> bool:
+        """**Declared, not discovered.** SOLVE and EVALUATE; SIMPLIFY is refused.
+
+        Not because sympy cannot simplify — because reading its result back into
+        our canonical form needs a second parser for a language we already have
+        one parser for, and a second normalizer is the defect this module's own
+        key-selection just paid for. A goal this rung does not play is a
+        **recorded skip with a reason**; it is never a row saying it failed.
+        """
+        if problem.goal == GOAL_SOLVE:
+            return problem.target is not None
+        return problem.goal == GOAL_EVALUATE
+
+    def play(self, problem: Problem, cfg: Config, seed: int) -> ArmResult:
+        """Solve with the CAS, **and verify the answer through our own arbiter**.
+
+        The CAS is not asked whether it was right. Its answer is translated back
+        into one of our goal-form states and handed to :func:`episode.verify`,
+        which checks it against the original problem — the same arbiter every
+        other rung is judged by. An opponent that grades its own homework is an
+        opponent with a different scoring function wearing a shared name.
+
+        ``ArmResult.steps`` is **its** unit, not ours, and the currency on the row
+        is what stops the two from ever being differenced.
+        """
+        if not self.available:
+            raise ArmError(
+                "sympy is unavailable and cannot be played. An absent rung is "
+                "skipped by the caller, never scored as a loss — a solver that "
+                "was not run and one that failed are different facts."
+            )
+        if not self.plays(problem):
+            raise ArmError(
+                f"sympy does not play {token_name(problem.goal)}; see plays(). A rung "
+                "asked a question it declared out of scope would answer wrong for a "
+                "reason that has nothing to do with its skill."
+            )
+        sympy = self._module
+        try:
+            answer = self._answer(sympy, problem)
+        except Exception:  # noqa: BLE001 — a CAS failure is a non-solve, not a crash
+            return ArmResult(False, 1, CURRENCY_BUDGET)
+        if answer is None:
+            return ArmResult(False, 1, CURRENCY_BUDGET)
+        solved = verify(problem, answer, cfg, random.Random(seed))
+        # sympy exposes no step count and one solve() call is one operation in its
+        # units. Recording 1 is the honest reading of "its own steps"; inventing a
+        # larger number to look comparable to ours is the currency error by hand.
+        return ArmResult(solved, 1, CURRENCY_BUDGET)
+
+    def _answer(self, sympy, problem: Problem) -> Expr | None:
+        """The CAS's answer, translated into one of **our** goal-form states."""
+        translated = _to_sympy(sympy, problem.expr)
+        if problem.goal == GOAL_EVALUATE:
+            value = sympy.simplify(translated)
+            if not value.is_Integer:
+                return None
+            return Num(int(value))
+        symbol = _to_sympy(sympy, Var(problem.target))
+        solutions = sympy.solve(translated, symbol)
+        for solution in solutions:
+            if solution.is_Integer:
+                return make_op(EQ, (Var(problem.target), Num(int(solution))))
+        return None
 
     def probe(self) -> None:
         """Construction gate: the CAS answers the same question the same way."""

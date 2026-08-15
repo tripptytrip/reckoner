@@ -12,6 +12,7 @@ import pytest
 
 from reckoner.arms import GreedyHeuristic, RandomRewriter
 from reckoner.config import Config
+from reckoner.dataset import problem_key as strict_key
 from reckoner.dataset import read_suite, suite_problem
 from reckoner.ladder import (
     CURRENCY_BUDGET,
@@ -144,13 +145,7 @@ def test_self_match_under_the_eval_profile_is_exactly_zero() -> None:
     Not "small". Any drift means state is leaking between episodes that should be
     independent.
     """
-    arm = GreedyHeuristic()
-
-    def play(problem, cfg, seed):
-        result = arm.play(problem, cfg, seed)
-        return (1.0 if result.solved else -1.0), result.steps
-
-    comparison = self_match(play, problems(), CFG, profile="eval")
+    comparison = self_match(GreedyHeuristic().play, problems(), CFG, profile="eval")
     assert comparison.differences == [0.0] * len(comparison.differences)
     assert all(d == 0.0 for d in comparison.differences)
 
@@ -159,13 +154,7 @@ def test_self_match_under_the_eval_profile_is_exactly_zero() -> None:
 def test_the_self_play_profile_breaks_the_identity() -> None:
     """The contrast case. A null that reports zero for every configuration is
     measuring nothing."""
-    arm = RandomRewriter()
-
-    def play(problem, cfg, seed):
-        result = arm.play(problem, cfg, seed)
-        return (1.0 if result.solved else -1.0), result.steps
-
-    comparison = self_match(play, problems(24), CFG, profile="self_play")
+    comparison = self_match(RandomRewriter().play, problems(24), CFG, profile="self_play")
     assert any(d != 0.0 for d in comparison.differences), (
         "different seeds produced identical outcomes — the contrast case is vacuous "
         "and the eval-profile zero proves nothing"
@@ -175,13 +164,7 @@ def test_the_self_play_profile_breaks_the_identity() -> None:
 @needs_suites
 def test_a_self_match_bootstrap_is_saturated_and_says_so() -> None:
     """The two facts belong together: exactly zero, and flagged as saturated."""
-    arm = GreedyHeuristic()
-
-    def play(problem, cfg, seed):
-        result = arm.play(problem, cfg, seed)
-        return (1.0 if result.solved else -1.0), result.steps
-
-    comparison = self_match(play, problems(), CFG, profile="eval")
+    comparison = self_match(GreedyHeuristic().play, problems(), CFG, profile="eval")
     result = paired_bootstrap(comparison.differences, resamples=500, seed=0)
     assert result["mean_difference"] == 0.0
     assert result["saturated"] is True
@@ -189,10 +172,30 @@ def test_a_self_match_bootstrap_is_saturated_and_says_so() -> None:
 
 def test_an_unknown_profile_is_refused() -> None:
     with pytest.raises(LadderError, match="unknown profile"):
-        self_match(lambda p, c, s: (0.0, 0), [], CFG, profile="vibes")
+        self_match(GreedyHeuristic().play, [], CFG, profile="vibes")
 
 
 @needs_suites
-def test_problem_keys_go_through_the_shared_normalizer() -> None:
-    keys = {problem_key_of(p) for p in problems()}
-    assert len(keys) == len(problems()), "distinct problems must get distinct keys"
+def test_problem_keys_delegate_to_the_one_shared_normalizer() -> None:
+    """Asserts the delegation, not a property that holds under any key.
+
+    The first version of this test checked that distinct problems get distinct
+    keys — true under `dataset.problem_key` AND under the hand-rolled census key
+    it was written to catch. It named the law and checked something weaker.
+    See FINDINGS.md F-17.
+    """
+    for problem in problems():
+        assert problem_key_of(problem) == ",".join(str(t) for t in strict_key(problem))
+
+
+@needs_suites
+def test_duplicate_keys_within_an_arm_are_refused() -> None:
+    """The hazard the strict key exists to prevent, made loud at the other end.
+
+    A collapsed key would let pairing choose a partner by write order while the
+    count check still balanced — so the count check is not the guard, this is.
+    """
+    duplicated = scores("a", [1.0, 0.0])
+    duplicated[1].problem_key = duplicated[0].problem_key
+    with pytest.raises(LadderError, match="more than once"):
+        pair(duplicated, scores("b", [0.0, 0.0]))

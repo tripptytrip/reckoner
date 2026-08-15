@@ -748,7 +748,7 @@ def _check_exact_par_cannot_be_beaten(row: dict[str, Any]) -> None:
 
 def append_row(
     path: Path, row: dict[str, Any], fields: tuple[Field, ...] = ITERATION_FIELDS
-) -> None:
+) -> list[str]:
     """Validate, then append one JSONL row. Validation is not optional.
 
     Writing an invalid row and validating later is how a run produces 50

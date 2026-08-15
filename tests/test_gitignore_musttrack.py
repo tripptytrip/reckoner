@@ -70,6 +70,12 @@ MUST_REACH: list[str] = [
     "runs/m1/ladder.jsonl",  # runs/*/ladder.jsonl — the verdict
     "benchmarks/results.jsonl",  # dated, SHA-stamped bench record
     "runs/ANCHORS.sha256",  # dataset + suite digests
+    # The ladder's instruments. Written the day the rule was, not the day the
+    # first pass runs — `git check-ignore` answers for hypothetical paths, and
+    # `pairedset.freeze` asserts its own trackedness before the bytes land.
+    "runs/paired/smoke_v1.jsonl",  # runs/paired/*.jsonl — the frozen paired set
+    "runs/paired_census.json",  # the two-level census that decided its contents
+    "runs/ladder_smoke_result.json",  # runs/**/*_result.json — the smoke verdicts
     # Beyond the plan's initial list, written now for the same reason: these are
     # named as deliverables by later chunks, and the negation is free today.
     "runs/m1/ladder_pairscores.jsonl",  # pair_scores, persisted from row one

@@ -51,6 +51,16 @@ runs/**
 # unreproducible. The memmap arrays beside them stay ignored: those are bulk,
 # rebuildable from the seed, and the meta.json carries their digests.
 !runs/suites/*.jsonl
+# The ladder's PAIRED SETS are the same species as the suites: frozen at birth,
+# digested into ANCHORS, and the thing every ladder number is measured against.
+# A paired set git drops makes every pass ever run on it unreproducible, and
+# unlike a dataset it cannot be regenerated — regenerating it makes a different
+# instrument. `pairedset.freeze` asserts its own trackedness before writing.
+!runs/paired/*.jsonl
+# The two-level contamination census that decided which candidates the paired
+# set kept. The decision rule is pre-stated; this is the arithmetic it was
+# applied to, and a dropped candidate list nobody can read is a census nobody ran.
+!runs/paired_census.json
 # Instrument outputs that later chunks cite as evidence.
 !runs/rule_participation.json
 !runs/state_extent.json
