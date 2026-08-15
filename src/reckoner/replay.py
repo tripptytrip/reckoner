@@ -87,6 +87,10 @@ from reckoner.dataset import sample_indices
 #: columns — see this module's docstring.
 RING_FORMAT = 1
 
+#: Visit slots the record layout provides. Part of RING_FORMAT: widening this is
+#: a format bump, because every stored record's stride changes with it.
+VISIT_SLOTS = 16
+
 #: Known ``par_source`` values, as a stored enum. Order is part of the format:
 #: appending is a format bump, reordering is a corruption.
 PAR_SOURCES: tuple[str, ...] = ("unverified", "bfs", "scripted", "pool")
@@ -168,6 +172,19 @@ class ReplayRing:
         self.length = np.zeros(capacity, dtype=np.int16)
         self.n_sites = np.zeros(capacity, dtype=np.int16)
         width = cfg.search.gumbel_m
+        # The layout is sized for gumbel_m visit slots, and m is CONFIG while the
+        # layout is FORMAT — so load()'s layout refusal cannot see a config that
+        # outgrew it. The m -> 32 lever is parked but live (chess parked the same
+        # one); firing it against 16 slots would truncate visits silently, which
+        # is a lossy ring wearing a lossless docstring. This is the assert that
+        # makes that round trip loudly.
+        if width > self.visit_actions_slots():
+            raise RingError(
+                f"search.gumbel_m = {width} exceeds the ring's {self.visit_actions_slots()} "
+                "visit slots. The sparse visit layout is lossless only while m fits it. "
+                "Raising m is a RING_FORMAT bump, not a config edit — bump the format "
+                "and widen the layout together."
+            )
         self.visit_actions = np.zeros((capacity, width), dtype=np.int32)
         self.visit_counts = np.zeros((capacity, width), dtype=np.int32)
         self.root_q = np.zeros(capacity, dtype=np.float32)
@@ -181,6 +198,11 @@ class ReplayRing:
         self.absent_mask = np.zeros(capacity, dtype=np.uint32)
 
     # -- writing ----------------------------------------------------------
+
+    @staticmethod
+    def visit_actions_slots() -> int:
+        """Visit slots the current RING_FORMAT layout provides."""
+        return VISIT_SLOTS
 
     def append(
         self,

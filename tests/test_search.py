@@ -138,7 +138,13 @@ def test_the_gate_arithmetic_is_recorded_and_the_gate_matches_it() -> None:
         result = search(
             problem, problem.expr, evaluator, CFG, random.Random(1000 + i), sims=16, m=b_max
         )
-        if result.values.size and result.values.max() >= 1.0:
+        # Since F-13 the terminal scale is z-against-par, so an at-par solve
+        # scores 0.0 — exactly what the neutral stub predicts for everything
+        # else. A solve therefore no longer stands out by VALUE, and the gate is
+        # re-expressed as what its arithmetic was always about: was the winning
+        # action considered and found? `terminal_solved` counts solves the tree
+        # actually reached, and is independent of the value scale entirely.
+        if result.stats.terminal_solved > 0:
             solved += 1
     assert solved == len(rows), f"depth-1 gate: {solved}/{len(rows)} at m={b_max}"
 
@@ -152,15 +158,14 @@ def test_below_b_max_the_gate_is_not_reachable() -> None:
     """
     rows = read_suite(SUITES / "solve_in_1.jsonl")
     evaluator = uniform_stub(CFG)
-    solved = sum(
-        1
-        for i, row in enumerate(rows)
-        if (p := suite_problem(row))
-        and (
-            r := search(p, p.expr, evaluator, CFG, random.Random(1000 + i), sims=16, m=3)
-        ).values.size
-        and r.values.max() >= 1.0
-    )
+    solved = 0
+    for i, row in enumerate(rows):
+        problem = suite_problem(row)
+        result = search(
+            problem, problem.expr, evaluator, CFG, random.Random(1000 + i), sims=16, m=3
+        )
+        if result.stats.terminal_solved > 0:
+            solved += 1
     assert solved < len(rows), "m=3 solved everything — B_max is wrong or the stub is not uniform"
 
 

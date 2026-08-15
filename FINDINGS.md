@@ -706,3 +706,72 @@ demonstrable rather than merely prudent.
 holding at 512/512 across all four width buckets means the device change is
 invisible to every gate this project has — the decisions are identical, and the
 margins are wide enough that 3.7e-3 of logit noise cannot reach them.
+
+---
+
+## F-13 — Two currencies in one loop: the tree scored solved-flat while training scored z-vs-par
+
+**Found:** 2026-08-15, by a **passing** assertion in the ring's `root_q` sign
+test. Ruled and fixed before the runner backed up anything.
+
+`_leaf_outcome` returned **`1.0` for any solve**, regardless of step count. So a
+depth-1 problem solved in one step — which ties BFS-exact par, and is therefore
+`z = 0`, a **draw** — reported `root_value == 1.0`. The search was optimising
+*solved-or-not*; the training target is *z against par*. Two currencies inside one
+loop, which spec §6's one-currency clause forbids between the loop and the ladder
+and forbids more strongly between the search and the reward.
+
+**The consequence, stated as the mechanism rather than the symptom:** a flat `+1`
+makes the searcher **indifferent between an over-par solve and an under-par one**.
+It cannot race. The par game's entire premise dies at the backup rule, and every
+test stays green, because nothing was asserting on the *scale* — only on the sign.
+
+**Proven ancestor.** Chess's FINALE bug: several proven wins tied at `q̂ = +1` and
+the engine played mate-in-5 over mate-in-2. Here it is reborn as
+**par-indifference**, aimed at the one quantity this campaign measures.
+
+**The fix (ruled):** the in-tree terminal value is z at the leaf.
+`total_steps = steps_taken + tree.depth[leaf]`, scored against `problem.par`:
+`+1` under, `0` at, `-1` over. The cap is `-1`, identically to going over par
+(plan chunk 3), and `StateTooLarge` keeps its counted-terminal-loss `-1`. `search`
+and `run_batched` take `steps_taken`, because a leaf's worth depends on the whole
+line's length, not the tree-local depth. Everything needed was already in hand:
+par rides on the problem, pool par resolves before the search starts. **A
+value-function change, not a plumbing one.**
+
+Re-pinned on three fixtures, exactly:
+
+| fixture | `root_value` |
+|---|---:|
+| solve beats par (fixture par 5, solves in 1) | **+1.0** |
+| solve **at** par (depth-1, par 1) | **0.0** |
+| line runs over par (`steps_taken = par`) | **−1.0** |
+
+**Two consequences worth their own lines.**
+
+1. **A neutral evaluator now ties with an at-par solve.** Both read 0.0, so a
+   solve no longer stands out *by value* against `uniform_stub`. The chunk-7
+   depth-1 gate read `values.max() >= 1.0`; it is re-expressed as
+   `stats.terminal_solved > 0`, which is what its arithmetic was always about —
+   *was the winning action considered and found* — and is independent of the
+   value scale. Both polarities still hold at m = 5 and m = 3.
+2. **`root_value` is `max(the root's own evaluation, best line)`**, so a neutral
+   root prior floors it at 0.0 and an all-losing root reports 0.0 rather than
+   −1.0. The over-par fixture therefore uses a pessimistic evaluator. This is
+   pre-existing chunk-7 behaviour, **not** changed here — a stale prior
+   outranking proven evidence is arguably the same family of defect, and
+   changing it was not what was ruled. **Registered as an open question.**
+
+**Measurements this invalidates.** Anything whose numbers came from search
+*choices* under the old scale must be re-measured: the chunk-7 gate table's
+descent/determinism rows and chunk 8's gate-11 solve rates. The gates' *definitions*
+are unaffected — gate 11 reads the checker, not a value — but the search now
+prefers shorter lines, so the numbers are not carried over by assertion.
+
+**The lesson, and it is about the test rather than the code:** this defect was
+found by an assertion that **passed**. `root_value == 1.0` pinned the semantics
+loudly enough that the semantics could be reviewed. An approximate pin — `> 0.5`,
+or "near the win value" — would have been satisfied by both the right answer and
+the wrong one, and the wrong one would have shipped. **Pin exactly; an exact pin
+that is wrong is a question, and an approximate pin that is wrong is a silence.**
+Fourth occasion a passing assertion has been the thing that exposed a defect.

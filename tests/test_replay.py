@@ -17,6 +17,7 @@ import pytest
 
 from reckoner.config import Config
 from reckoner.dataset import read_suite, suite_problem
+from reckoner.episode import Problem
 from reckoner.replay import (
     RING_FORMAT,
     Absent,
@@ -188,41 +189,70 @@ def test_an_absent_value_refuses_to_be_read_as_a_zero() -> None:
 
 
 # ---------------------------------------------------------------------------
-# root_q's SIGN — proven before the field feeds the z/q blend
+# root_q's SIGN and SCALE — re-pinned on the z currency (F-13)
 # ---------------------------------------------------------------------------
+#
+# The first version of this test asserted root_value == 1.0 on a forced win and
+# PASSED — which is how it exposed the defect. A forced win *at par* is z = 0, a
+# draw, so a +1.0 reading meant the tree scored solved-flat while training scored
+# z-vs-par: two currencies in one loop. The contrast that mattered was never
+# win-versus-loss; it was at-par-versus-under-par.
+
+
+def _pessimistic(cfg: Config):
+    """Flat priors, value -1.0.
+
+    `root_value` is `max(the root's own evaluation, best line)`, so a NEUTRAL
+    evaluator floors it at 0.0 and an over-par line can never show through. The
+    fixture is about the terminal scale, so the root's prior must not mask it.
+    """
+    width = 7 * cfg.model.max_sites
+
+    def evaluate(leaves):
+        return [(np.zeros(width, dtype=np.float32), -1.0) for _ in leaves]
+
+    return evaluate
 
 
 @pytest.mark.skipif(not (SUITES / "solve_in_1.jsonl").exists(), reason="suites not generated")
-def test_root_q_is_near_the_win_value_on_a_forced_beat() -> None:
-    """A depth-1 problem is a forced win inside one ply.
+def test_root_q_is_plus_one_when_the_solve_beats_par() -> None:
+    """Under par pays +1. Fixture par, since nothing beats real BFS par."""
+    row = read_suite(SUITES / "solve_in_1.jsonl")[0]
+    base = suite_problem(row)
+    under = Problem(goal=base.goal, expr=base.expr, par=5, target=base.target, par_source="pool")
+    result = search(under, under.expr, uniform_stub(CFG), CFG, random.Random(0), sims=16, m=5)
+    assert result.root_value == pytest.approx(1.0)
 
-    Single-agent backup is max-and-never-negate, and a terminal solve backs up
-    +1.0, so the root must carry the win value. If the sign were inverted this
-    reads -1.0 and the blend would learn that solving is bad — silently, and
-    confidently.
+
+@pytest.mark.skipif(not (SUITES / "solve_in_1.jsonl").exists(), reason="suites not generated")
+def test_root_q_is_zero_when_the_solve_only_matches_par() -> None:
+    """**The fixture the old test was missing.** At par is a DRAW, not a win.
+
+    A depth-1 problem solved in one step ties BFS-exact par. Reading +1.0 here is
+    the solved-flat defect; reading 0.0 is the par game.
     """
     row = read_suite(SUITES / "solve_in_1.jsonl")[0]
     problem = suite_problem(row)
     result = search(problem, problem.expr, uniform_stub(CFG), CFG, random.Random(0), sims=16, m=5)
-    assert result.root_value == pytest.approx(1.0), (
-        f"root_q on a forced win is {result.root_value}, not the win value"
-    )
+    assert result.root_value == pytest.approx(0.0)
 
 
-@pytest.mark.skipif(not (SUITES / "solve_in_6.jsonl").exists(), reason="suites not generated")
-def test_root_q_is_below_the_win_value_when_no_solve_is_found() -> None:
-    """The contrast case. Without it, 'near +1' could mean 'always +1'.
-
-    One simulation on a depth-6 problem cannot reach a solve, so nothing backs up
-    the win value and the root must sit strictly below it.
-    """
-    row = read_suite(SUITES / "solve_in_6.jsonl")[0]
+@pytest.mark.skipif(not (SUITES / "solve_in_1.jsonl").exists(), reason="suites not generated")
+def test_root_q_is_minus_one_when_the_line_runs_over_par() -> None:
+    """Over par pays -1, identically to the cap (plan chunk 3)."""
+    row = read_suite(SUITES / "solve_in_1.jsonl")[0]
     problem = suite_problem(row)
-    result = search(problem, problem.expr, uniform_stub(CFG), CFG, random.Random(0), sims=1, m=1)
-    assert result.root_value < 1.0, (
-        f"root_q is {result.root_value} with no solve reachable — the win value "
-        "cannot be what an unsolved search reports, or the sign test is vacuous"
+    result = search(
+        problem,
+        problem.expr,
+        _pessimistic(CFG),
+        CFG,
+        random.Random(0),
+        sims=16,
+        m=5,
+        steps_taken=problem.par,  # the episode already spent its whole budget
     )
+    assert result.root_value == pytest.approx(-1.0)
 
 
 @pytest.mark.skipif(not (SUITES / "solve_in_1.jsonl").exists(), reason="suites not generated")
@@ -234,7 +264,28 @@ def test_the_stored_root_q_is_the_searched_one() -> None:
     ring = ReplayRing(4, CFG)
     ring.append(**a_record(root_q=result.root_value, z=0, par_source="bfs"))
     assert ring.get(0)["root_q"] == pytest.approx(result.root_value)
-    assert ring.get(0)["root_q"] == pytest.approx(1.0)
+    assert ring.get(0)["root_q"] == pytest.approx(0.0), "at par is a draw, and the ring stores it"
+
+
+# ---------------------------------------------------------------------------
+# The parked m -> 32 lever must trip loudly, not truncate
+# ---------------------------------------------------------------------------
+
+
+def test_raising_m_past_the_ring_slots_is_refused() -> None:
+    """m is CONFIG; the visit layout is FORMAT. load()'s layout check cannot see
+    a config that outgrew it, so the ring asserts at open."""
+    cfg = Config()
+    cfg.search.gumbel_m = 32
+    with pytest.raises(RingError, match="exceeds the ring's 16 visit slots"):
+        ReplayRing(4, cfg)
+
+
+def test_m_at_the_slot_count_is_accepted() -> None:
+    """The other polarity — the guard must not refuse the layout it was sized for."""
+    cfg = Config()
+    cfg.search.gumbel_m = 16
+    assert ReplayRing(4, cfg).visit_actions.shape[1] == 16
 
 
 # ---------------------------------------------------------------------------

@@ -75,6 +75,7 @@ class SearchStats:
 
     sims_requested: int = 0
     sims_used: int = 0
+    step_cap_reached: int = 0
     nodes: int = 0
     max_depth: int = 0
     evaluations: int = 0
@@ -188,12 +189,42 @@ def _select(tree: _Tree, node: int, cfg: Config) -> int:
 
 
 def _leaf_outcome(
-    problem: Problem, expr: Expr, cfg: Config, rng: random.Random, stats: SearchStats
+    problem: Problem,
+    expr: Expr,
+    cfg: Config,
+    rng: random.Random,
+    stats: SearchStats,
+    *,
+    total_steps: int,
 ) -> float | None:
-    """Terminal value, or ``None`` if the leaf needs evaluating."""
+    """Terminal value **on the z scale**, or ``None`` if the leaf needs evaluating.
+
+    **One currency (spec §6).** A solved leaf is not worth ``+1.0`` because it is
+    solved — it is worth what the *par game* pays for solving it in
+    ``total_steps``: ``+1`` under par, ``0`` at par, ``-1`` over par. A flat
+    ``+1.0`` for every solve makes the searcher indifferent between an over-par
+    solve and an under-par one, which means it cannot race, and the par game's
+    whole premise dies at the backup rule while every test stays green
+    (`FINDINGS.md` F-13).
+
+    This is chess's FINALE bug in this project's terms: there, several proven
+    wins tied at ``+1`` and the engine chose mate-in-5 over mate-in-2. Here the
+    tie is between solutions of different lengths, and the thing that goes
+    missing is the only quantity the campaign measures.
+
+    ``total_steps`` is steps already taken in the episode plus the leaf's depth in
+    this tree — the real step count of the line, not the tree-local one.
+    """
+    if problem.par is None:
+        raise ValueError(
+            "search needs par: the in-tree terminal value is z against par, and a "
+            "problem without par cannot be scored on the scale the loop trains on."
+        )
     if verify(problem, expr, cfg, rng):
         stats.terminal_solved += 1
-        return 1.0
+        if total_steps < problem.par:
+            return 1.0
+        return 0.0 if total_steps == problem.par else -1.0
     try:
         encode(problem, expr, cfg)
     except StateTooLarge:
@@ -201,6 +232,11 @@ def _leaf_outcome(
         return -1.0
     if not legal_actions(expr):
         stats.terminal_no_actions += 1
+        return -1.0
+    if total_steps >= cfg.episode.step_cap:
+        # The cap is a loss, identically to going over par (plan chunk 3). A leaf
+        # at the cap cannot be continued, so it is terminal and it is -1.
+        stats.step_cap_reached += 1
         return -1.0
     return None
 
@@ -212,7 +248,13 @@ def _priors_for(raw: np.ndarray, actions: list[tuple[int, int]], cfg: Config) ->
 
 
 def _simulate(
-    problem: Problem, expr: Expr, cfg: Config, rng: random.Random, sims: int, m: int
+    problem: Problem,
+    expr: Expr,
+    cfg: Config,
+    rng: random.Random,
+    sims: int,
+    m: int,
+    steps_taken: int = 0,
 ) -> Generator[tuple[Problem, Expr], Evaluation, SearchResult]:
     """Yields leaves needing evaluation; returns the finished result."""
     stats = SearchStats(sims_requested=sims)
@@ -259,7 +301,14 @@ def _simulate(
                         tree.children[node][chosen] = child  # type: ignore[index]
                         stats.nodes += 1
                         stats.max_depth = max(stats.max_depth, int(tree.depth[child]))
-                        outcome = _leaf_outcome(problem, successor, cfg, rng, stats)
+                        outcome = _leaf_outcome(
+                            problem,
+                            successor,
+                            cfg,
+                            rng,
+                            stats,
+                            total_steps=steps_taken + int(tree.depth[child]),
+                        )
                         if outcome is not None:
                             tree.terminal[child] = True
                             tree.value[child] = outcome
@@ -316,8 +365,15 @@ def search(
     *,
     sims: int | None = None,
     m: int | None = None,
+    steps_taken: int = 0,
 ) -> SearchResult:
-    """One search, evaluating one leaf at a time."""
+    """One search, evaluating one leaf at a time.
+
+    ``steps_taken`` is how many steps the episode has already spent. It is not
+    cosmetic: the in-tree terminal value is z against par, so a leaf's worth
+    depends on the total line length, not the tree-local depth. Defaulting it to
+    0 is correct only for a search from a problem's start state.
+    """
     generator = _simulate(
         problem,
         expr,
@@ -325,6 +381,7 @@ def search(
         rng,
         sims if sims is not None else cfg.search.sims,
         m if m is not None else cfg.search.gumbel_m,
+        steps_taken,
     )
     try:
         request = next(generator)
@@ -353,7 +410,13 @@ def run_batched(
     m = m if m is not None else cfg.search.gumbel_m
     size = batch_size if batch_size is not None else cfg.search.batch_searches
 
-    generators = [_simulate(p, e, cfg, r, sims, m) for p, e, r in items]
+    # Per-item steps_taken: an episode mid-flight is not at step 0, and the
+    # terminal value is z against par over the WHOLE line. Items may supply it as
+    # a 4th element; 3-tuples mean a search from a start state.
+    generators = [
+        _simulate(item[0], item[1], cfg, item[2], sims, m, item[3] if len(item) > 3 else 0)
+        for item in items
+    ]
     results: list[SearchResult | None] = [None] * len(generators)
     pending: list[tuple[int, tuple[Problem, Expr]]] = []
 
