@@ -399,6 +399,22 @@ remaining-depth is small and both sets' derivations funnel into it. Disjoint
 problems do not imply disjoint derivations, and no amount of care about the
 former produces the latter.
 
+> **CLOSED by ruling, 2026-08-15, recorded verbatim.** *The gate reads the
+> unseen subset at the unchanged 0.90 threshold; both numbers publish with the
+> inflation delta named; report unseen-≤3 n, and if n < 1,000,
+> `eval_held_out_v2` is pre-authorized as a state-tested-at-birth frozen
+> supplement, v1 untouched; option (c) rejected — funneling is structural,
+> disjoint-by-construction selects unrepresentative problems and violates the
+> frozen instrument.*
+>
+> **Applied.** Unseen-≤3 **n = 1,229**, which is ≥ 1,000, so `eval_held_out_v2`
+> is **not triggered** and v1 stands unmodified. The published pair for gate 10
+> is all-held-out **0.9782** and unseen **0.9699**; the **inflation delta is
+> +0.0083** — the contaminated instrument reads 0.83 points high, and naming it
+> is the point of publishing both. The held-out set keeps all 6,570 states; the
+> exclusion is applied at *measurement* time, not by deleting data, so the same
+> artifact serves both numbers forever.
+
 **Not removed.** A1's threshold is pre-stated: ≤1% remove, >1% is structural and
 is a joint ruling. 21.28% is emphatically structural, the census script encodes
 the rule and refused, and the rule was fixed before the number was seen. The
@@ -456,9 +472,51 @@ all.
 
 **Why even the 391 nine-action states never miss**, which the floor alone does
 not explain: the target's rank among 9 legal actions under the *untrained* model
-is 2 in 381 of 391 cases and never worse than 4. A random network already ranks
-the BFS-optimal action near the top, so the last-place exclusion top-8 performs
-almost never lands on the target. The floor is 0.9897; the achieved value is 1.0.
+is 2 in 381 of 391 cases and never worse than 4. The last-place exclusion that
+top-8 performs therefore almost never lands on the target. The floor is 0.9897;
+the achieved value is 1.0.
+
+> **Erratum, 2026-08-15.** This finding first explained that row as "a random
+> network already ranks the BFS-optimal action near the top." That sentence
+> over-generalised a subpopulation into a claim about the whole metric, and the
+> whole metric says otherwise: over all depth ≤ 3 states the untrained network
+> scores **0.6950 against a uniform-random null of E[1/B] = 0.6803**. It is at
+> chance, not near the top. The rank-2 concentration is real and confined to the
+> 9-action states; the sentence generalising it was not measured.
+>
+> **Three hypotheses tested and rejected** (raised in review as "enumeration
+> order appearing on both sides of the measurement"):
+>
+> | hypothesis | test | result |
+> |---|---|---|
+> | policy head is zero-initialised ⇒ constant logits | measure head init and logit spread | **rejected** — `rule_embedding` std 1.0030, logit spread over legal actions median 10.27, every value distinct on 1,512/1,512 multi-action rows |
+> | ties ⇒ `argsort` falls back to index order | count exact ties | **rejected** — 0 rows with tied legal logits |
+> | untrained ranking tracks enumeration order | top-scoring action == lowest-index legal action | **rejected** — 29.30%, near chance |
+> | 391 rows are duplicate states, so it is one observation | count distinct `(identity_key, goal)` | **rejected** — 391 rows, **391 distinct states** |
+>
+> So the concentration is not a tie-break artifact and not over-counted
+> evidence. It stands **open and measured**: 381 of 391 distinct 9-action states
+> put the BFS target at rank exactly 2 under a randomly initialised network. No
+> mechanism is on offer. It does not affect the gate verdict — the floor and the
+> untrained 1.0000 settle that independently — but it is the second unexplained
+> regularity in this data (F-08's depth-2 zero is the first).
+>
+> **What review predicted and what happened.** The prediction was that the
+> untrained baseline would fall toward E[1/B] once ties were removed. It is
+> already there — 0.6950 against 0.6803 — because there were no ties to remove.
+> The baseline was honest; the *sentence explaining it* was not. Item 4's
+> single-BFS-path caveat is separately confirmed as measurably active: the
+> target's position in legal enumeration order is `{1: 641, 2: 531, 3: 6, 4: 12,
+> 5: 321, 6: 1}` over 1,512 sampled multi-action states — 42.4% at position 1
+> against a uniform expectation near 25%. That is enumeration order on the
+> *label* side, now measured rather than noted.
+>
+> **And one process note, because it is the same trap twice.** The first version
+> of this diagnostic sampled `range(256)` — a prefix — and `phase1_eval` is laid
+> out stratum by stratum, so all 256 rows were depth-1 with a single legal
+> action and every statistic came back degenerate. That is exactly the mistake
+> `build_phase1_data.py`'s `--limit` docstring records from F-03. A documented
+> trap in this repository caught the person who had read the documentation.
 
 **This is chunk 7's own instrument catching the opposite failure.** There, gate
 arithmetic showed a 100% depth-1 gate was arithmetically *impossible* at m = 3
@@ -484,3 +542,87 @@ asserts on is not a gate. **Rider (c), proposed: a threshold nobody computed the
 floor of is not a gate either — compute what the metric can return before
 choosing where to draw the line.** A gate has two failure modes, unreachable and
 unmissable, and the second one ships green.
+
+---
+
+## F-11 — A null baseline measured through a constant seed is not a null baseline
+
+**Found:** 2026-08-15, building gate 11's stub-null row under rider (c). Record:
+`runs/gate_phase1_search_m1.json`, `runs/gate_phase1_search_m5.json`.
+
+The harness called `search(..., random.Random(0), ...)` — a **fresh** generator,
+re-seeded to the same constant, for every search of every problem. The root
+Gumbel draw is therefore a function of the *action count alone*, so every
+5-action problem in a suite draws the same perturbation, considers the same
+slots, and chooses the same one. Measured on six 5-action depth-1 problems:
+
+```
+fresh Random(0) per search        per-problem seed
+  chosen slot 0  [8,8,0,0,0]        chosen slot 0  [8,8,0,0,0]
+  chosen slot 0  [8,8,0,0,0]        chosen slot 3  [8,0,0,8,0]
+  chosen slot 0  [8,8,0,0,0]        chosen slot 4  [8,0,0,0,8]
+  chosen slot 0  [8,8,0,0,0]        chosen slot 2  [8,0,8,0,0]
+  chosen slot 0  [8,8,0,0,0]        chosen slot 1  [0,8,0,8,0]
+  chosen slot 0  [8,8,0,0,0]        chosen slot 1  [0,8,0,8,0]
+```
+
+Against flat stub priors this silently replaces the intended null — *uniform-random
+action* — with a different one: *always the first legal action*. Same name,
+different claim, and the substitute is **not** weaker. It is stronger, because
+the first legal action is on an optimal path far more often than chance (F-10's
+erratum measured the BFS target at enumeration position 1 in 42.4% of
+multi-action states). The degenerate null therefore reads *high*, and a null that
+reads high makes a gate look **more** vacuous than it is.
+
+**What it cost, and what it corrected:**
+
+| gate 11 config | null, constant seed | null, per-problem seed |
+|---|---:|---:|
+| 16 sims, m = 1 | 0.7450 | **0.7725** |
+| 16 sims, m = 5 (registered) | **1.0000** | **0.9175** |
+
+At m = 5 the difference is the whole verdict. Through the constant seed the null
+read 1.0000 and gate 11 looked vacuous exactly like gate 10. Correctly measured
+it reads 0.9175 against a 0.9500 threshold — **the gate discriminates**, narrowly,
+and the first conclusion drawn from it was wrong.
+
+**Caught by the inherited law, not by inspection.** *Instrument the trigger,
+never trust identical numbers.* Two different `m` values returned byte-identical
+rates — 160/200 and 138/200 at both m = 1 and m = 2. Nothing else was suspicious;
+the numbers were plausible, the code read correctly, and the gate would have
+shipped. The only signal was that two configurations which must differ did not.
+
+**The general lesson:** rider (c) says the null is a *run*, not an estimate. This
+adds the other half — **a null is a run over the randomness it claims to average
+over.** A stub with flat priors has no signal of its own, so *all* of its
+behaviour comes from the draw; seeding that draw to a constant does not make the
+null reproducible, it makes it a different policy. Reproducibility belongs in the
+*seed schedule* (per problem, per step, recorded), never in seeding every draw
+identically.
+
+Fixed: the search rng is seeded per `(problem index, step)`, and `verify`'s
+equivalence rng is seeded separately so both arms are judged by the same draws.
+
+**A design tension this exposed, recorded because both sides are house law.**
+Item 9's gate arithmetic requires `m ≥ B_max = 5` so the winning action is
+*certainly considered* — that is what makes a 100% gate reachable rather than
+arithmetically impossible (chunk 7's lesson). Rider (c) requires the gate to
+*discriminate* — measured value meaningfully above null. These pull opposite
+ways, and the two measured points show it:
+
+| m | null (stub) | threshold | measured | null-to-threshold margin |
+|---:|---:|---:|---:|---:|
+| 1 | 0.7725 | 0.95 | 1.0000 | 0.1775 |
+| 5 (registered) | 0.9175 | 0.95 | 1.0000 | 0.0325 |
+
+Raising `m` hands more of the work to the search and less to the prior, so the
+null rises toward the threshold. At `m = 5` the margin is 0.0325 — the gate
+still discriminates, but thinly, and a slightly better null would erase it. Two
+points is not a trend and no monotonicity is claimed here; the *direction* is
+measured and the mechanism is plain.
+
+**Neither law is wrong.** They are answering different questions — *can this gate
+be passed at all?* and *does passing it mean anything?* — and a gate needs both
+answered. The practical consequence for later chunks: when a search budget makes
+a gate reachable, check what it did to the null in the same breath, because the
+same knob moves both.

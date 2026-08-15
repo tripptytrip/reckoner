@@ -104,6 +104,7 @@ MUST_REACH: list[str] = [
     # Chunk 8: what a run reported, and the environment it reported it from.
     "runs/phase1/phase1_result.json",
     "runs/m1/check_env.txt",
+    "runs/phase1/anchor.json",  # the anchor every later pass is compared against
 ]
 
 # The counterpart polarity: things that must STAY ignored.

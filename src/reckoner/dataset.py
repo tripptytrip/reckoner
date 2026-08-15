@@ -83,6 +83,48 @@ def git_sha(repo: Path) -> str:
         return "unknown"
 
 
+class RecordWouldBeUntracked(RuntimeError):
+    """A record was about to be written to a path git ignores."""
+
+
+def write_record(path: Path, payload: dict, *, repo: Path | None = None) -> Path:
+    """Write a JSON record, refusing to write one git would ignore.
+
+    Three separate times in chunk 8 a record shipped untracked — the gate
+    arithmetic a gate was declared on, the pre-flight a projection came from, the
+    result a run reported — each caught afterwards and each fixed by widening a
+    `.gitignore` negation to a glob. The glob fixes the *class*; this fixes the
+    *mechanism*. **The writer asserts its own trackedness before the bytes land**,
+    so an unversioned record is impossible rather than noticed later.
+
+    It is the same shape as the inherited "instrument the trigger" law: the check
+    references the actual path being written, resolved against the repo, not a
+    pattern that might match something else. Raising is deliberate — library code
+    raises and only ``scripts/`` prints, and a record silently landing outside
+    version control is exactly the failure that has to be loud.
+
+    Outside a git repository the check is skipped rather than failed: a clean
+    checkout used as a library is not the situation this guards.
+    """
+    repo = repo or Path(__file__).resolve().parents[2]
+    path = Path(path)
+    if (repo / ".git").exists():
+        ignored = subprocess.run(
+            ["git", "-C", str(repo), "check-ignore", "-q", str(path)],
+            capture_output=True,
+            check=False,
+        )
+        if ignored.returncode == 0:
+            raise RecordWouldBeUntracked(
+                f"{path} is ignored by .gitignore — a record that git will not keep is "
+                f"not a record. Add a negation (prefer a glob covering its kind) and a "
+                f"MUST_REACH entry in tests/test_gitignore_musttrack.py, then rerun."
+            )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    return path
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as fh:

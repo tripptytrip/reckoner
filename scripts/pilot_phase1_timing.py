@@ -29,7 +29,6 @@ Writes ``runs/pilot_phase1_timing.json``. Recommends; does not decide.
 from __future__ import annotations
 
 import argparse
-import json
 import random
 import statistics
 import time
@@ -38,7 +37,7 @@ from pathlib import Path
 import torch
 
 from reckoner.config import Config, config_fingerprint
-from reckoner.dataset import git_sha
+from reckoner.dataset import git_sha, write_record
 from reckoner.model import Reckoner, policy_loss, steps_loss
 from reckoner.train import SupervisionSet, make_batch
 from reckoner.vocab import PAD
@@ -290,9 +289,7 @@ def main() -> int:
         "git_sha": git_sha(REPO),
         "config_fingerprint": config_fingerprint(cfg),
     }
-    (REPO / "runs" / "pilot_phase1_timing.json").write_text(
-        json.dumps(out, indent=2, sort_keys=True) + "\n"
-    )
+    write_record(REPO / "runs" / "pilot_phase1_timing.json", out)
     print("\n  wrote runs/pilot_phase1_timing.json")
     return 0
 

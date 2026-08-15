@@ -30,7 +30,7 @@ import numpy as np
 import torch
 
 from reckoner.config import Config
-from reckoner.dataset import git_sha
+from reckoner.dataset import git_sha, write_record
 from reckoner.model import Reckoner
 from reckoner.train import SupervisionSet, make_batch
 
@@ -151,9 +151,7 @@ def main() -> int:
         "git_sha": git_sha(REPO),
         "data_digests": json.loads((args.data / "meta.json").read_text())["digests"],
     }
-    (REPO / "runs" / "gate_arithmetic_topk.json").write_text(
-        json.dumps(out, indent=2, sort_keys=True) + "\n"
-    )
+    write_record(REPO / "runs" / "gate_arithmetic_topk.json", out)
     print("\n  wrote runs/gate_arithmetic_topk.json")
     return 0
 

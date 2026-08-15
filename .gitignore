@@ -69,6 +69,7 @@ runs/**
 # in its own meta.
 !runs/**/*_result.json
 !runs/**/check_env.txt
+!runs/**/anchor.json
 
 # Root-scoped: a bare `data/` would also swallow runs/data/ as a *directory*
 # ignore, and git cannot descend into an ignored directory to reach the

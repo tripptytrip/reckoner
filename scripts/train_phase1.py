@@ -25,7 +25,7 @@ from pathlib import Path
 import torch
 
 from reckoner.config import Config, config_fingerprint, save_config, validate
-from reckoner.dataset import git_sha
+from reckoner.dataset import git_sha, write_record
 from reckoner.model import Reckoner, save_checkpoint
 from reckoner.train import SupervisionSet, make_batch, train
 
@@ -244,7 +244,7 @@ def main() -> int:
             print(f"    {depth:>6} {row['n']:>7,} {row['top1']:>8.4f} {row['top8']:>8.4f}")
         print(f"    depth<=3 top8: {clean['depth_le_3_top8']}  (n={clean['depth_le_3_n']:,})")
 
-    (run / "phase1_result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    write_record(run / "phase1_result.json", result)
     print(f"\n  wrote {run / 'phase1_result.json'}")
     return 0
 

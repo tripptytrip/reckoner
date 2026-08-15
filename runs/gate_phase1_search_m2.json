@@ -1,0 +1,59 @@
+{
+  "budget_mult": 2,
+  "checkpoint_step": 5000,
+  "gate_11": {
+    "floor": 0.0,
+    "measured": 1.0,
+    "metric": "depth<=2 search-guided solve rate",
+    "n": 400,
+    "null_stub": 0.745,
+    "threshold": 0.95,
+    "verdict": "PASS",
+    "zero_value_ablation": 1.0
+  },
+  "git_sha": "2f913616a596c82ad1f5449eb6dcb35d72947fad",
+  "m": 2,
+  "sims": 16,
+  "suites": {
+    "solve_in_1": {
+      "stub_null": {
+        "median_steps_when_solved": 1,
+        "n": 200,
+        "rate": 0.8,
+        "solved": 160
+      },
+      "trained": {
+        "median_steps_when_solved": 1,
+        "n": 200,
+        "rate": 1.0,
+        "solved": 200
+      },
+      "zero_value": {
+        "median_steps_when_solved": 1,
+        "n": 200,
+        "rate": 1.0,
+        "solved": 200
+      }
+    },
+    "solve_in_2": {
+      "stub_null": {
+        "median_steps_when_solved": 2,
+        "n": 200,
+        "rate": 0.69,
+        "solved": 138
+      },
+      "trained": {
+        "median_steps_when_solved": 2,
+        "n": 200,
+        "rate": 1.0,
+        "solved": 200
+      },
+      "zero_value": {
+        "median_steps_when_solved": 2,
+        "n": 200,
+        "rate": 1.0,
+        "solved": 200
+      }
+    }
+  }
+}

@@ -19,6 +19,7 @@ import pytest
 from reckoner.config import Config
 from reckoner.dataset import (
     FIELDS,
+    RecordWouldBeUntracked,
     dataset_keys,
     problem_key,
     read_dataset,
@@ -27,6 +28,7 @@ from reckoner.dataset import (
     state_keys,
     suite_problem,
     write_dataset,
+    write_record,
     write_suite,
 )
 from reckoner.episode import Problem, bfs_par, bfs_solution, decode_state
@@ -508,3 +510,38 @@ def test_the_generator_is_seeded_not_ambient() -> None:
     assert _plan(60, 11) != _plan(60, 12)
     random.seed(999)  # ambient state must not reach it
     assert _plan(60, 11) == _plan(60, 11)
+
+
+# ---------------------------------------------------------------------------
+# Records assert their own trackedness before the bytes land
+# ---------------------------------------------------------------------------
+
+
+def test_write_record_refuses_a_path_git_would_ignore(tmp_path: Path) -> None:
+    """Both polarities, because this guard only earns its place if it can fire.
+
+    Three records shipped untracked in chunk 8 and each was caught afterwards.
+    The negation globs fixed the class; this fixes the mechanism. A guard that
+    could never refuse would be a comment that happens to run.
+    """
+    ignored = REPO / "runs" / "phase1" / "phase1.pt"  # checkpoints stay ignored, by design
+    with pytest.raises(RecordWouldBeUntracked):
+        write_record(ignored.with_suffix(".pt"), {"never": "written"})
+    assert not (REPO / "runs" / "phase1" / "phase1.pt.json").exists()
+
+
+def test_write_record_writes_a_tracked_path(tmp_path: Path) -> None:
+    """The accepting case: a path git will keep is written and round-trips."""
+    target = REPO / "runs" / "gate_write_record_probe.json"
+    try:
+        write_record(target, {"probe": 1})
+        assert json.loads(target.read_text()) == {"probe": 1}
+    finally:
+        target.unlink(missing_ok=True)
+
+
+def test_write_record_skips_the_check_outside_a_repo(tmp_path: Path) -> None:
+    """A clean checkout used as a library is not what this guards."""
+    out = tmp_path / "nested" / "record.json"
+    write_record(out, {"ok": True}, repo=tmp_path)
+    assert json.loads(out.read_text()) == {"ok": True}

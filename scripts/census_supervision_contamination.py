@@ -33,7 +33,7 @@ from pathlib import Path
 
 import numpy as np
 
-from reckoner.dataset import git_sha, read_suite, sha256_file
+from reckoner.dataset import git_sha, read_suite, sha256_file, write_record
 from reckoner.episode import decode_state
 from reckoner.expr import identity_key
 from reckoner.rules import RULESET_VERSION
@@ -245,9 +245,7 @@ def main() -> int:
         record = {k: v for k, v in pair.items() if k != "colliding_indices"}
         record["git_sha"] = git_sha(REPO)
         record["dataset_digests"] = json.loads((args.data / "meta.json").read_text())["digests"]
-        (REPO / "runs" / f"{args.out_name}.json").write_text(
-            json.dumps(record, indent=2, sort_keys=True) + "\n"
-        )
+        write_record(REPO / "runs" / f"{args.out_name}.json", record)
         print(f"  wrote runs/{args.out_name}.json")
         if pair["verdict"] == "STOP":
             print(
@@ -278,7 +276,7 @@ def main() -> int:
     print(f"\n  threshold (A1, pre-stated): {THRESHOLD:.2%}")
     print(f"  verdict                   : {report['verdict']}")
 
-    def write_record(rep: dict, removed: int) -> None:
+    def emit(rep: dict, removed: int) -> None:
         """The record pins the digests it was computed against.
 
         A contamination record that does not name the bytes it censused is a
@@ -290,12 +288,10 @@ def main() -> int:
         record["removed_examples"] = removed
         record["dataset_digests"] = json.loads((args.data / "meta.json").read_text())["digests"]
         record["git_sha"] = git_sha(REPO)
-        (REPO / "runs" / f"{args.out_name}.json").write_text(
-            json.dumps(record, indent=2, sort_keys=True) + "\n"
-        )
+        write_record(REPO / "runs" / f"{args.out_name}.json", record)
 
     if report["verdict"] == "STOP":
-        write_record(report, removed=0)
+        emit(report, removed=0)
         print(f"\n  wrote runs/{args.out_name}.json")
         print(
             f"\n  STOP — {report['colliding_fraction']:.2%} exceeds the {THRESHOLD:.0%} "
@@ -304,7 +300,7 @@ def main() -> int:
         return 2
 
     if not args.apply:
-        write_record(report, removed=0)
+        emit(report, removed=0)
         print(f"\n  wrote runs/{args.out_name}.json")
         print("\n  census only — pass --apply to remove")
         return 0
@@ -318,7 +314,7 @@ def main() -> int:
     # record that ships is a MEASUREMENT of the shipped bytes, not a deduction
     # from the operation that produced them.
     after = census(args.data)
-    write_record(after, removed=report["colliding_examples"])
+    emit(after, removed=report["colliding_examples"])
     print(
         f"  re-censused after removal: {after['colliding_examples']} collisions "
         f"in {after['examples']:,} examples"

@@ -202,6 +202,17 @@ then run CPU-only forever. This has burned real time more than once.
   `SearchStats.nodes` existed in chunk 7, was populated correctly, was written
   into every stats row, and read 6, 6, 6, 6 across an 8× budget increase. The
   instrument was not missing — it was mute. Adding a field is not adding a gate.
+  **Operational rider (c): a threshold nobody computed the floor of is not a gate
+  either.** A gate has two failure modes — *unreachable* and *unmissable* — and
+  only the first announces itself by failing; the second ships green. Measured:
+  chunk 8's registered `top-8 ≥ 0.90 on depth ≤ 3` had a floor of 0.9897, because
+  top-k ranks over the legal set and 98.97% of those states have ≤ 8 legal
+  actions. A randomly initialised network scored 1.0000 (`FINDINGS.md` F-10).
+  **Executable form: every gate declares a four-tuple — floor, null-model
+  baseline, threshold, measured value — at declaration, not afterwards.** Chunk 7
+  institutionalised this arithmetic for search budgets; it generalises to every
+  metric this project will ever gate on. The null is a *run*, not an estimate:
+  the uniform-prior stub at the same budget on the same problems.
   *(countersigned-under-delegation)*
 - **A provenance field whose default is its strongest claim is not a provenance
   field — the most-trusted value must be the one that costs something to say.** *(countersigned-under-delegation)*
@@ -277,16 +288,20 @@ then run CPU-only forever. This has burned real time more than once.
   write `BLOCKED-<date>-<topic>.md` (cause, attempts, options), commit, halt. A
   relaxed acceptance criterion is a silent lie discovered weeks later; a
   BLOCKED.md is useful information.
-- **A brief is committed verbatim on receipt, before any item executes.**
-  *(countersigned-under-delegation)* Governance text that lives only in a
-  conversation is destructible. Measured twice: the chunk-6 gate verdict existed
+- **Briefs and reviewer rulings commit verbatim on receipt, before acting on
+  them.** *(countersigned-under-delegation; scope extended in place 2026-08-15
+  after a session boundary ate an issued F-09 ruling — the third instance)*
+  Governance text that lives only in a
+  conversation is destructible. Measured three times: the chunk-6 gate verdict existed
   only as a spoken "PASS. continue" until `GATE-chunk4-VERDICT.md` was written
-  for it, and the chunk-8 brief was never committed, so a session crash took
-  items 3 and 5–8 permanently (`BRIEF-chunk8.md` carries the summary that
-  survived and says so). The commit precedes execution, not follows it: a brief
+  for it; the chunk-8 brief was never committed, so a session crash took items 3
+  and 5–8 permanently (`BRIEF-chunk8.md` carries the summary that survived and
+  says so); and the F-09 ruling was issued, lost to a session boundary, and had
+  to be reissued. The commit precedes execution, not follows it: a brief
   committed after the work is a transcript, and a transcript cannot be the thing
   the work was checked against. **Amendments to a committed brief are appended to
-  it, dated, never edited into the original text.**
+  it, dated, never edited into the original text.** A ruling is committed into
+  the artifact it rules on — F-09's ruling lives in F-09.
 - **Interfaces are contracts.** Once a chunk's public interface (signatures,
   array layouts, file formats, constants, config keys) is established, do not
   change it without being asked — later chunks depend on it.

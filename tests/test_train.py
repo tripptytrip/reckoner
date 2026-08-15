@@ -16,7 +16,7 @@ import torch
 
 from reckoner.config import Config
 from reckoner.model import Reckoner
-from reckoner.train import SupervisionSet, _crop_to_content, make_batch
+from reckoner.train import SupervisionSet, _crop_to_content, make_batch, train
 from reckoner.vocab import PAD
 
 REPO = Path(__file__).resolve().parents[1]
@@ -119,3 +119,43 @@ def test_encode_failures_are_counted_never_cropped() -> None:
     indices = [rng.randrange(len(data)) for _ in range(32)]
     batch = make_batch(data, indices, CFG)
     assert batch.skipped == len(indices) - int(batch.tokens.shape[0])
+
+
+# ---------------------------------------------------------------------------
+# Gate 13 — reproducible from seed, at a declared tolerance
+# ---------------------------------------------------------------------------
+
+
+@needs_data
+def test_training_is_reproducible_from_seed() -> None:
+    """**Declared tolerance: exact.** Not "close" — bit-identical loss curves.
+
+    On CPU with every RNG seeded from config there is no source of nondeterminism
+    to tolerate, so a tolerance would be a place for real drift to hide. If this
+    ever needs one, that is a finding about the environment and gets written down
+    rather than absorbed into an epsilon.
+
+    Scope is declared too, because a gate must report what it covered: **5 steps
+    at batch 16**, which exercises sampling, batch construction, the crop, both
+    losses, clipping and the optimiser step. It does not cover long-run
+    accumulation; the full run's reproducibility rests on this plus the seeded
+    sampler, and a 2 x 83-minute repeat is not a `make test` cost.
+    """
+    data = SupervisionSet(DATA)
+    cfg = Config()
+    cfg.train.batch_size = 16
+
+    def run() -> list[float]:
+        torch.manual_seed(0)
+        model = Reckoner(cfg)
+        stats = train(model, data, cfg, steps=5, seed=0, log_every=0)
+        return stats.losses
+
+    first, second = run(), run()
+    assert first == second, f"seed-identical runs diverged:\n  {first}\n  {second}"
+    assert len(first) == 5
+    # Both polarities: a different seed must NOT reproduce it, or the assertion
+    # above would pass on a loop that ignores its inputs.
+    torch.manual_seed(0)
+    other = train(Reckoner(cfg), data, cfg, steps=5, seed=1, log_every=0).losses
+    assert other != first, "a different seed produced an identical curve"
