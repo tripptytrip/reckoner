@@ -137,6 +137,43 @@ def value_contribution(state: ValueHeadState) -> float:
     return 1.0 if state.live else 0.0
 
 
+def evaluate_head(model, ring, cfg, slots: Sequence[int]) -> tuple[list[int], list[int]]:
+    """The criterion's evaluation slice: **held-out ring rows, in distribution.**
+
+    Held out from *training* — the head must not be graded on rows it fit — but
+    drawn from the same episode stream the loop produces, and that is deliberate
+    rather than an oversight.
+
+    **Why F-09's anxiety does not import here.** F-09 was about a *generalisation*
+    claim: a held-out set that shared states with training inflated a metric
+    meant to predict performance on unseen problems. This criterion asks a
+    different question — *should the search trust this head on the states the
+    search actually visits?* That is an **in-distribution** question by
+    construction. Grading the head on out-of-distribution states would answer a
+    question nobody is asking and would gate the switch on a capability the
+    search never exercises.
+
+    Returns ``(labels, predictions)`` — stored z against the head's argmax class,
+    both in W/D/L class space.
+    """
+    import torch
+
+    from reckoner.train import ring_batch
+
+    if not slots:
+        return [], []
+    batch = ring_batch(ring, list(slots), cfg)
+    if batch is None:
+        return [], []
+    model.eval()
+    with torch.no_grad():
+        _policy, value_logits, _steps = model(batch.tokens, batch.site_positions)
+    predictions = value_logits.argmax(dim=1).tolist()
+    labels = batch.z_class.tolist()
+    assert len(labels) == len(predictions)
+    return labels, predictions
+
+
 def class_census(labels: Sequence[int]) -> dict[int, int]:
     """Support per class. Logged in the switch event so K is data, not a caption."""
     if not labels:

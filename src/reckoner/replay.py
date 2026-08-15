@@ -131,6 +131,26 @@ _FIELD_INDEX = {f.name: i for i, f in enumerate(_FIELDS_SINCE)}
 _FIELD_MAP = {f.name: f for f in _FIELDS_SINCE}
 
 
+_MASK64 = 0xFFFF_FFFF_FFFF_FFFF
+
+
+def _mix64(index: int, seed: int) -> int:
+    """splitmix64-style avalanche over ``(index, seed)``.
+
+    The first version XOR'd the seed into a multiplied index, which changed the
+    value by a bit or two and therefore almost never moved a row across the
+    threshold — so different seeds produced the *same* split. The both-polarities
+    test caught it: it asserted the seed matters, and it did not. A partitioner
+    whose seed does nothing is a partitioner with one partition.
+    """
+    x = (index * 0x9E37_79B9_7F4A_7C15 + seed * 0xBF58_476D_1CE4_E5B9) & _MASK64
+    x ^= x >> 30
+    x = (x * 0xBF58_476D_1CE4_E5B9) & _MASK64
+    x ^= x >> 27
+    x = (x * 0x94D0_49BB_1331_11EB) & _MASK64
+    return x ^ (x >> 31)
+
+
 class RingError(ValueError):
     """A malformed record or an impossible read."""
 
@@ -310,6 +330,20 @@ class ReplayRing:
                 raw[name] = absent
         raw["ring_format"] = int(self.record_format[slot])
         return raw
+
+    def holdout(self, frac: float, seed: int = 0) -> set[int]:
+        """Slots reserved for evaluation, never trained on.
+
+        Deterministic in ``(slot, seed)`` rather than drawn per call, so the same
+        row is on the same side of the split every time it is consulted — a
+        holdout that re-rolls is a holdout the model has seen.
+        """
+        if not 0.0 <= frac < 1.0:
+            raise RingError(f"holdout frac must be in [0, 1); got {frac}")
+        if frac == 0.0:
+            return set()
+        cut = int(frac * 1_000_000)
+        return {i for i in range(self.count) if _mix64(i, seed) % 1_000_000 < cut}
 
     def sample(self, k: int, seed: int) -> list[int]:
         """Slots sampled across the ring — never a prefix (the blessed sampler)."""

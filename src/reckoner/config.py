@@ -243,6 +243,11 @@ class TrainConfig:
     # [plan chunk 8] "constant/cosine LR from config" — the schedule is a config
     # key, not a script flag, so a run's own resolved config.yaml states which
     # curve produced its loss trace. ``validate()`` rejects anything else.
+    # [chunk 9] Fraction of ring rows reserved for evaluating the value head's
+    # switch criterion. Held out from TRAINING, but deliberately IN-DISTRIBUTION:
+    # see `valuegate.evaluate_head` for why that is the right shape here and not
+    # the F-09 hazard repeated.
+    ring_holdout_frac: float = 0.1
     lr_schedule: str = "cosine"
     lr_warmup_steps: int = 200
     weight_decay: float = 1e-4

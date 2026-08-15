@@ -280,10 +280,18 @@ def train_on_ring(
     )
     stats = TrainStats()
 
+    # The switch criterion's slice is held out from training: a head graded on
+    # rows it fit would clear its own bar by memorising them.
+    reserved = ring.holdout(cfg.train.ring_holdout_frac, seed=0)
+    trainable = [i for i in range(len(ring)) if i not in reserved]
+
     for step in range(steps):
-        if len(ring) == 0:
+        if not trainable:
             break
-        indices = [rng.randrange(len(ring)) for _ in range(min(cfg.train.batch_size, len(ring)))]
+        indices = [
+            trainable[rng.randrange(len(trainable))]
+            for _ in range(min(cfg.train.batch_size, len(trainable)))
+        ]
         batch = ring_batch(ring, indices, cfg)
         if batch is None:
             stats.encode_skips += len(indices)

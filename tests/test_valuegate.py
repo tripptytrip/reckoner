@@ -256,3 +256,104 @@ def test_two_well_supported_classes_are_evaluable() -> None:
     result = switch_criterion(labels, labels)
     assert result["evaluable"] is True
     assert result["abstain_reason"] is None
+
+
+# ---------------------------------------------------------------------------
+# The evaluation slice — held out from training, in-distribution by design
+# ---------------------------------------------------------------------------
+
+REPO = __import__("pathlib").Path(__file__).resolve().parents[1]
+needs_train_set = pytest.mark.skipif(
+    not (REPO / "runs" / "data" / "train_100k").exists(), reason="training set not generated"
+)
+
+
+def _filled_ring(cfg):
+    from reckoner.dataset import training_problems
+    from reckoner.replay import ReplayRing
+    from reckoner.runner import run_iteration
+    from reckoner.search import uniform_stub
+
+    ring = ReplayRing(2048, cfg)
+    problems = training_problems(REPO / "runs" / "data" / "train_100k", 20, seed=0)
+    run_iteration(problems, uniform_stub(cfg), cfg, ring, sims=8, m=5, seed=0)
+    return ring
+
+
+@needs_train_set
+def test_the_holdout_is_deterministic_in_slot_and_seed() -> None:
+    """A holdout that re-rolls is a holdout the model has seen."""
+    from reckoner.config import Config
+
+    cfg = Config()
+    ring = _filled_ring(cfg)
+    first = ring.holdout(0.1, seed=0)
+    assert first == ring.holdout(0.1, seed=0)
+    assert first != ring.holdout(0.1, seed=1)
+
+
+@needs_train_set
+def test_training_never_samples_a_held_out_row() -> None:
+    """The head must not be graded on rows it fit — it would clear its own bar
+    by memorising them."""
+    import torch
+
+    from reckoner.config import Config
+    from reckoner.model import Reckoner
+    from reckoner.train import train_on_ring
+
+    cfg = Config()
+    ring = _filled_ring(cfg)
+    reserved = ring.holdout(cfg.train.ring_holdout_frac, seed=0)
+    assert reserved, "the holdout is empty — the split is not splitting"
+
+    torch.manual_seed(0)
+
+    # A ring whose ONLY rows are held out must train zero steps.
+    class OnlyHeldOut:
+        def __init__(self, inner, reserved):
+            self._inner = inner
+            self._reserved = reserved
+
+        def __len__(self):
+            return len(self._inner)
+
+        def holdout(self, frac, seed=0):
+            return set(range(len(self._inner)))
+
+        def get(self, i):
+            return self._inner.get(i)
+
+    stats = train_on_ring(Reckoner(cfg), OnlyHeldOut(ring, reserved), cfg, steps=3, seed=0)
+    assert stats.steps == 0, "training consumed rows reserved for evaluation"
+
+
+@needs_train_set
+def test_the_head_is_evaluated_on_held_out_rows_in_distribution() -> None:
+    """In-distribution is the POINT, not an oversight.
+
+    F-09 was about a generalisation claim. This criterion asks whether the search
+    should trust the head on the states the search actually visits — an
+    in-distribution question by construction.
+    """
+    import torch
+
+    from reckoner.config import Config
+    from reckoner.model import Reckoner
+    from reckoner.valuegate import evaluate_head
+
+    cfg = Config()
+    ring = _filled_ring(cfg)
+    held = sorted(ring.holdout(cfg.train.ring_holdout_frac, seed=0))
+    torch.manual_seed(0)
+    labels, predictions = evaluate_head(Reckoner(cfg), ring, cfg, held)
+    assert len(labels) == len(predictions) > 0
+    assert all(z in (0, 1, 2) for z in labels), "labels are W/D/L class indices"
+
+
+def test_evaluating_an_empty_slice_returns_nothing_rather_than_raising() -> None:
+    from reckoner.config import Config
+    from reckoner.model import Reckoner
+    from reckoner.valuegate import evaluate_head
+
+    assert evaluate_head(Reckoner(Config()), None, Config(), []) == ([], [])
