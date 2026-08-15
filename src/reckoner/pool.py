@@ -35,9 +35,10 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from reckoner.absence import Absent
 from reckoner.config import Config
 from reckoner.episode import Problem, verify
-from reckoner.model import Reckoner, load_checkpoint
+from reckoner.model import Reckoner, load_league_checkpoint
 from reckoner.rules import apply, legal_actions
 from reckoner.search import Evaluator, search
 from reckoner.valuegate import ValueHeadState, value_contribution
@@ -76,8 +77,17 @@ class PoolStats:
     refusals: int = 0
     refused_paths: list[str] = field(default_factory=list)
     pool_par_solved: int = 0
-    pool_par_unavailable: int = 0
+    #: Unavailability has TWO causes and they are different diseases: the pool had
+    #: no members to sample, or a sampled member could not solve the problem. The
+    #: capped/stuck lesson applies here — pooling them would hide which is
+    #: happening, and the fixes differ (wait for snapshots vs raise the budget).
+    pool_par_unavailable_empty: int = 0
+    pool_par_unavailable_capped: int = 0
     seconds_solving: float = 0.0
+
+    @property
+    def pool_par_unavailable(self) -> int:
+        return self.pool_par_unavailable_empty + self.pool_par_unavailable_capped
 
     def as_dict(self) -> dict:
         return {
@@ -85,18 +95,27 @@ class PoolStats:
             "refused_paths": list(self.refused_paths),
             "pool_par_solved": self.pool_par_solved,
             "pool_par_unavailable": self.pool_par_unavailable,
+            "pool_par_unavailable_empty": self.pool_par_unavailable_empty,
+            "pool_par_unavailable_capped": self.pool_par_unavailable_capped,
             "seconds_solving": round(self.seconds_solving, 3),
         }
 
 
 @dataclass
 class PoolPar:
-    """A par and the truth about where it came from."""
+    """A par and the truth about where it came from.
+
+    ``par_asof`` is an :class:`Absent` on a fallback, never a raw ``None``. The
+    date is not missing, it is **inapplicable** — an exact par is timeless and has
+    no snapshot to be as-of — and a ``None`` read as ``0`` would date it to the
+    beginning of time. The no-null law holds at this layer too.
+    """
 
     par: int
     par_source: str
-    par_asof: int | None
+    par_asof: int | Absent
     fell_back: bool
+    reason: str  # "solved" | "snapshot_capped" | "pool_empty"
 
 
 class CheckpointPool:
@@ -112,12 +131,14 @@ class CheckpointPool:
     def add(self, path: Path) -> Member | None:
         """Load a snapshot, or **refuse and count it**. Never silently skip.
 
-        ``strict_versions`` is not passed as False here and must not be: the
-        escape hatch exists for offline inspection, not for the league
-        (BRIEF-chunk9 §4).
+        Uses :func:`load_league_checkpoint`, which has **no** ``strict_versions``
+        parameter — the escape hatch exists for offline inspection and is
+        unreachable from here by construction, not by convention (BRIEF-chunk9 §4).
         """
         try:
-            model, meta = load_checkpoint(path, self.cfg)
+            # The LEAGUE loader: no strict_versions parameter exists to pass,
+            # so 'must not pass False' is impossible rather than remembered.
+            model, meta = load_league_checkpoint(path, self.cfg)
         except ValueError as exc:
             self.stats.refusals += 1
             self.stats.refused_paths.append(str(path))
@@ -204,19 +225,48 @@ class CheckpointPool:
             if verify(problem, expr, cfg, checker):
                 self.stats.pool_par_solved += 1
                 self.stats.seconds_solving += time.perf_counter() - started
-                return PoolPar(par=steps, par_source="pool", par_asof=member.step, fell_back=False)
+                return PoolPar(
+                    par=steps,
+                    par_source="pool",
+                    par_asof=member.step,
+                    fell_back=False,
+                    reason="solved",
+                )
 
         # Undefined for this pair. The fallback is allowed; the silence is not.
-        self.stats.pool_par_unavailable += 1
+        self.stats.pool_par_unavailable_capped += 1
         self.stats.seconds_solving += time.perf_counter() - started
+        return self._fallback(problem, "snapshot_capped")
+
+    def _fallback(self, problem: Problem, reason: str) -> PoolPar:
+        """The problem's own par, with the provenance flipped and the date absent."""
         if problem.par is None:
             raise PoolError(
-                "the snapshot could not solve the problem and it carries no own par "
-                "to fall back to — there is no honest label for this pair."
+                "no pool par and no own par to fall back to — there is no honest "
+                "label for this pair."
             )
         return PoolPar(
             par=problem.par,
             par_source=problem.par_source,
-            par_asof=None,
+            par_asof=Absent(
+                "par_asof",
+                "source-is-exact-and-timeless: an exact par has no snapshot to be as-of",
+                "inapplicable",
+            ),
             fell_back=True,
+            reason=reason,
         )
+
+    def par_for_episode(
+        self, problem: Problem, evaluator_factory, rng: random.Random, **kwargs
+    ) -> PoolPar:
+        """Sample a member and solve, or fall back with the cause NAMED.
+
+        The empty-pool case is counted here rather than at the call site, so the
+        two causes of unavailability cannot be conflated by whoever wires it up.
+        """
+        member = self.sample(rng)
+        if member is None:
+            self.stats.pool_par_unavailable_empty += 1
+            return self._fallback(problem, "pool_empty")
+        return self.par_for(problem, member, evaluator_factory, rng, **kwargs)

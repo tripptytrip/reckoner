@@ -109,6 +109,7 @@ MUST_REACH: list[str] = [
     "runs/m1/value_switch.jsonl",  # switch events, abstentions included
     "runs/m1/LATEST",  # the resume commit point
     "runs/m1/state-3.json",  # per-iteration resume state
+    "runs/shakedown_result.json",  # the shakedown's verdicts survive the run dir
     "runs/gpu_equivalence_smoke.json",  # chunk 9 part 0b
     "runs/gpu_equivalence_reference.json",  # tier-2 drift reference (A3)
 ]

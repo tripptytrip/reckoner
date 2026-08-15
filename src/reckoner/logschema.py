@@ -348,6 +348,17 @@ VALUE_SWITCH_FIELDS: tuple[Field, ...] = (
     ),
     Field("k_classes_with_support", int, "diagnostic", "K — the null is 1/K."),
     Field("smallest_class_support", int, "diagnostic", "What the abstention rule tests."),
+    Field(
+        "abstain_reason",
+        str,
+        "diagnostic",
+        "Why the criterion declined to judge: `no_variance` (z took one value, so "
+        "nothing distinguishes a head from a constant) or `thin_minority`. Two "
+        "causes, two fixes — wait for the policy to start losing, versus wait for "
+        "more episodes.",
+        required=False,
+        absence="the criterion judged, so there is no abstention to explain",
+    ),
     Field("floor", float, "diagnostic", "0.0 — an accuracy has no structural minimum."),
     Field("null", float, "diagnostic", "1/K: a constant predictor's balanced accuracy."),
     Field("threshold", float, "diagnostic", "1/K + margin, priced as a one-way door's error rate."),
@@ -487,10 +498,20 @@ def switch_event_row(event: dict[str, Any], *, schema_era: int) -> dict[str, Any
         "class_census": {str(k): v for k, v in event["class_census"].items()},
         "k_classes_with_support": event["k_classes_with_support"],
         "smallest_class_support": event["smallest_class_support"],
+        **({"abstain_reason": event["abstain_reason"]} if event.get("abstain_reason") else {}),
         "floor": float(event["floor"]),
         "null": float(event["null"]),
         "threshold": float(event["threshold"]),
         "measured": float(event["measured"]),
+        **(
+            {}
+            if event.get("abstain_reason")
+            else {
+                "absent": {
+                    "abstain_reason": "the criterion judged, so there is no abstention to explain"
+                }
+            }
+        ),
     }
 
 

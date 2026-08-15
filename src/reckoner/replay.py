@@ -79,6 +79,7 @@ from pathlib import Path
 
 import numpy as np
 
+from reckoner.absence import AbsenceError, Absent
 from reckoner.config import Config
 from reckoner.dataset import sample_indices
 
@@ -134,24 +135,10 @@ class RingError(ValueError):
     """A malformed record or an impossible read."""
 
 
-@dataclass(frozen=True, slots=True)
-class Absent:
-    """A value that is not there, with the reason it is not there.
-
-    Returned instead of a zero, always. A ring that hands back 0.0 for a missing
-    ``root_q`` teaches the blend that the position was a draw.
-    """
-
-    field: str
-    reason: str
-    kind: str  # "era" | "runtime"
-
-    def __bool__(self) -> bool:  # pragma: no cover - guarding a misuse
-        raise RingError(
-            f"{self.field} is absent ({self.kind}: {self.reason}) — test for Absent "
-            "explicitly rather than relying on truthiness, which is how an absence "
-            "becomes a zero."
-        )
+#: Re-exported so a reader of this module finds the absence type it returns.
+#: One implementation, in `reckoner.absence` — a second copy of an absence type
+#: is the two-implementations hazard the one-formatter law exists to prevent.
+__all__ = ["Absent", "AbsenceError", "ReplayRing", "RingError", "bytes_per_record"]
 
 
 class ReplayRing:

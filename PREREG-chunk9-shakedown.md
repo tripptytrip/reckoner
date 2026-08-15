@@ -117,3 +117,22 @@ until it does**, and the shakedown will not be run half-way and reported as
 though it covered them — a partial run reported as a whole one is exactly the
 coverage claim this file exists to prevent. E1, E2, E5, E6, E8 are evaluable now;
 E3, E4 and E7 follow the pool.
+
+---
+
+# Amendment SH-A1 — 2026-08-15, the omissions register
+
+**Not a response to a measurement**; the shakedown has not run. This adds the
+register line the omissions section needs.
+
+Pure silence about the seven structural guarantees invites the opposite failure
+to the one the omission avoids: the next reader, not knowing *why* they are
+absent, re-adds one as an expectation and regresses it to reviewer-checked.
+**Absence carries a reason, including in an expectations file.** The register
+line, which is the absence *with* its reason rather than a list of things that
+might not hold:
+
+> **Structural by construction, not expectations:** splits-sum, exact-par
+> tripwire (×3 layers), descent identity, null/absence rules, pinned bins,
+> `Absent.__bool__`, `write_record` trackedness — see `logschema`, `replay`,
+> `runner`, `dataset`.

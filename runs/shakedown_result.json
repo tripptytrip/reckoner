@@ -1,0 +1,162 @@
+{
+  "episodes_per_iteration": 40,
+  "expectations_frozen_at": "93868dd",
+  "git_sha": "4635ac95bb600c01d2d73c3d6f3289db60a24e7c",
+  "iterations": 3,
+  "m": 5,
+  "pool": {
+    "composition": {
+      "size": 1,
+      "steps": [
+        5000
+      ],
+      "value_head_live": []
+    },
+    "pool_par_solved": 30,
+    "pool_par_unavailable": 0,
+    "pool_par_unavailable_capped": 0,
+    "pool_par_unavailable_empty": 0,
+    "refusals": 1,
+    "refused_paths": [
+      "/home/michael/Documents/dev/Experiment_Two/runs/shakedown/mismatched.pt"
+    ],
+    "seconds_solving": 3.567
+  },
+  "sims": 16,
+  "verdicts": {
+    "E1": {
+      "committed": 2,
+      "expectation": "one validating row per committed iteration",
+      "rows": 3,
+      "verdict": "PASS"
+    },
+    "E2": {
+      "alarm_census": {},
+      "expectation": "alarms: 0",
+      "verdict": "PASS"
+    },
+    "E3": {
+      "anchor_seeded_pool": true,
+      "expectation": "snapshot loads; a version mismatch raises and is counted",
+      "mismatch_refused": true,
+      "pool_size_after_load": 1,
+      "refusals_counted": 1,
+      "verdict": "PASS"
+    },
+    "E4": {
+      "expectation": "pool par carries par_source and par_asof; fallbacks are counted",
+      "pool_par_solved": 30,
+      "sample_tagged_pool": [
+        {
+          "par": 2,
+          "par_asof": 5000,
+          "par_source": "pool"
+        },
+        {
+          "par": 2,
+          "par_asof": 5000,
+          "par_source": "pool"
+        },
+        {
+          "par": 2,
+          "par_asof": 5000,
+          "par_source": "pool"
+        }
+      ],
+      "unavailable_capped": 0,
+      "unavailable_empty": 0,
+      "verdict": "PASS"
+    },
+    "E5": {
+      "expectation": "criterion four-tupled, evaluated where support allows",
+      "rows": [
+        {
+          "abstain_reason": "no_variance: z took one value in this slice, so nothing distinguishes a head from a constant",
+          "abstained": true,
+          "clears": false,
+          "floor": 0.0,
+          "iteration": 0,
+          "k_classes_with_support": 1,
+          "measured": 1.0,
+          "null": 1.0,
+          "smallest_class_support": 40,
+          "threshold": 1.15
+        },
+        {
+          "abstain_reason": "no_variance: z took one value in this slice, so nothing distinguishes a head from a constant",
+          "abstained": true,
+          "clears": false,
+          "floor": 0.0,
+          "iteration": 1,
+          "k_classes_with_support": 1,
+          "measured": 1.0,
+          "null": 1.0,
+          "smallest_class_support": 40,
+          "threshold": 1.15
+        },
+        {
+          "abstain_reason": "no_variance: z took one value in this slice, so nothing distinguishes a head from a constant",
+          "abstained": true,
+          "clears": false,
+          "floor": 0.0,
+          "iteration": 2,
+          "k_classes_with_support": 1,
+          "measured": 1.0,
+          "null": 1.0,
+          "smallest_class_support": 40,
+          "threshold": 1.15
+        }
+      ],
+      "verdict": "PASS"
+    },
+    "E6": {
+      "abstention_census": {
+        "abstained": 3,
+        "fired": 0,
+        "idle": 0,
+        "refused": 0
+      },
+      "expectation": "every evaluation writes a row, abstentions included",
+      "verdict": "PASS"
+    },
+    "E7": {
+      "expectation": "cross-switch watch armed; regression noted, no auto-revert",
+      "solve_rate_by_depth_per_iteration": [
+        {
+          "iteration": 0,
+          "rates": {
+            "2": 1.0
+          }
+        },
+        {
+          "iteration": 1,
+          "rates": {
+            "2": 1.0
+          }
+        },
+        {
+          "iteration": 2,
+          "rates": {
+            "2": 1.0
+          }
+        }
+      ],
+      "switch_fired": false,
+      "verdict": "ARMED \u2014 no switch occurred, so there is no crossing to watch"
+    },
+    "E8": {
+      "expectation": "KEEP_RINGS = 3 behind LATEST",
+      "rings_on_disk": [
+        0,
+        1,
+        2
+      ],
+      "verdict": "PASS"
+    }
+  },
+  "wall_clock_seconds": 21.85,
+  "wall_clock_split": {
+    "pool_solving": 3.567,
+    "self_play": 18.182
+  }
+}

@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from reckoner.absence import AbsenceError
 from reckoner.config import Config
 from reckoner.dataset import read_suite, suite_problem
 from reckoner.episode import Problem
@@ -184,7 +185,7 @@ def test_an_absent_value_refuses_to_be_read_as_a_zero() -> None:
     ring = ReplayRing(4, CFG, ring_format=0)
     ring.append(**a_record())
     absent = ring.get(0)["root_q"]
-    with pytest.raises(RingError, match="test for Absent"):
+    with pytest.raises(AbsenceError, match="test for Absent"):
         bool(absent)
 
 

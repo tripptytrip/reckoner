@@ -81,6 +81,11 @@ from dataclasses import dataclass
 #: fire costs the campaign, so the door is conservative.
 MARGIN = 0.15
 
+#: Minimum classes with support before the criterion will judge. With one class,
+#: z did not vary and no head can distinguish itself from a constant — the
+#: criterion abstains with that reason rather than through an unreachable bar.
+MIN_CLASSES = 2
+
 #: Minimum samples in the RAREST class before the criterion will judge at all.
 #: Balanced accuracy on two minority samples is not a measurement — minority
 #: recall can only be 0, 0.5 or 1. Below this the criterion ABSTAINS, which is
@@ -182,7 +187,24 @@ def switch_criterion(labels: Sequence[int], predictions: Sequence[int]) -> dict:
     null = 1.0 / k
     threshold = null + MARGIN
     measured = balanced_accuracy(labels, predictions)
-    evaluable = smallest >= MIN_CLASS_SUPPORT
+
+    # TWO abstention causes, and the second was found by the shakedown itself.
+    #
+    # K == 1 means z had NO VARIANCE in this slice — every episode drew, or every
+    # one lost. Balanced accuracy is then trivially 1.0 for a constant predictor,
+    # and 1/K + MARGIN = 1.15 is unreachable. Refusing to fire is correct (a head
+    # cannot demonstrate knowledge of a quantity that did not vary), but it must
+    # refuse for the STATED reason rather than through a threshold that happens to
+    # exceed 1.0 — otherwise it files as "evaluated and refused" when the truth is
+    # "there was nothing to evaluate", and that is the never-firable shape wearing
+    # a different corner.
+    if k < 2:
+        abstain = "no_variance: z took one value in this slice, so nothing distinguishes a head from a constant"
+    elif smallest < MIN_CLASS_SUPPORT:
+        abstain = f"thin_minority: rarest class has {smallest} samples, below {MIN_CLASS_SUPPORT}"
+    else:
+        abstain = None
+    evaluable = abstain is None
     return {
         "metric": "held-out z balanced accuracy",
         "n": len(labels),
@@ -195,6 +217,7 @@ def switch_criterion(labels: Sequence[int], predictions: Sequence[int]) -> dict:
         "threshold": round(threshold, 6),
         "measured": round(measured, 6),
         "evaluable": evaluable,
+        "abstain_reason": abstain,
         "clears": bool(evaluable and measured >= threshold),
     }
 

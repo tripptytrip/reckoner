@@ -67,6 +67,7 @@ runs/**
 # and the estimate had not been kept; a projection that is not saved cannot be
 # scored against the run it projected.
 !runs/pilot_*.json
+!runs/shakedown_*.json
 # Contamination censuses. Each is a gate's evidence, pinned to the digests it was
 # computed against, and A1 made them a standing obligation rather than a one-off.
 !runs/*contamination*.json

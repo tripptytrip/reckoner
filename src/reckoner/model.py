@@ -336,5 +336,16 @@ def load_checkpoint(
     return model, meta
 
 
+def load_league_checkpoint(path: Path, cfg: Config) -> tuple[Reckoner, dict]:
+    """Load a snapshot for the LEAGUE. **No escape hatch, by construction.**
+
+    ``load_checkpoint`` takes ``strict_versions`` because offline inspection
+    legitimately needs it. The league does not, and "must not pass False" is a
+    convention until it is impossible — so the league path calls this, which has
+    no such parameter to pass. Helpers prevent; conventions are remembered.
+    """
+    return load_checkpoint(path, cfg, strict_versions=True)
+
+
 def meta_fingerprint(meta: dict) -> str:
     return hashlib.sha256(json.dumps(meta, sort_keys=True).encode()).hexdigest()

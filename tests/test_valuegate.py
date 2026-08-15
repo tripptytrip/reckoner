@@ -218,3 +218,41 @@ def test_balanced_accuracy_is_mean_per_class_recall() -> None:
     assert balanced_accuracy(labels, [0, 0, 0, 0]) == pytest.approx(0.5)
     assert balanced_accuracy(labels, labels) == pytest.approx(1.0)
     assert balanced_accuracy(labels, [-1, -1, -1, -1]) == pytest.approx(0.5)
+
+
+# ---------------------------------------------------------------------------
+# The K == 1 corner — found by the shakedown, not by review
+# ---------------------------------------------------------------------------
+
+
+def test_a_single_class_slice_abstains_with_no_variance_named() -> None:
+    """Every episode drew. There is nothing for a head to know.
+
+    Balanced accuracy is trivially 1.0 for a constant here and 1/K + margin is
+    1.15 — unreachable. Refusing is correct; refusing *through an unreachable
+    bar* would file as "evaluated and refused" when the truth is "there was
+    nothing to evaluate", which is the never-firable shape in a new corner.
+    """
+    labels = [0] * (SUPPORT * 2)
+    result = switch_criterion(labels, labels)
+    assert result["k_classes_with_support"] == 1
+    assert result["evaluable"] is False
+    assert result["abstain_reason"].startswith("no_variance")
+    assert result["clears"] is False
+
+
+def test_the_two_abstention_causes_are_distinguishable() -> None:
+    """Different diseases, different fixes: wait for the policy to start losing,
+    versus wait for more episodes."""
+    no_variance = switch_criterion([0] * 500, [0] * 500)
+    thin = switch_criterion([0] * 500 + [-1] * 2, [0] * 502)
+    assert no_variance["abstain_reason"].startswith("no_variance")
+    assert thin["abstain_reason"].startswith("thin_minority")
+
+
+def test_two_well_supported_classes_are_evaluable() -> None:
+    """The accepting case — otherwise 'abstain' would just mean 'always'."""
+    labels = two_class()
+    result = switch_criterion(labels, labels)
+    assert result["evaluable"] is True
+    assert result["abstain_reason"] is None

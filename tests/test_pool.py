@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 import torch
 
+from reckoner.absence import Absent
 from reckoner.config import Config
 from reckoner.dataset import read_suite, suite_problem
 from reckoner.model import Reckoner, save_checkpoint
@@ -171,9 +172,13 @@ def test_an_unsolved_problem_falls_back_with_the_provenance_flipped(
     )
     assert result.fell_back is True
     assert result.par_source == problem.par_source != "pool"
-    assert result.par_asof is None, "a fallback par has no snapshot to be as-of"
+    assert isinstance(result.par_asof, Absent), "a fallback par_asof is Absent, never None"
+    assert result.par_asof.kind == "inapplicable"
+    assert "timeless" in result.par_asof.reason
+    assert result.reason == "snapshot_capped"
     assert result.par == problem.par
-    assert pool.stats.pool_par_unavailable == 1
+    assert pool.stats.pool_par_unavailable_capped == 1
+    assert pool.stats.pool_par_unavailable_empty == 0
     assert pool.stats.pool_par_solved == 0
 
 
@@ -257,3 +262,68 @@ def test_the_solve_budget_is_accounted(tmp_path: Path) -> None:
     pool.par_for(problem, member, recording_factory([]), random.Random(0), sims=2, m=1, budget=1)
     assert pool.stats.as_dict()["seconds_solving"] >= 0.0
     assert "pool_par_unavailable" in pool.stats.as_dict()
+
+
+# ---------------------------------------------------------------------------
+# The three confirms: hatch scope, absence at every layer, distinct causes
+# ---------------------------------------------------------------------------
+
+
+def test_the_league_loader_has_no_escape_hatch_to_pass() -> None:
+    """ "Must not pass False" is a convention until it is impossible.
+
+    The league path calls `load_league_checkpoint`, which has no
+    `strict_versions` parameter at all — so the hatch's scope is enforced by the
+    signature rather than by remembering.
+    """
+    import inspect
+
+    from reckoner.model import load_checkpoint, load_league_checkpoint
+
+    assert "strict_versions" in inspect.signature(load_checkpoint).parameters
+    assert "strict_versions" not in inspect.signature(load_league_checkpoint).parameters
+    # The meaningful check is that the league module never *passes* it. Its
+    # docstring names it deliberately, to say the hatch is unreachable from here.
+    source = (REPO / "src" / "reckoner" / "pool.py").read_text()
+    assert "strict_versions=" not in source, (
+        "the league module passes the escape hatch — it must not be able to"
+    )
+
+
+def test_an_empty_pool_is_a_different_disease_from_a_capped_snapshot(tmp_path: Path) -> None:
+    """Different causes, different counters — the capped/stuck lesson, one layer up.
+
+    Pooling them would hide which is happening, and the fixes differ: wait for
+    snapshots versus raise the solve budget.
+    """
+    from reckoner.episode import Problem
+    from reckoner.expr import num
+    from reckoner.vocab import GOAL_EVALUATE
+
+    problem = Problem(goal=GOAL_EVALUATE, expr=num(5), par=1, par_source="bfs")
+
+    empty = CheckpointPool(CFG)
+    result = empty.par_for_episode(problem, recording_factory([]), random.Random(0))
+    assert result.reason == "pool_empty"
+    assert empty.stats.pool_par_unavailable_empty == 1
+    assert empty.stats.pool_par_unavailable_capped == 0
+
+    stocked = CheckpointPool(CFG)
+    stocked.add(a_snapshot(tmp_path, "m", step=1))
+    stocked.par_for_episode(problem, recording_factory([]), random.Random(0), sims=2, m=1, budget=1)
+    assert stocked.stats.pool_par_unavailable_empty == 0
+    assert stocked.stats.pool_par_unavailable_capped == 1
+
+
+def test_an_absent_par_asof_refuses_to_be_read_as_a_date(tmp_path: Path) -> None:
+    """A None read as 0 would date a fallback par to the beginning of time."""
+    from reckoner.absence import AbsenceError
+    from reckoner.episode import Problem
+    from reckoner.expr import num
+    from reckoner.vocab import GOAL_EVALUATE
+
+    pool = CheckpointPool(CFG)
+    problem = Problem(goal=GOAL_EVALUATE, expr=num(5), par=1, par_source="bfs")
+    result = pool.par_for_episode(problem, recording_factory([]), random.Random(0))
+    with pytest.raises(AbsenceError, match="test for Absent"):
+        bool(result.par_asof)
