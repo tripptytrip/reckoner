@@ -101,6 +101,9 @@ MUST_REACH: list[str] = [
     "runs/eval_suite_contamination.json",
     "runs/eval_independence.json",
     "runs/a_future_set_contamination.json",
+    # Chunk 8: what a run reported, and the environment it reported it from.
+    "runs/phase1/phase1_result.json",
+    "runs/m1/check_env.txt",
 ]
 
 # The counterpart polarity: things that must STAY ignored.

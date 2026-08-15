@@ -64,6 +64,11 @@ runs/**
 # computed against, and A1 made them a standing obligation rather than a one-off.
 !runs/*contamination*.json
 !runs/*independence*.json
+# Per-run records: the result a run reported, and the environment it ran in. The
+# checkpoint beside them stays ignored — it is bulk, and its provenance travels
+# in its own meta.
+!runs/**/*_result.json
+!runs/**/check_env.txt
 
 # Root-scoped: a bare `data/` would also swallow runs/data/ as a *directory*
 # ignore, and git cannot descend into an ignored directory to reach the

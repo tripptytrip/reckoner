@@ -420,3 +420,67 @@ granularity of the thing it splits. `train_100k` and `eval_held_out` are disjoin
 transform that changes what a row is. **Every derived dataset re-opens every
 question its parents had closed**, and the more useful the transform, the more
 questions it re-opens.
+
+---
+
+## F-10 — The chunk-8 gate is passed by random initialisation
+
+**Found:** 2026-08-15, immediately after the Phase-1 run returned `top8 = 1.0000`
+at every depth in both the full and the unseen held-out sets. A number that
+perfect is a claim about the metric, not about the model. Record:
+`runs/gate_arithmetic_topk.json`.
+
+The registered DONE-WHEN is *held-out top-8 rule-site ≥ 0.90 on depth ≤ 3*.
+Top-k is ranked over the **legal** action set — an unmasked top-k would credit
+actions the movegen refuses. So a state with ≤ k legal actions is a **certain
+hit whatever the network outputs**, and the gate has a floor equal to the
+fraction of such states.
+
+| k | floor, depth ≤ 3 | untrained | trained | headroom | verdict |
+|---:|---:|---:|---:|---:|---|
+| 1 | 0.5241 | 0.6950 | **0.9782** | 0.4541 | discriminating |
+| 2 | 0.7443 | 0.8681 | 1.0000 | 0.2557 | discriminating |
+| 3 | 0.7575 | 0.9106 | 1.0000 | 0.2425 | discriminating |
+| 5 | 0.8584 | 0.9914 | 1.0000 | 0.1416 | discriminating |
+| **8** | **0.9897** | **1.0000** | 1.0000 | 0.0103 | **VACUOUS at 0.90** |
+
+**The threshold sits below the floor.** 98.97% of depth ≤ 3 held-out states have
+≤ 8 legal actions (94.05% over all depths; the legal-action distribution is
+`{1: 1605, 2: 1066, 3: 975, 4: 573, 5: 791, 6: 580, 7: 484, 8: 105, 9: 391}`,
+median 3, max 9). The gate cannot return less than 0.9897 for *any* network.
+
+**Measured on both polarities, not argued.** An untrained network, random init,
+seed 0, scores **top-8 = 1.0000 at every depth** — identical to the trained
+model. The gate does not distinguish 5,000 steps of training from no training at
+all.
+
+**Why even the 391 nine-action states never miss**, which the floor alone does
+not explain: the target's rank among 9 legal actions under the *untrained* model
+is 2 in 381 of 391 cases and never worse than 4. A random network already ranks
+the BFS-optimal action near the top, so the last-place exclusion top-8 performs
+almost never lands on the target. The floor is 0.9897; the achieved value is 1.0.
+
+**This is chunk 7's own instrument catching the opposite failure.** There, gate
+arithmetic showed a 100% depth-1 gate was arithmetically *impossible* at m = 3
+(P(sweep) = 1.337e-09). Here it shows a gate is arithmetically *guaranteed*.
+Both are the same defect — a threshold placed without computing what the metric
+can return — and only the first one announces itself by failing.
+
+**The model is fine; the gate is broken.** top-1 on depth ≤ 3 moved from 0.6950
+untrained to **0.9782** trained on the full held-out set, and **0.9699** on the
+F-09 unseen subset. Both clear 0.90. Overall top-1 went 0.4791 → 0.9800. The
+training worked, and it is the *gate* that failed to notice.
+
+**Not repaired here.** The gate is a registered DONE-WHEN from
+`experiment2_agent_plan.md`; replacing top-8 with top-1 is a *strengthening*, but
+a registered gate is not mine to rewrite, and "the gate I passed was too easy so
+I changed it" needs the same signature as "the gate was too hard". Both numbers
+exist and both are recorded; the ruling is about the record, not about redoing
+the work.
+
+**The general lesson, and it is the third face of law 5.** Rider (a): the first
+gate measures the component doing its central job. Rider (b): a number nobody
+asserts on is not a gate. **Rider (c), proposed: a threshold nobody computed the
+floor of is not a gate either — compute what the metric can return before
+choosing where to draw the line.** A gate has two failure modes, unreachable and
+unmissable, and the second one ships green.
