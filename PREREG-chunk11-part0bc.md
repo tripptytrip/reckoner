@@ -207,3 +207,41 @@ more often than 9, and par 9 is the thin cell between two thick ones.
 
 The census at par 9 therefore ran against 251 candidates rather than the 400 the
 other strata got; it returned 0 collisions at both levels, as they all did.
+
+---
+
+# Amendment P11B-A2 — 2026-08-15, a fourth-decimal correction and a floor taxonomy
+
+**Written after P11B-A1 and after the mint**, correcting an arithmetic slip in
+P11B-A1 itself. It changes no threshold: the count of **1188 is unchanged**.
+
+## 1. The standard error, recomputed
+
+P11B-A1 and the no-regress section print `SE = 0.002192`. Recomputed:
+
+```
+p              = 1193 / 1200      = 0.994166667
+p(1 − p) / n   = 0.994166667 × 0.005833333 / 1200
+SE             = 0.002198353      (printed: 0.002192)
+1.96 × SE      = 0.004308771
+lower bound    = 0.989857895
+as a count     = 1187.8295        →  1188
+```
+
+The printed SE was low by `6.4e-6`. **The lower bound and the floor of 1188 are
+unchanged**, which is why this is a note rather than an amendment to the gate.
+Caught by the principal recomputing rather than reading — the same move that
+produced E5-1 and E5-2 on the same day.
+
+## 2. Every no-regress floor states which kind it is
+
+Countersigned into the record, because it will matter every time a floor is
+quoted:
+
+> A **noise-band floor is an indistinguishability gate.** Holding 1188 means
+> **not distinguishably worse than the anchor** — it does not mean **at least as
+> good on every problem**, and it does not mean **at least as good on average**.
+
+These are three different gates and they license three different sentences. From
+here, **every no-regress floor in this project names its kind** at the point it
+is declared. The 1188 floor is an **indistinguishability** floor.
