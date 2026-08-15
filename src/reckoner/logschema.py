@@ -376,6 +376,119 @@ VALUE_SWITCH_FIELDS: tuple[Field, ...] = (
 )
 
 
+# ---------------------------------------------------------------------------
+# The ladder's two currencies. They never mix, and the schema is what stops them.
+# ---------------------------------------------------------------------------
+
+#: **z-vs-par.** For RULE-DENOMINATED arms only — our model, RandomRewriter,
+#: GreedyHeuristic. They act in our rule system, so their steps ARE steps and z
+#: against par is meaningful.
+CURRENCY_Z = "z_vs_par"
+
+#: **solve-vs-budget.** For arms denominated in someone else's rules. A sympy
+#: derivation is not a sequence of our rewrites, so counting its "steps" against
+#: our par would be comparing lengths measured in different units and calling the
+#: difference skill. Spec: sympy is a rung, never par.
+CURRENCY_BUDGET = "solve_vs_budget"
+
+CURRENCIES = frozenset({CURRENCY_Z, CURRENCY_BUDGET})
+
+#: Fields that exist ONLY in one currency. A row carrying the other currency's
+#: score field is refused — that is the whole mechanism by which "two currencies
+#: never silently mix" is enforced rather than remembered.
+_Z_ONLY = ("z", "steps", "par", "par_source")
+_BUDGET_ONLY = ("solved", "steps_used", "budget", "cas_version")
+
+_LADDER_COMMON: tuple[Field, ...] = (
+    Field("pass_index", int, "identity", "Ladder pass this row belongs to."),
+    Field("schema_era", int, "identity", "Schema era this row was written under."),
+    Field("arm", str, "identity", "Which rung produced it."),
+    Field("problem_key", str, "identity", "The paired-set problem, by its identity key."),
+    Field(
+        "currency",
+        str,
+        "identity",
+        "**Stated on every row, never inferred.** z_vs_par for rule-denominated "
+        "arms; solve_vs_budget for external ones. A reader that has to guess a "
+        "row's units will eventually guess wrong, and the two are not comparable.",
+    ),
+    Field("role", str, "provenance", "What this arm is FOR: baseline, rung, or the subject."),
+    Field(
+        "nondeterministic",
+        bool,
+        "provenance",
+        "True for arms stochastic BY DESIGN (RandomRewriter). Carried from day "
+        "one rather than added after a surprise: a repeated number from a "
+        "deterministic arm is evidence, and from a stochastic one it is luck.",
+    ),
+    Field("seed", int, "provenance", "Per-problem derived seed; recorded even when unused."),
+    Field(
+        "calibration_note",
+        str,
+        "provenance",
+        "What this number does and does not license. Free text, required — a "
+        "score without its caveat gets quoted without its caveat.",
+    ),
+)
+
+LADDER_FIELDS_Z: tuple[Field, ...] = _LADDER_COMMON + (
+    Field("z", int, "outcome", "+1 under par, 0 at par, -1 over par or capped."),
+    Field("steps", int, "outcome", "Steps taken, in OUR rules."),
+    Field("par", int, "outcome", "The par this z is against."),
+    Field("par_source", str, "provenance", "bfs | scripted | pool — never sympy."),
+)
+
+LADDER_FIELDS_BUDGET: tuple[Field, ...] = _LADDER_COMMON + (
+    Field("solved", bool, "outcome", "Did the external solver produce a correct answer?"),
+    Field("steps_used", int, "outcome", "Its own steps, in ITS units. Never compared to par."),
+    Field("budget", int, "outcome", "The step budget it was given."),
+    Field(
+        "cas_version",
+        str,
+        "provenance",
+        "**Part of the rung's identity.** A sympy upgrade changes the opponent, "
+        "so a pass compared across versions is a pass compared against two "
+        "different rungs wearing one name.",
+    ),
+)
+
+
+def ladder_fields(currency: str) -> tuple[Field, ...]:
+    if currency == CURRENCY_Z:
+        return LADDER_FIELDS_Z
+    if currency == CURRENCY_BUDGET:
+        return LADDER_FIELDS_BUDGET
+    raise SchemaError(f"unknown currency {currency!r}; known: {sorted(CURRENCIES)}")
+
+
+def validate_ladder_row(row: dict[str, Any]) -> list[str]:
+    """Validate against the row's OWN currency, and refuse any mixing.
+
+    Two guards, and the second is the one that makes the ruling structural:
+
+    1. the row validates against the field set its ``currency`` selects
+    2. it carries **none** of the other currency's score fields — so a
+       solve-vs-budget row can never be read as a z row, and no aggregation can
+       accidentally average a z against a solve rate
+    """
+    currency = row.get("currency")
+    if currency not in CURRENCIES:
+        raise SchemaError(
+            f"row declares currency {currency!r}. Every ladder row states its "
+            "currency; a row that does not is a number whose units are a guess."
+        )
+    forbidden = _BUDGET_ONLY if currency == CURRENCY_Z else _Z_ONLY
+    trespass = sorted(set(row) & set(forbidden))
+    if trespass:
+        raise SchemaError(
+            f"a {currency} row carries {trespass}, which belong to the other "
+            "currency. The two are not comparable — sympy's steps are not our "
+            "steps — and a row that carries both invites exactly the average "
+            "nobody should compute."
+        )
+    return validate_row(row, ladder_fields(currency))
+
+
 def field_map(fields: tuple[Field, ...] = ITERATION_FIELDS) -> dict[str, Field]:
     return {f.name: f for f in fields}
 
