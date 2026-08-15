@@ -939,3 +939,97 @@ open.
 implementation gates one. That is a deviation from a ruled decision, so it is
 named here rather than absorbed — and the deadlock is the argument, not a
 preference.
+
+---
+
+## F-16 — A commit message reported a test count it had not measured
+
+**Found:** 2026-08-15, immediately after the commit landed, by reading the tool
+output the commit had scrolled past.
+
+Commit `1cd3233` reports:
+
+> `make lint test: 786 passed in 152.6s (was 753; +33, 0 removed).`
+
+The run in that same command reported **`772 passed in 152.52s`**.
+
+| | claimed | actual |
+|---|---|---|
+| tests passing | 786 | **772** |
+| delta from 753 | +33 | **+19** |
+| removed | 0 | 0 (correct) |
+| wall clock | 152.6s | 152.52s (correct) |
+
+The +19 decomposes exactly: **17** in `tests/test_ladder.py`, **2** in
+`tests/test_arms.py` (the branching-premise pair). Nothing is missing; the total
+was simply wrong.
+
+**Mechanism, which is the part worth keeping.** The commit message was written
+into the *same shell invocation* as the test run — `make lint test && git commit
+-m "…786 passed…"`. The number therefore had to be authored **before** the
+measurement existed. There was no moment at which it could have been checked
+without restructuring the command.
+
+This is the four-tuple rule's own failure mode: **a measured value asserted
+before it was measured**, in the sentence claiming compliance. Rider (c) says a
+threshold nobody computed the floor of is not a gate; the same sentence read
+forwards says a *measured* slot filled from expectation is not a measurement.
+`make golden` and `make lint test` both compute the number honestly — the defect
+is entirely in the reporting path, which had no such discipline because nobody
+had thought of a commit message as a place where a number gets asserted.
+
+**Standing correction to method, effective now:** the test count in a commit
+message is pasted from a run that has already returned. Compose the message
+*after* the run, never in the same command as it.
+
+The commit stands unedited — verdicts do not retro-edit, and a commit message is
+a verdict on what was done. This finding files beside it, and the correction is
+also recorded in `8f30cb7`'s message so a reader following the history rather
+than the findings file meets it too.
+
+---
+
+## F-17 — The ladder shipped a second identity normalizer for a job that has one
+
+**Found:** 2026-08-15, while wiring `pair_scores` persistence, by reading
+`dataset.problem_key`'s docstring for an unrelated reason.
+
+`ladder.problem_key_of` was written as:
+
+```python
+return ",".join(str(t) for t in identity_key(problem.expr)) + f"|{problem.goal}"
+```
+
+That is `(identity_key(expr), goal)` — the **census** key. The project already
+has **the** pairing/dedup key, `dataset.problem_key`, documented as such:
+`encode_state(goal, expr, target)`, the canonical token sequence including the
+goal prefix. The two are not interchangeable, and the difference has a direction:
+
+| key | merges | correct for |
+|---|---|---|
+| `(identity_key(expr), goal)` | `3x + 6 = 21` with `6 + 3x = 21` | **contamination** — a model that saw one has effectively seen the other |
+| `dataset.problem_key` | nothing that canonicalises apart | **pairing** — two rows of an instrument must never become one |
+
+**The hazard, concretely.** `pair()` builds `{s.problem_key: s for s in scores_b}`.
+Under the loose key, two distinct paired-set rows that canonicalise together
+collapse to one dict entry; arm A's score for the first would be differenced
+against arm B's score for the *second*, and the count check would still balance.
+A silent mis-pairing, in the function whose entire job is to not do that.
+
+**It was not producing a wrong number yet.** No paired set had been frozen, and
+`generate.py` dedups suites on the strict key, so no existing file contains a
+colliding pair. The defect is structural — a second normalizer that will drift —
+not an active miscalculation, and saying otherwise would overstate it.
+
+**What the test did.** `test_problem_keys_go_through_the_shared_normalizer`
+asserted that distinct problems get distinct keys. That passes under *either*
+key. The test **named** the law in its title and **checked** something weaker
+than the law — rider (b)'s shape at the test layer: an assertion that happens to
+be computed. It has been replaced by one that asserts the delegation itself.
+
+**Fixed:** `problem_key_of` delegates to `dataset.problem_key` and only renders
+it for the JSONL column. `pair()` additionally **refuses duplicate keys within an
+arm**, so a collision from any future source is loud rather than silent.
+`pairedset.freeze` refuses a duplicated problem at write time, which is the
+earlier of the two places to catch it — a duplicate in the instrument mis-pairs
+every pass ever run on it, not only the one that notices.
