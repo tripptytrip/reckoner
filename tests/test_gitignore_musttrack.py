@@ -106,6 +106,9 @@ MUST_REACH: list[str] = [
     "runs/phase1/phase1_result.json",
     "runs/m1/check_env.txt",
     "runs/phase1/anchor.json",  # the anchor every later pass is compared against
+    "runs/m1/value_switch.jsonl",  # switch events, abstentions included
+    "runs/m1/LATEST",  # the resume commit point
+    "runs/m1/state-3.json",  # per-iteration resume state
     "runs/gpu_equivalence_smoke.json",  # chunk 9 part 0b
     "runs/gpu_equivalence_reference.json",  # tier-2 drift reference (A3)
 ]

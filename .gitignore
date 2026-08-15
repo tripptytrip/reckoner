@@ -35,6 +35,13 @@ runs/**
 # own timing series, keyed by iteration, so iterations.jsonl can be read six
 # weeks out without reconstructing why one row is slow.
 !runs/**/annotations.jsonl
+# The value-head switch event log — every evaluation writes, INCLUDING the ones
+# that abstain. An abstention nobody records is indistinguishable from a
+# criterion nobody ran.
+!runs/**/value_switch.jsonl
+# The resume commit marker: the only artifact that makes an iteration real.
+!runs/**/LATEST
+!runs/**/state-*.json
 # Dataset and suite digests — the anchor list the whole campaign is measured
 # against (plan chunk 5).
 !runs/ANCHORS.sha256

@@ -315,6 +315,46 @@ ITERATION_FIELDS: tuple[Field, ...] = (
 )
 
 
+#: ``runs/<name>/value_switch.jsonl`` — one row per evaluation of the value-head
+#: switch criterion, **including the ones that abstain.**
+#:
+#: An abstention nobody records is indistinguishable from a criterion nobody ran,
+#: and a long abstention streak through a draw-dominated stretch is exactly the
+#: data the campaign will want to have had. Three outcomes, three distinguishable
+#: rows: fired, refused, abstained — never a silence.
+VALUE_SWITCH_FIELDS: tuple[Field, ...] = (
+    Field("iteration", int, "identity", "Loop index this evaluation belongs to."),
+    Field("schema_era", int, "identity", "Schema era this row was written under."),
+    Field("metric", str, "identity", "Held-out z balanced accuracy."),
+    Field(
+        "abstained",
+        bool,
+        "outcome",
+        "True when the rarest class had too little support to judge. **Not a "
+        "failure** — 'not evaluable yet' and 'evaluated and refused' are "
+        "different states and only one of them is evidence.",
+    ),
+    Field("fired", bool, "outcome", "True on the single evaluation that ratcheted the head live."),
+    Field("already_live", bool, "outcome", "True once the ratchet has fired; the criterion idles."),
+    Field("clears", bool, "outcome", "Whether measured met threshold (False when abstained)."),
+    Field("n", int, "diagnostic", "Held-out slice size."),
+    Field(
+        "class_census",
+        dict,
+        "diagnostic",
+        "z -> support. **The cause of an abstention travels with it**, so a "
+        "streak can be read back as 'the minority class was thin' rather than "
+        "guessed at.",
+    ),
+    Field("k_classes_with_support", int, "diagnostic", "K — the null is 1/K."),
+    Field("smallest_class_support", int, "diagnostic", "What the abstention rule tests."),
+    Field("floor", float, "diagnostic", "0.0 — an accuracy has no structural minimum."),
+    Field("null", float, "diagnostic", "1/K: a constant predictor's balanced accuracy."),
+    Field("threshold", float, "diagnostic", "1/K + margin, priced as a one-way door's error rate."),
+    Field("measured", float, "diagnostic", "The head's balanced accuracy."),
+)
+
+
 def field_map(fields: tuple[Field, ...] = ITERATION_FIELDS) -> dict[str, Field]:
     return {f.name: f for f in fields}
 
@@ -430,6 +470,42 @@ def alarm_census(rows: list[dict[str, Any]]) -> dict[str, int]:
         for alarm in row.get("alarms", []):
             field_name = alarm["field"] if isinstance(alarm, dict) else str(alarm)
             census[field_name] = census.get(field_name, 0) + 1
+    return census
+
+
+def switch_event_row(event: dict[str, Any], *, schema_era: int) -> dict[str, Any]:
+    """Project a `valuegate` event onto ``VALUE_SWITCH_FIELDS``. Every outcome writes."""
+    return {
+        "iteration": event["iteration"],
+        "schema_era": schema_era,
+        "metric": event["metric"],
+        "abstained": bool(event.get("abstained", False)),
+        "fired": bool(event.get("fired", False)),
+        "already_live": bool(event["already_live"]),
+        "clears": bool(event["clears"]),
+        "n": event["n"],
+        "class_census": {str(k): v for k, v in event["class_census"].items()},
+        "k_classes_with_support": event["k_classes_with_support"],
+        "smallest_class_support": event["smallest_class_support"],
+        "floor": float(event["floor"]),
+        "null": float(event["null"]),
+        "threshold": float(event["threshold"]),
+        "measured": float(event["measured"]),
+    }
+
+
+def abstention_census(rows: list[dict[str, Any]]) -> dict[str, int]:
+    """How many evaluations abstained, refused, fired. The streak, made readable."""
+    census = {"abstained": 0, "refused": 0, "fired": 0, "idle": 0}
+    for row in rows:
+        if row.get("already_live") and not row.get("fired"):
+            census["idle"] += 1
+        elif row.get("abstained"):
+            census["abstained"] += 1
+        elif row.get("fired"):
+            census["fired"] += 1
+        else:
+            census["refused"] += 1
     return census
 
 
