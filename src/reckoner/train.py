@@ -36,6 +36,7 @@ from reckoner.config import Config
 from reckoner.dataset import sample_indices
 from reckoner.episode import Problem, decode_state
 from reckoner.model import N_RULES, Reckoner, StateTooLarge, encode, policy_loss, steps_loss
+from reckoner.valuegate import ValueHeadState, value_contribution
 from reckoner.vocab import PAD
 
 
@@ -199,6 +200,7 @@ def train(
     seed: int = 0,
     log_every: int = 50,
     on_log: Callable[[int, float, float], None] | None = None,
+    value_head: ValueHeadState | None = None,
 ) -> TrainStats:
     """Run the warm start. NaN-skip guard with a 1% abort, per the inherited kit.
 
@@ -231,8 +233,14 @@ def train(
         loss = loss + cfg.train.steps_loss_weight * steps_loss(
             steps_out, batch.steps_target.to(device), batch.solved_mask.to(device)
         )
-        # W/D/L head: loss weight 0 by design (see module docstring). Its
-        # parameters simply do not appear in this graph.
+        # W/D/L head: loss weight is `value_loss_weight * value_contribution(state)`,
+        # and in Phase 1 the state is untrusted so the product is 0 — the head's
+        # parameters do not appear in this graph. THE SAME FUNCTION scales the
+        # search's value contribution (F-14): one declaration, two consumers, so
+        # a head nobody is training cannot be a head the search is trusting.
+        _value_weight = cfg.train.value_loss_weight * value_contribution(
+            value_head or ValueHeadState()
+        )
 
         optimiser.zero_grad(set_to_none=True)
         loss.backward()

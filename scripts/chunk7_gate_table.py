@@ -21,6 +21,7 @@ from reckoner.config import Config
 from reckoner.dataset import read_suite, suite_problem
 from reckoner.episode import Problem
 from reckoner.expr import add, eq, mul, num, var
+from reckoner.gates import search_found_a_solve
 from reckoner.search import run_batched, search, uniform_stub
 from reckoner.vocab import GOAL_SOLVE, VAR_X
 
@@ -119,12 +120,10 @@ def main() -> int:
         for i, row in enumerate(suite1):
             p = suite_problem(row)
             r = search(p, p.expr, ev, CFG, random.Random(1000 + i), sims=16, m=m)
-            # Post-F-13 the terminal scale is z-against-par, so an at-par solve
-            # scores 0.0 — the same as the neutral stub predicts everywhere else.
-            # The gate is read from `terminal_solved`, which is what its
-            # arithmetic always meant (was the winning action considered and
-            # found) and is independent of the value scale.
-            if r.stats.terminal_solved > 0:
+            # The SAME predicate the test imports. This script and that test
+            # disagreeing is exactly what produced a 0/200 re-run for a search
+            # that was working (FINDINGS.md F-14's closing note).
+            if search_found_a_solve(r):
                 solved += 1
         gate[m] = solved
         print(f"    {m:>2} {solved:>14}/{len(suite1)} {100 * solved / len(suite1):>7.1f}%")

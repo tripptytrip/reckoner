@@ -21,6 +21,7 @@ from reckoner.config import Config
 from reckoner.dataset import read_suite, suite_problem
 from reckoner.episode import Problem
 from reckoner.expr import add, eq, mul, num, var
+from reckoner.gates import search_found_a_solve
 from reckoner.search import _backup, _Tree, run_batched, search, uniform_stub
 from reckoner.vocab import GOAL_SOLVE, VAR_X
 
@@ -210,13 +211,10 @@ def test_the_gate_arithmetic_is_recorded_and_the_gate_matches_it() -> None:
         result = search(
             problem, problem.expr, evaluator, CFG, random.Random(1000 + i), sims=16, m=b_max
         )
-        # Since F-13 the terminal scale is z-against-par, so an at-par solve
-        # scores 0.0 — exactly what the neutral stub predicts for everything
-        # else. A solve therefore no longer stands out by VALUE, and the gate is
-        # re-expressed as what its arithmetic was always about: was the winning
-        # action considered and found? `terminal_solved` counts solves the tree
-        # actually reached, and is independent of the value scale entirely.
-        if result.stats.terminal_solved > 0:
+        # ONE predicate, imported. Expressing it here and again in
+        # scripts/chunk7_gate_table.py is what produced the 0/200 re-run: two
+        # gates wearing one name, and only one of them re-expressed.
+        if search_found_a_solve(result):
             solved += 1
     assert solved == len(rows), f"depth-1 gate: {solved}/{len(rows)} at m={b_max}"
 
@@ -236,7 +234,7 @@ def test_below_b_max_the_gate_is_not_reachable() -> None:
         result = search(
             problem, problem.expr, evaluator, CFG, random.Random(1000 + i), sims=16, m=3
         )
-        if result.stats.terminal_solved > 0:
+        if search_found_a_solve(result):
             solved += 1
     assert solved < len(rows), "m=3 solved everything — B_max is wrong or the stub is not uniform"
 

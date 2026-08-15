@@ -44,7 +44,9 @@ from reckoner.search import Evaluation, Evaluator, search, uniform_stub
 REPO = Path(__file__).resolve().parents[1]
 
 
-def model_evaluator(model: Reckoner, cfg: Config, *, zero_value: bool = False) -> Evaluator:
+def model_evaluator(
+    model: Reckoner, cfg: Config, *, zero_value: bool = False, value_scale: float | None = None
+) -> Evaluator:
     """Batch the trained net behind the search's evaluator contract.
 
     ``StateTooLarge`` returns flat priors and a neutral value rather than
@@ -74,10 +76,15 @@ def model_evaluator(model: Reckoner, cfg: Config, *, zero_value: bool = False) -
             # W/D/L vs par -> expected z in [-1, +1]. Column order is the head's:
             # 0 = under par (+1), 1 = equal (0), 2 = over par (-1).
             expected = (probs[:, 0] - probs[:, 2]).tolist()
+        # The declaration, applied. `value_scale` comes from
+        # valuegate.value_contribution(state) — the SAME function the loss reads,
+        # so an untrained head cannot be silent in one consumer and loud in the
+        # other. `zero_value` remains the explicit ablation lever.
+        scale = 0.0 if zero_value else (1.0 if value_scale is None else value_scale)
         for slot, i in enumerate(keep):
             out[i] = (
                 policy[slot].numpy().astype(np.float32),
-                0.0 if zero_value else float(expected[slot]),
+                scale * float(expected[slot]),
             )
         return out
 
