@@ -22,7 +22,9 @@ from reckoner.train import (
     make_batch,
     rehearsal_split,
     train,
+    train_on_ring,
 )
+from reckoner.valuegate import ValueHeadState
 from reckoner.vocab import PAD
 
 REPO = Path(__file__).resolve().parents[1]
@@ -198,3 +200,81 @@ def test_a_full_rehearsal_fraction_is_refused() -> None:
     cfg.train.rehearsal_frac = 1.0
     with pytest.raises(ValueError, match="not rehearsal"):
         rehearsal_split(128, cfg)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2's training phase — the loop's central job, asserted
+# ---------------------------------------------------------------------------
+
+
+def a_filled_ring(cfg: Config, n: int = 8):
+    from reckoner.dataset import training_problems
+    from reckoner.replay import ReplayRing
+    from reckoner.runner import run_iteration
+    from reckoner.search import uniform_stub
+
+    ring = ReplayRing(2048, cfg)
+    problems = training_problems(REPO / "runs" / "data" / "train_100k", n, seed=0)
+    run_iteration(problems, uniform_stub(cfg), cfg, ring, sims=8, m=5, seed=0)
+    return ring
+
+
+needs_train_set = pytest.mark.skipif(
+    not (REPO / "runs" / "data" / "train_100k").exists(), reason="training set not generated"
+)
+
+
+@needs_train_set
+def test_the_ring_carries_a_usable_state_not_just_an_outcome() -> None:
+    """An earlier runner stored EMPTY token arrays, so every row was untrainable
+    and `len(ring) > 0` still passed. Rider (a) at the ring boundary."""
+    ring = a_filled_ring(CFG)
+    record = ring.get(0)
+    assert len(record["tokens"]) > 0
+    assert record["n_sites"] > 0
+    assert record["z"] in (-1, 0, 1)
+
+
+@needs_train_set
+def test_training_on_the_ring_moves_the_model() -> None:
+    """The loop's central job. Without this, a loop that never learned would pass
+    every plumbing check it had."""
+    cfg = Config()
+    ring = a_filled_ring(cfg)
+    torch.manual_seed(0)
+    model = Reckoner(cfg)
+    before = {k: v.detach().clone() for k, v in model.state_dict().items()}
+    stats = train_on_ring(model, ring, cfg, steps=2, seed=0)
+    assert stats.steps == 2
+    assert any(not torch.equal(v, before[k]) for k, v in model.state_dict().items())
+
+
+@needs_train_set
+def test_the_value_head_trains_while_the_search_distrusts_it() -> None:
+    """F-15: gating BOTH consumers by the declaration deadlocks the ratchet.
+
+    No gradient means no accuracy means no switch means no gradient. The
+    declaration governs what the search TRUSTS; the loss teaches regardless, or
+    the door it guards can never open.
+    """
+    cfg = Config()
+    ring = a_filled_ring(cfg)
+    torch.manual_seed(0)
+    model = Reckoner(cfg)
+    before = {k: v.detach().clone() for k, v in model.state_dict().items()}
+    train_on_ring(model, ring, cfg, steps=2, seed=0, value_head=ValueHeadState(live=False))
+    moved = [
+        k
+        for k in before
+        if k.startswith("value_head") and not torch.equal(model.state_dict()[k], before[k])
+    ]
+    assert moved, "the W/D/L head received no gradient — the ratchet cannot ever be pulled"
+
+
+@needs_train_set
+def test_an_empty_ring_trains_nothing_rather_than_crashing() -> None:
+    from reckoner.replay import ReplayRing
+
+    cfg = Config()
+    stats = train_on_ring(Reckoner(cfg), ReplayRing(16, cfg), cfg, steps=3, seed=0)
+    assert stats.steps == 0

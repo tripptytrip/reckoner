@@ -875,3 +875,67 @@ scale-dependent in what they *meant*; only in how one of them was *written*. Two
 of my own scripts read the value threshold and only the test was fixed in the
 first pass — a re-expression applied to a test and not to its script is the same
 defect as a summary drifting from a derivation.
+
+---
+
+## F-15 — The loop had no training phase, and the one rule that would have trained it deadlocks
+
+**Found:** 2026-08-15, answering a direct question from review: *has the training
+phase ever executed inside the iteration loop?* Verified rather than recalled.
+
+### Part 1 — it was never wired
+
+| checked | result |
+|---|---|
+| anything reading the ring for training | **nothing** — every consumer is a writer (`runner`) or a persister (`resume`) |
+| `train.value_q_mse_weight` read outside `config.py` | **nowhere** — the blend the brief calls "on from day one" has no implementation |
+| what `train()` consumes | a `SupervisionSet` — Phase-1 memmap, not a ring |
+| optimizers in the codebase | `train.py` (Phase-1) and the timing pilot. That is all |
+
+So the ring collected experience nothing consumed, and Phase 2's loop **played
+episodes and never learned from them**. It is the enrollment pattern at the loop's
+core: `composition()` sat in a report as a number nobody asserted on, and here the
+whole training phase sat in a chunk report as a claim nobody asserted on. "Plumbing
+proven end to end" was true and was not the same sentence as "the loop trains".
+
+**And a claim of mine was false when I made it.** A chunk-8 commit message says *"a
+dead config key is the `batch_leaves` hazard and is not repeated."*
+`value_q_mse_weight` was already dead at that moment, at the loop's core. The
+hazard was repeated; I asserted it was not; the assertion was not checked.
+
+### Part 2 — the F-14 wiring, taken literally, cannot work in Phase 2
+
+F-14 ruled *one declaration, two consumers*: while the head is untrained-on-z, the
+loss masks it **and** the search contributes zero. In Phase 1 that is exactly
+right — spec §5 leaves W/D/L at weight 0 because imitation data has degenerate z.
+In **Phase 2** it is a deadlock, and the arithmetic is one line:
+
+```
+loss weight = value_loss_weight × value_contribution(head) = 1.0 × 0.0 = 0.0
+  → the head receives no gradient while untrusted
+  → its z-accuracy never leaves chance
+  → the switch criterion never clears
+  → live never becomes True
+```
+
+**A ratchet that can never be pulled.** The head cannot learn the thing the
+criterion tests for, because the criterion's own precondition switches off the
+learning.
+
+**The only non-deadlocking reading**, implemented and flagged rather than adopted
+silently: the declaration governs **what the search trusts**, not **what the loss
+teaches**. In Phase 2 the head trains on real z at full weight — that is how it
+becomes trained — while the search contributes zero value until the criterion
+clears. Phase 1's weight-0 masking stays as it is, because there the reason is
+degenerate z rather than untrusted-ness.
+
+That preserves everything F-14 was for: the search still never reads an opinion
+nobody earned (noise-as-signal stays closed), iteration 0 still generates a clean
+value-silent corpus, and the bootstrap argument still holds. What changes is that
+the head is *taught* meanwhile, which is the only way the door it guards can ever
+open.
+
+**Registered for ruling.** The literal wording gates both consumers; the
+implementation gates one. That is a deviation from a ruled decision, so it is
+named here rather than absorbed — and the deadlock is the argument, not a
+preference.

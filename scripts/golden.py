@@ -40,6 +40,7 @@ from reckoner.resume import RunState, commit_iteration, latest_committed, resume
 from reckoner.rules import RULESET_VERSION
 from reckoner.runner import iteration_row, run_iteration
 from reckoner.search import uniform_stub
+from reckoner.train import train_on_ring
 from reckoner.valuegate import ValueHeadState, consider_switch
 from reckoner.vocab import VOCAB_VERSION
 
@@ -67,6 +68,10 @@ def main() -> int:
     started = time.perf_counter()
     ring = ReplayRing(4096, cfg)
     pool = CheckpointPool(cfg)
+    torch.manual_seed(0)
+    model = Reckoner(cfg)
+    weights_moved: list[int] = []
+    value_head_moved: list[bool] = []
     head = ValueHeadState()
     # A TRAINING source, through the guard. The chunk-9 shakedown drew from
     # solve_in_2 — a frozen instrument — which did no harm because nothing
@@ -79,6 +84,20 @@ def main() -> int:
         problems = training_problems(source, args.episodes, seed=n)
         stats = run_iteration(problems, uniform_stub(cfg), cfg, ring, sims=8, m=5, seed=n)
         stats.check_descent_identity()
+
+        # THE TRAINING PHASE. A loop whose central job is improving the model had
+        # no assertion that the model moves — the both-riders heuristic applied
+        # prospectively (FINDINGS.md F-15).
+        before = {k: v.detach().clone() for k, v in model.state_dict().items()}
+        train_on_ring(model, ring, cfg, steps=2, seed=n)
+        moved = sum(1 for k, v in model.state_dict().items() if not torch.equal(v, before[k]))
+        weights_moved.append(moved)
+        value_head_moved.append(
+            any(
+                k.startswith("value_head") and not torch.equal(model.state_dict()[k], before[k])
+                for k in before
+            )
+        )
 
         labels = [0] * stats.episodes_solved + [-1] * (stats.episodes - stats.episodes_solved)
         head, event = consider_switch(head, labels, [0] * len(labels), iteration=n)
@@ -112,6 +131,28 @@ def main() -> int:
     checks.append(("rows validate and match commits", len(rows) == latest_committed(run) + 1, ""))
     checks.append(("no alarms", alarm_census(rows) == {}, str(alarm_census(rows))))
     checks.append(("ring received steps", len(ring) > 0, f"{len(ring)} rows"))
+    first = ring.get(0)
+    checks.append(
+        (
+            "ring rows carry a usable STATE, not just an outcome",
+            len(first["tokens"]) > 0 and first["n_sites"] > 0,
+            f"{len(first['tokens'])} tokens, {first['n_sites']} sites",
+        )
+    )
+    checks.append(
+        (
+            "training moves the model",
+            all(m > 0 for m in weights_moved),
+            f"tensors moved per iteration: {weights_moved}",
+        )
+    )
+    checks.append(
+        (
+            "the W/D/L head trains even while the search distrusts it",
+            all(value_head_moved),
+            f"{value_head_moved} (F-15: gating both consumers deadlocks the ratchet)",
+        )
+    )
 
     # Resume is part of liveness: a loop that cannot restart is not a loop.
     nxt, restored, restored_state = resume(run, cfg)
@@ -131,7 +172,7 @@ def main() -> int:
     # miss; this is the fix at the liveness layer.
     before = len(pool)
     for step in (1, 2, 3):
-        pool.enroll(Reckoner(cfg), step, head, run / f"snap-{step}.pt")
+        pool.enroll(model, step, head, run / f"snap-{step}.pt")
     grew = len(pool) == before + 3
     checks.append(("pool composition GROWS with enrollment", grew, str(pool.composition())))
 

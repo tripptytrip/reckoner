@@ -49,9 +49,10 @@ from statistics import fmean
 import numpy as np
 
 from reckoner.config import Config
-from reckoner.episode import Problem, verify
+from reckoner.episode import Problem, encode_state, verify
 from reckoner.expr import Expr
 from reckoner.logschema import STEPS_MINUS_PAR_BINS
+from reckoner.model import StateTooLarge, encode
 from reckoner.replay import ReplayRing
 from reckoner.rules import apply, legal_actions
 from reckoner.search import Evaluator, SearchResult, run_batched
@@ -228,7 +229,7 @@ def run_iteration(
 
             if result.chosen is None:
                 stats.episodes_stuck += 1
-                _settle(stats, ring, e, trail, solved=False, capped=False)
+                _settle(stats, ring, e, trail, cfg, solved=False, capped=False)
                 continue
 
             trail[e.index].append((result, e.expr, e.steps))
@@ -237,7 +238,7 @@ def run_iteration(
 
             if verify(e.problem, e.expr, cfg, e.rng):
                 stats.episodes_solved += 1
-                _settle(stats, ring, e, trail, solved=True, capped=False)
+                _settle(stats, ring, e, trail, cfg, solved=True, capped=False)
                 continue
             # RESIGN-VS-PAR, implemented and default OFF. Once the best line
             # already needs >= par + concede_k, the outcome is settled and the
@@ -251,7 +252,7 @@ def run_iteration(
                 and e.steps >= e.problem.par + cfg.par.concede_k
             ):
                 stats.episodes_conceded += 1
-                _settle(stats, ring, e, trail, solved=False, capped=False)
+                _settle(stats, ring, e, trail, cfg, solved=False, capped=False)
                 continue
             if e.steps >= cfg.episode.step_cap or not legal_actions(e.expr):
                 capped = e.steps >= cfg.episode.step_cap
@@ -259,7 +260,7 @@ def run_iteration(
                     stats.episodes_capped += 1
                 else:
                     stats.episodes_stuck += 1
-                _settle(stats, ring, e, trail, solved=False, capped=capped)
+                _settle(stats, ring, e, trail, cfg, solved=False, capped=capped)
                 continue
             still.append(e)
         live = still
@@ -274,6 +275,7 @@ def _settle(
     ring: ReplayRing | None,
     e: _Live,
     trail: dict[int, list],
+    cfg: Config,
     *,
     solved: bool,
     capped: bool,
@@ -294,11 +296,20 @@ def _settle(
 
     if ring is None:
         return
-    for result, _expr, steps in trail[e.index]:
+    for result, expr, steps in trail[e.index]:
+        # THE STATE ITSELF. An earlier version stored empty token arrays here —
+        # the ring filled with visits, z and root_q for states it did not
+        # contain, so every row was untrainable and `len(ring) > 0` still passed.
+        # Rider (a) at the ring boundary: "received rows" is not "received steps".
+        try:
+            encoded = encode(e.problem, expr, cfg)
+        except StateTooLarge:
+            continue  # counted upstream; never cropped
+        seq = np.asarray(encode_state(e.problem.goal, expr, e.problem.target), dtype=np.int16)
         order = np.argsort(-result.visits)[: ring.visit_actions.shape[1]]
         ring.append(
-            tokens=np.array([], dtype=np.int16),
-            site_positions=np.array([], dtype=np.int16),
+            tokens=seq,
+            site_positions=np.asarray(encoded.site_positions[: encoded.n_sites], dtype=np.int16),
             visit_actions=order.astype(np.int32),
             visit_counts=result.visits[order].astype(np.int32),
             root_q=result.root_value,

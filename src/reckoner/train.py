@@ -51,6 +51,10 @@ class Batch:
     depth: torch.Tensor
     skipped: int = 0
     width: int = 0  # columns after the crop; `tokens.shape[1]`, recorded not inferred
+    #: Phase-2 only: the episode's real z as a W/D/L class, and the search's
+    #: root_q. Absent for Phase-1 batches, where z is degenerate by construction.
+    z_class: torch.Tensor | None = None
+    root_q: torch.Tensor | None = None
 
 
 @dataclass
@@ -171,6 +175,164 @@ def make_batch(data: SupervisionSet, indices: list[int], cfg: Config) -> Batch:
         depth=torch.tensor(depths),
         skipped=skipped,
     )
+
+
+#: z -> W/D/L class index. Column order is the head's and is part of the format:
+#: 0 = under par (+1), 1 = equal (0), 2 = over par or capped (-1).
+Z_TO_CLASS = {1: 0, 0: 1, -1: 2}
+
+
+def ring_batch(ring, indices: list[int], cfg: Config) -> Batch | None:
+    """Turn stored steps into a trainable batch. Legality is re-derived, never stored.
+
+    The visit vector was stored **sparsely** (top-m actions and counts); it is
+    re-expanded here into the dense action layout the policy head emits, so the
+    ring stays small and the loss still sees a distribution.
+    """
+    from reckoner.absence import Absent
+
+    tokens, positions, masks, targets, steps, depths, zs, qs = [], [], [], [], [], [], [], []
+    skipped = 0
+    for i in indices:
+        record = ring.get(i)
+        if any(isinstance(record[k], Absent) for k in ("tokens", "visit_counts", "root_q", "z")):
+            skipped += 1  # an era-absent field is not a zero; the row sits out
+            continue
+        goal, target, expr = decode_state(tuple(int(t) for t in record["tokens"]))
+        problem = Problem(
+            goal=goal, expr=expr, par=int(record["par"]), target=target, par_source="bfs"
+        )
+        try:
+            state = encode(problem, expr, cfg)
+        except StateTooLarge:
+            skipped += 1  # counted, never cropped
+            continue
+
+        visits = np.asarray(record["visit_counts"], dtype=np.float64)
+        total = visits.sum()
+        if total <= 0:
+            skipped += 1
+            continue
+        dense = torch.zeros(N_RULES * cfg.model.max_sites)
+        for action, count in zip(record["visit_actions"], visits, strict=True):
+            if count > 0:
+                dense[int(action)] = float(count / total)
+
+        tokens.append(state.tokens)
+        positions.append(state.site_positions)
+        masks.append(state.legal_mask)
+        targets.append(dense)
+        steps.append(float(record["steps_remaining"]))
+        depths.append(int(record["depth"]))
+        zs.append(Z_TO_CLASS[int(record["z"])])
+        qs.append(float(record["root_q"]))
+
+    if not tokens:
+        return None
+    steps_tensor = torch.tensor(steps)
+    stacked = _crop_to_content(torch.stack(tokens), torch.stack(positions))
+    batch = Batch(
+        tokens=stacked,
+        site_positions=torch.stack(positions),
+        width=int(stacked.shape[1]),
+        legal_mask=torch.stack(masks),
+        policy_target=torch.stack(targets),
+        steps_target=steps_tensor,
+        solved_mask=torch.ones_like(steps_tensor, dtype=torch.bool),
+        depth=torch.tensor(depths),
+        skipped=skipped,
+    )
+    batch.z_class = torch.tensor(zs, dtype=torch.long)
+    batch.root_q = torch.tensor(qs, dtype=torch.float32)
+    return batch
+
+
+def train_on_ring(
+    model: Reckoner,
+    ring,
+    cfg: Config,
+    *,
+    steps: int,
+    seed: int = 0,
+    device: str = "cpu",
+    value_head: ValueHeadState | None = None,
+) -> TrainStats:
+    """**Phase 2's training phase.** Ring -> batches -> blended loss -> step.
+
+    The z/q blend, at last implemented: cross-entropy toward the episode's real
+    ``z`` plus ``train.value_q_mse_weight`` times MSE between the head's expected
+    z and the search's ``root_q``. The self-referential hazard that makes blending
+    dangerous elsewhere is structurally absent here because the **checker**, not
+    the model's own Q, decides solved — so a wrong Q cannot bootstrap a false
+    solve. Stated here as well as in config so a later reader does not "fix" it by
+    turning the blend off.
+
+    **The value head trains at full weight even while the search distrusts it.**
+    Gating both consumers by the declaration deadlocks the ratchet — no gradient,
+    no accuracy, no switch, forever (`FINDINGS.md` F-15). The declaration governs
+    what the search *trusts*; this governs what the head is *taught*.
+    """
+    rng = random.Random(seed)
+    torch.manual_seed(seed)
+    model.to(device).train()
+    optimiser = torch.optim.AdamW(
+        model.parameters(), lr=cfg.train.lr, weight_decay=cfg.train.weight_decay
+    )
+    stats = TrainStats()
+
+    for step in range(steps):
+        if len(ring) == 0:
+            break
+        indices = [rng.randrange(len(ring)) for _ in range(min(cfg.train.batch_size, len(ring)))]
+        batch = ring_batch(ring, indices, cfg)
+        if batch is None:
+            stats.encode_skips += len(indices)
+            continue
+        stats.encode_skips += batch.skipped
+
+        lr = lr_at(step, steps, cfg)
+        for group in optimiser.param_groups:
+            group["lr"] = lr
+
+        policy, value_logits, steps_out = model(
+            batch.tokens.to(device), batch.site_positions.to(device)
+        )
+        loss = cfg.train.policy_loss_weight * policy_loss(
+            policy, batch.policy_target.to(device), batch.legal_mask.to(device)
+        )
+        assert steps_out is not None
+        loss = loss + cfg.train.steps_loss_weight * steps_loss(
+            steps_out, batch.steps_target.to(device), batch.solved_mask.to(device)
+        )
+        value_ce = nn.functional.cross_entropy(value_logits, batch.z_class.to(device))
+        probs = torch.softmax(value_logits, dim=1)
+        expected_z = probs[:, 0] - probs[:, 2]
+        q_mse = nn.functional.mse_loss(expected_z, batch.root_q.to(device))
+        loss = loss + cfg.train.value_loss_weight * (
+            value_ce + cfg.train.value_q_mse_weight * q_mse
+        )
+
+        optimiser.zero_grad(set_to_none=True)
+        loss.backward()
+        finite = all(p.grad is None or torch.isfinite(p.grad).all() for p in model.parameters())
+        if not finite:
+            stats.nan_skips += 1
+            optimiser.zero_grad(set_to_none=True)
+        else:
+            nn.utils.clip_grad_norm_(model.parameters(), cfg.train.grad_clip)
+            optimiser.step()
+
+        stats.steps += 1
+        stats.examples += int(batch.tokens.shape[0])
+        stats.losses.append(float(loss.detach()))
+
+        if stats.steps >= cfg.train.nan_abort_min_steps:
+            rate = stats.nan_skips / stats.steps
+            if rate > cfg.train.nan_abort_frac:
+                raise RuntimeError(
+                    f"non-finite gradients on {rate:.1%} of steps — a rate, not a transient"
+                )
+    return stats
 
 
 def rehearsal_split(batch_size: int, cfg: Config) -> tuple[int, int]:
