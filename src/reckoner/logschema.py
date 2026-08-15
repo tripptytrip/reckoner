@@ -240,6 +240,16 @@ ITERATION_FIELDS: tuple[Field, ...] = (
         "solves: both give z = -1, and pooling them hides which is happening.",
     ),
     Field(
+        "episodes_conceded",
+        int,
+        "counter",
+        "Episodes the policy RESIGNED: the best line already needs >= par + "
+        "`par.concede_k` steps, so the outcome is settled and the remaining "
+        "budget buys nothing. A distinct outcome from `capped` — conceding is a "
+        "decision and capping is an exhaustion, and pooling them would hide "
+        "which the policy is doing. Inert while `par.concede_enabled` is False.",
+    ),
+    Field(
         "episodes_stuck",
         int,
         "counter",
@@ -554,14 +564,26 @@ def _check_splits_sum(row: dict[str, Any]) -> None:
     instead of by a reviewer reading a row. A split that does not sum is either a
     lost episode or a double-counted one, and both look like a plausible number.
     """
-    needed = ("episodes", "episodes_solved", "episodes_capped", "episodes_stuck")
+    needed = (
+        "episodes",
+        "episodes_solved",
+        "episodes_capped",
+        "episodes_stuck",
+        "episodes_conceded",
+    )
     if any(k not in row for k in needed):
         return
-    total = row["episodes_solved"] + row["episodes_capped"] + row["episodes_stuck"]
+    total = (
+        row["episodes_solved"]
+        + row["episodes_capped"]
+        + row["episodes_stuck"]
+        + row["episodes_conceded"]
+    )
     if total != row["episodes"]:
         raise SchemaError(
             f"outcomes do not sum: solved {row['episodes_solved']} + capped "
-            f"{row['episodes_capped']} + stuck {row['episodes_stuck']} = {total}, "
+            f"{row['episodes_capped']} + stuck {row['episodes_stuck']} + conceded "
+            f"{row['episodes_conceded']} = {total}, "
             f"but episodes = {row['episodes']}. An episode ends in exactly one "
             "outcome; a split that does not sum is a lost or double-counted episode."
         )

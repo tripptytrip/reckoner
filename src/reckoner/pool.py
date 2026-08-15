@@ -155,6 +155,22 @@ class CheckpointPool:
             self.members = sorted(self.members, key=lambda m: m.step)[-self.cfg.league.pool_size :]
         return member
 
+    def enroll(
+        self, model: Reckoner, step: int, value_head: ValueHeadState, path: Path
+    ) -> Member | None:
+        """Snapshot the running model INTO the pool. This is par escalation.
+
+        The amendment's core mechanism is that par rises with the model, and it
+        rises only because the loop feeds the pool its own checkpoints. The
+        snapshot carries **the declaration it was played under**, so when it is
+        later sampled it re-solves under its own wiring rather than whatever the
+        run has become (rule 2).
+        """
+        from reckoner.model import save_checkpoint
+
+        save_checkpoint(path, model, self.cfg, step, value_head=value_head.as_dict())
+        return self.add(path)
+
     def try_add(self, path: Path) -> bool:
         """``add`` without raising, for a pool being assembled from a directory."""
         try:

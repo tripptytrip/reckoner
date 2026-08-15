@@ -173,6 +173,28 @@ def make_batch(data: SupervisionSet, indices: list[int], cfg: Config) -> Batch:
     )
 
 
+def rehearsal_split(batch_size: int, cfg: Config) -> tuple[int, int]:
+    """How many Phase-1 rows to mix into a Phase-2 batch. **Dormant at 0.0.**
+
+    Ported now and left inert, per the plan's "the lever exists before it's
+    needed": a rehearsal mechanism added *after* catastrophic forgetting appears
+    is a mechanism written under pressure, against a run that is already
+    degrading. At ``rehearsal_frac = 0.0`` this returns ``(0, batch_size)`` and
+    nothing in the training path changes — which is the accepting case that has
+    to be tested too, or "dormant" means "untested".
+
+    Returns ``(from_supervision, from_replay)``.
+    """
+    frac = cfg.train.rehearsal_frac
+    if not 0.0 <= frac < 1.0:
+        raise ValueError(
+            f"train.rehearsal_frac must be in [0, 1); got {frac}. At 1.0 a Phase-2 "
+            "iteration trains on no Phase-2 data, which is not rehearsal."
+        )
+    supervision = int(round(batch_size * frac))
+    return supervision, batch_size - supervision
+
+
 def lr_at(step: int, total: int, cfg: Config) -> float:
     """Learning rate for ``step`` (0-based), per ``train.lr_schedule``.
 

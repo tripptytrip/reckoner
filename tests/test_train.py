@@ -16,7 +16,13 @@ import torch
 
 from reckoner.config import Config
 from reckoner.model import Reckoner
-from reckoner.train import SupervisionSet, _crop_to_content, make_batch, train
+from reckoner.train import (
+    SupervisionSet,
+    _crop_to_content,
+    make_batch,
+    rehearsal_split,
+    train,
+)
 from reckoner.vocab import PAD
 
 REPO = Path(__file__).resolve().parents[1]
@@ -159,3 +165,36 @@ def test_training_is_reproducible_from_seed() -> None:
     torch.manual_seed(0)
     other = train(Reckoner(cfg), data, cfg, steps=5, seed=1, log_every=0).losses
     assert other != first, "a different seed produced an identical curve"
+
+
+# ---------------------------------------------------------------------------
+# Rehearsal — ported dormant, and "dormant" is asserted rather than assumed
+# ---------------------------------------------------------------------------
+
+
+def test_rehearsal_is_dormant_at_the_default() -> None:
+    """`rehearsal_frac: 0.0` must change nothing in the training path.
+
+    "Dormant" untested means "untested" — the accepting case is that the split
+    is a no-op, and it has to be asserted like any other.
+    """
+    assert CFG.train.rehearsal_frac == 0.0
+    assert rehearsal_split(128, CFG) == (0, 128)
+
+
+def test_rehearsal_splits_when_armed() -> None:
+    """The other polarity: the lever must do something when pulled, or it is not
+    a lever that exists before it is needed — it is a key that does nothing."""
+    cfg = Config()
+    cfg.train.rehearsal_frac = 0.25
+    assert rehearsal_split(128, cfg) == (32, 96)
+    cfg.train.rehearsal_frac = 0.5
+    assert rehearsal_split(10, cfg) == (5, 5)
+
+
+def test_a_full_rehearsal_fraction_is_refused() -> None:
+    """At 1.0 a Phase-2 iteration trains on no Phase-2 data, which is not rehearsal."""
+    cfg = Config()
+    cfg.train.rehearsal_frac = 1.0
+    with pytest.raises(ValueError, match="not rehearsal"):
+        rehearsal_split(128, cfg)

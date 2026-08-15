@@ -1,4 +1,4 @@
-.PHONY: install relock lint format test env docs clean
+.PHONY: install relock lint format test env docs golden clean
 
 # uv is the only Python tool chain on this box (AGENTS.md §5). Resolve it rather
 # than assume PATH: a Makefile invoked from a stripped environment must not
@@ -50,6 +50,12 @@ env:
 docs:
 	$(PYTHON) scripts/dump_vocab.py
 	$(PYTHON) scripts/render_derivations.py
+
+# The loop's liveness check: does it still turn, in the time a person will wait?
+# CPU always — a check that needs the accelerator stops being run the moment the
+# accelerator is busy, and this box's GPU is shared.
+golden:
+	$(PYTHON) scripts/golden.py
 
 clean:
 	rm -rf .pytest_cache .ruff_cache src/*.egg-info

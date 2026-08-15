@@ -327,3 +327,45 @@ def test_an_absent_par_asof_refuses_to_be_read_as_a_date(tmp_path: Path) -> None
     result = pool.par_for_episode(problem, recording_factory([]), random.Random(0))
     with pytest.raises(AbsenceError, match="test for Absent"):
         bool(result.par_asof)
+
+
+# ---------------------------------------------------------------------------
+# Enrollment — a pool the loop never feeds is a league in name only
+# ---------------------------------------------------------------------------
+
+
+def test_enrollment_grows_the_pool_and_evicts_the_oldest(tmp_path: Path) -> None:
+    """Par escalation is the amendment's core mechanism, and it is enrollment.
+
+    A pool that stays at size 1 for a whole run is a fixed opponent wearing the
+    word "league", and `par_from_pool_frac` would price a mechanism that never
+    engages.
+    """
+    cfg = Config()
+    cfg.league.pool_size = 3
+    pool = CheckpointPool(cfg)
+    torch.manual_seed(0)
+    model = Reckoner(cfg)
+
+    sizes, compositions = [], []
+    for step in (100, 200, 300, 400, 500):
+        pool.enroll(model, step, ValueHeadState(), tmp_path / f"snap-{step}.pt")
+        sizes.append(len(pool))
+        compositions.append(pool.composition()["steps"])
+
+    assert sizes == [1, 2, 3, 3, 3], "the pool must grow, then hold at pool_size"
+    assert compositions[-1] == [300, 400, 500], "oldest evicted first"
+
+
+def test_an_enrolled_snapshot_carries_the_declaration_it_was_played_under(
+    tmp_path: Path,
+) -> None:
+    """Rule 2 depends on this: the snapshot must remember its own wiring."""
+    pool = CheckpointPool(CFG)
+    torch.manual_seed(0)
+    live = ValueHeadState(live=True, switched_at_iteration=4)
+    member = pool.enroll(Reckoner(CFG), 900, live, tmp_path / "live.pt")
+    assert member is not None
+    assert member.value_head.live is True
+    assert member.value_head.switched_at_iteration == 4
+    assert pool.composition()["value_head_live"] == [900]

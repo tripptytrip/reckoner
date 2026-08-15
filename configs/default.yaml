@@ -50,6 +50,7 @@ league:
   # anchor seeds the pool — otherwise par_from_pool_frac is dead until snapshots
   # accumulate, and the anchor is the natural rung-zero member.
   seed_pool_with_anchor: true
+  snapshot_every: 1        # [provisional — chunk 9] enrollment cadence
   pool_size: 8
   pool_sample: uniform
 

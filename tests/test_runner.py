@@ -225,3 +225,47 @@ def test_the_ring_learns_z_only_when_the_episode_settles() -> None:
     run_iteration(problems(2, 4), uniform_stub(CFG), CFG, ring, sims=16, m=5, seed=1)
     zs = {ring.get(slot)["z"] for slot in range(len(ring))}
     assert zs <= {-1, 0, 1} and zs
+
+
+# ---------------------------------------------------------------------------
+# The two dormant levers — ported, inert, and tested on BOTH settings
+# ---------------------------------------------------------------------------
+
+
+@needs_suites
+def test_resign_is_inert_by_default() -> None:
+    """Default off, per v1.1: calibration of k is deferred to campaign evidence."""
+    assert CFG.par.concede_enabled is False
+    stats = run_iteration(problems(2, 12), uniform_stub(CFG), CFG, sims=16, m=5, seed=1)
+    assert stats.episodes_conceded == 0
+
+
+@needs_suites
+def test_resign_fires_when_enabled_and_is_a_distinct_outcome() -> None:
+    """The other polarity — "implemented" must mean something happens when on.
+
+    Conceding is a DECISION where capping is an exhaustion; pooling them would
+    hide which the policy is doing, so it gets its own counter and the splits
+    still sum.
+    """
+    cfg = Config()
+    cfg.par.concede_enabled = True
+    cfg.par.concede_k = 0  # resign the moment the line exceeds par
+    stats = run_iteration(problems(2, 12), uniform_stub(cfg), cfg, sims=16, m=5, seed=1)
+    assert stats.episodes_conceded > 0, "resign enabled but nothing ever conceded"
+    assert (
+        stats.episodes_solved
+        + stats.episodes_capped
+        + stats.episodes_stuck
+        + stats.episodes_conceded
+        == stats.episodes
+    )
+
+
+@needs_suites
+def test_a_conceded_episode_is_not_counted_as_capped() -> None:
+    cfg = Config()
+    cfg.par.concede_enabled = True
+    cfg.par.concede_k = 0
+    stats = run_iteration(problems(2, 12), uniform_stub(cfg), cfg, sims=16, m=5, seed=1)
+    assert stats.episodes_capped == 0, "conceding must not be filed as exhaustion"

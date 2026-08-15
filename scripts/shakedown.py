@@ -138,6 +138,7 @@ def main() -> int:
     switch_path = run / "value_switch.jsonl"
     suite_rows = read_suite(REPO / "runs" / "suites" / "solve_in_2.jsonl")
     solve_by_depth: list[dict] = []
+    pool_sizes: list[int] = []
 
     for n in range(args.iterations):
         rng = random.Random(1000 + n)
@@ -179,12 +180,19 @@ def main() -> int:
         )
         solve_by_depth.append({"iteration": n, "rates": row["solve_rate_by_depth"]})
 
+        # ENROLLMENT — the loop feeds the pool its own checkpoint, which is what
+        # makes par escalate. Without this the "league" is a fixed opponent.
+        if (n + 1) % cfg.league.snapshot_every == 0:
+            pool.enroll(model, 5000 + n + 1, head, run / f"snapshot-{n}.pt")
+
+        pool_sizes.append(len(pool))
         state = RunState(iteration=n, value_head=head, seed=n)
         commit_iteration(
             run, ring, state, lambda row=row: append_row(rows_path, row, ITERATION_FIELDS)
         )
         print(
-            f"  iteration {n}: {stats.episodes_solved}/{stats.episodes} solved, "
+            f"  iteration {n}: pool {len(pool)} | "
+            f"{stats.episodes_solved}/{stats.episodes} solved, "
             f"{stats.nodes} nodes, pool par {len(pool_pars)} sampled, "
             f"switch {'FIRED' if event['fired'] else 'abstained' if event.get('abstained') else 'refused'}"
         )
@@ -272,6 +280,16 @@ def main() -> int:
             "pool_solving": pool.stats.as_dict()["seconds_solving"],
         },
         "pool": pool.stats.as_dict() | {"composition": pool.composition()},
+        "pool_enrollment": {
+            "seeded_with_anchor": seeded,
+            "snapshot_every": cfg.league.snapshot_every,
+            "size_by_iteration": pool_sizes,
+        },
+        "dormant_levers": {
+            "rehearsal_frac": cfg.train.rehearsal_frac,
+            "concede_enabled": cfg.par.concede_enabled,
+            "concede_k": cfg.par.concede_k,
+        },
         "verdicts": verdicts,
     }
     write_record(REPO / "runs" / "shakedown_result.json", record)

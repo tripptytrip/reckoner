@@ -113,6 +113,12 @@ class LeagueConfig:
     # member — it is the checkpoint every later pass is already compared against.
     # Declared either way rather than left to whichever happens first.
     seed_pool_with_anchor: bool = True
+    # [provisional — chunk 9] Iterations between snapshots. Enrollment is what
+    # makes this a league rather than a fixed opponent: par escalates because the
+    # loop FEEDS the pool its own checkpoints. A pool nothing enrolls into is the
+    # snapshot league in name only, and `par_from_pool_frac` would price a
+    # mechanism that never engages.
+    snapshot_every: int = 1
     # Most recent snapshots retained as pool members. Bounded because pool par is
     # re-solved at episode time, so membership is a cost as well as a population.
     pool_size: int = 8

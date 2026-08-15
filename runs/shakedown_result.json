@@ -1,14 +1,22 @@
 {
+  "dormant_levers": {
+    "concede_enabled": false,
+    "concede_k": 2,
+    "rehearsal_frac": 0.0
+  },
   "episodes_per_iteration": 40,
   "expectations_frozen_at": "93868dd",
-  "git_sha": "4635ac95bb600c01d2d73c3d6f3289db60a24e7c",
+  "git_sha": "384a1ef05ba1308bbf60ed3a4e7418e780309e76",
   "iterations": 3,
   "m": 5,
   "pool": {
     "composition": {
-      "size": 1,
+      "size": 4,
       "steps": [
-        5000
+        5000,
+        5001,
+        5002,
+        5003
       ],
       "value_head_live": []
     },
@@ -20,7 +28,16 @@
     "refused_paths": [
       "/home/michael/Documents/dev/Experiment_Two/runs/shakedown/mismatched.pt"
     ],
-    "seconds_solving": 3.567
+    "seconds_solving": 3.713
+  },
+  "pool_enrollment": {
+    "seeded_with_anchor": true,
+    "size_by_iteration": [
+      2,
+      3,
+      4
+    ],
+    "snapshot_every": 1
   },
   "sims": 16,
   "verdicts": {
@@ -49,12 +66,12 @@
       "sample_tagged_pool": [
         {
           "par": 2,
-          "par_asof": 5000,
+          "par_asof": 5002,
           "par_source": "pool"
         },
         {
           "par": 2,
-          "par_asof": 5000,
+          "par_asof": 5001,
           "par_source": "pool"
         },
         {
@@ -154,9 +171,9 @@
       "verdict": "PASS"
     }
   },
-  "wall_clock_seconds": 21.85,
+  "wall_clock_seconds": 23.02,
   "wall_clock_split": {
-    "pool_solving": 3.567,
-    "self_play": 18.182
+    "pool_solving": 3.713,
+    "self_play": 19.158
   }
 }

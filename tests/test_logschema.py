@@ -51,6 +51,7 @@ def good_row(**overrides) -> dict:
         "episodes_solved": 5,
         "episodes_capped": 1,
         "episodes_stuck": 0,
+        "episodes_conceded": 0,
         "search_nodes_total": 96,
         "search_evaluations_total": 96,
         "terminal_no_actions": 0,

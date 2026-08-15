@@ -83,6 +83,7 @@ class IterationStats:
     episodes_solved: int = 0
     episodes_capped: int = 0
     episodes_stuck: int = 0
+    episodes_conceded: int = 0
     nodes: int = 0
     evaluations: int = 0
     terminal_solved: int = 0
@@ -238,6 +239,20 @@ def run_iteration(
                 stats.episodes_solved += 1
                 _settle(stats, ring, e, trail, solved=True, capped=False)
                 continue
+            # RESIGN-VS-PAR, implemented and default OFF. Once the best line
+            # already needs >= par + concede_k, the outcome is settled and the
+            # remaining budget buys nothing. Calibration of k is deferred to
+            # campaign evidence per v1.1 — it is inert until enabled, and the
+            # counter is distinct because conceding is a DECISION where capping
+            # is an exhaustion.
+            if (
+                cfg.par.concede_enabled
+                and e.problem.par is not None
+                and e.steps >= e.problem.par + cfg.par.concede_k
+            ):
+                stats.episodes_conceded += 1
+                _settle(stats, ring, e, trail, solved=False, capped=False)
+                continue
             if e.steps >= cfg.episode.step_cap or not legal_actions(e.expr):
                 capped = e.steps >= cfg.episode.step_cap
                 if capped:
@@ -328,6 +343,7 @@ def iteration_row(
         "episodes_solved": stats.episodes_solved,
         "episodes_capped": stats.episodes_capped,
         "episodes_stuck": stats.episodes_stuck,
+        "episodes_conceded": stats.episodes_conceded,
         "search_nodes_total": stats.nodes,
         "search_evaluations_total": stats.evaluations,
         "terminal_no_actions": stats.terminal_no_actions,
