@@ -47,6 +47,18 @@ from reckoner.config import Config
 from reckoner.replay import ReplayRing
 from reckoner.valuegate import ValueHeadState
 
+#: Committed rings kept behind ``LATEST``. Priced before being chosen, rider (c)
+#: applied to disk: one ring at ``replay_capacity`` 500,000 is **0.73 GiB**, so an
+#: unpruned run costs 14.5 GiB by iteration 20, **36.3 GiB by 50**, 72.6 GiB by
+#: 100 — against 114 GiB free on this box. Disk exhaustion mid-campaign is not how
+#: this policy should be discovered.
+#:
+#: 3 is chosen over 1 because the resume path is the one path that only ever runs
+#: after something has already gone wrong: if the newest committed ring is
+#: unreadable, two older ones let a run be rewound rather than restarted. Steady
+#: state is 2.18 GiB, which is not a number worth optimising against 114 GiB free.
+KEEP_RINGS = 3
+
 
 class ResumeError(RuntimeError):
     """A run directory that cannot be interpreted."""
@@ -117,6 +129,32 @@ def commit_iteration(
     marker_tmp.write_text(f"{n}\n")
     os.replace(marker_tmp, run / "LATEST")
 
+    # Pruning happens AFTER the commit, never before: a prune that ran first
+    # could delete the fallback and then crash, leaving fewer rings than the
+    # policy promises. Nothing here can lose the committed iteration.
+    prune_rings(run, keep=KEEP_RINGS)
+
+
+def prune_rings(run: Path, *, keep: int = KEEP_RINGS) -> list[int]:
+    """Drop committed rings older than the last ``keep``. Returns what it removed.
+
+    Only ever runs behind ``LATEST``, and never touches the committed iteration
+    itself, so it is safe to re-run and safe to interrupt.
+    """
+    committed = latest_committed(run)
+    if committed is None:
+        return []
+    indices = sorted(
+        int(p.name.removeprefix("ring-"))
+        for p in run.glob("ring-*")
+        if p.name.removeprefix("ring-").isdigit()
+    )
+    doomed = [n for n in indices if n <= committed][:-keep] if keep else []
+    for n in doomed:
+        shutil.rmtree(run / f"ring-{n}", ignore_errors=True)
+        (run / f"state-{n}.json").unlink(missing_ok=True)
+    return doomed
+
 
 def resume(run: Path, cfg: Config) -> tuple[int, ReplayRing | None, RunState | None]:
     """Return ``(next_iteration, ring, state)``, cleaning provisional artifacts.
@@ -124,6 +162,13 @@ def resume(run: Path, cfg: Config) -> tuple[int, ReplayRing | None, RunState | N
     Truncates ``iterations.jsonl`` to the committed prefix. A row for an
     uncommitted iteration is not evidence of anything except a crash, and leaving
     it would make the log claim an iteration the ring does not contain.
+
+    **Idempotent, and that is load-bearing rather than incidental.** This is the
+    one path that only ever runs after something has already gone wrong, so a
+    crash *during the repair* must converge on re-run rather than compound. It
+    does, because every step is a drop-beyond-``LATEST``: truncation to a prefix
+    is idempotent, removing an already-removed orphan is a no-op, and nothing
+    here writes ``LATEST``. Asserted in `tests/test_resume.py`, not assumed.
     """
     committed = latest_committed(run)
     rows_path = run / "iterations.jsonl"

@@ -17,10 +17,12 @@ import pytest
 from reckoner.config import Config
 from reckoner.replay import ReplayRing
 from reckoner.resume import (
+    KEEP_RINGS,
     ResumeError,
     RunState,
     commit_iteration,
     latest_committed,
+    prune_rings,
     resume,
 )
 from reckoner.valuegate import ValueHeadState
@@ -78,6 +80,20 @@ class Harness:
                 raise KeyboardInterrupt("killed after ring and state, before the row")
 
             commit_iteration(self.run, ring, state, write_row)
+
+
+def final_state_partial(run: Path) -> tuple[int | None, list[str], list[str]]:
+    """Everything on disk, for idempotence comparison — including nothing."""
+    rows = (
+        (run / "iterations.jsonl").read_text().splitlines()
+        if (run / "iterations.jsonl").exists()
+        else []
+    )
+    return (
+        latest_committed(run),
+        sorted(p.name for p in run.glob("ring-*")),
+        rows,
+    )
 
 
 def final_state(run: Path) -> tuple[int, list[int], list[dict]]:
@@ -224,3 +240,82 @@ def test_the_value_head_declaration_survives_a_resume(tmp_path: Path) -> None:
     assert restored is not None
     assert restored.value_head.live is True
     assert restored.value_head.switched_at_iteration == 0
+
+
+# ---------------------------------------------------------------------------
+# Ring retention — priced before it was chosen, and pruning cannot lose a commit
+# ---------------------------------------------------------------------------
+
+
+def test_only_the_last_k_rings_are_kept(tmp_path: Path) -> None:
+    """Unpruned, a run costs 0.73 GiB per iteration — 36.3 GiB by iteration 50.
+
+    Disk exhaustion mid-campaign is not how this policy should be discovered.
+    """
+    run = tmp_path / "run"
+    Harness(run).play(iterations=6)
+    rings = sorted(int(p.name.removeprefix("ring-")) for p in run.glob("ring-*"))
+    assert rings == [3, 4, 5], f"expected the last {KEEP_RINGS}, got {rings}"
+    assert not (run / "state-0.json").exists(), "state files prune with their rings"
+    assert (run / "state-5.json").exists()
+
+
+def test_pruning_never_removes_the_committed_iteration(tmp_path: Path) -> None:
+    run = tmp_path / "run"
+    Harness(run).play(iterations=6)
+    committed = latest_committed(run)
+    assert (run / f"ring-{committed}").exists()
+    prune_rings(run)  # re-running must not touch it
+    assert (run / f"ring-{committed}").exists()
+
+
+def test_a_resume_still_works_after_pruning(tmp_path: Path) -> None:
+    """The retention rule must not break the thing it shares a directory with."""
+    run = tmp_path / "run"
+    Harness(run).play(iterations=6)
+    nxt, ring, state = resume(run, CFG)
+    assert nxt == 6 and ring is not None and state is not None
+    assert len(ring) == 12
+
+
+# ---------------------------------------------------------------------------
+# Repair idempotence — the one path that only runs after something went wrong
+# ---------------------------------------------------------------------------
+
+
+def test_repair_converges_when_re_run(tmp_path: Path) -> None:
+    """A crash DURING the repair must converge, not compound.
+
+    Every step is a drop-beyond-LATEST: truncation to a prefix is idempotent,
+    removing an already-removed orphan is a no-op, and nothing here writes
+    LATEST. Running it three times must equal running it once.
+    """
+    run = tmp_path / "run"
+    with pytest.raises(KeyboardInterrupt):
+        Harness(run, kill_at=(2, "B")).play()
+
+    first = resume(run, CFG)
+    snapshot = final_state_partial(run)
+    for _ in range(2):
+        again = resume(run, CFG)
+        assert again[0] == first[0]
+        assert final_state_partial(run) == snapshot
+
+
+def test_repair_is_idempotent_at_kill_point_a_too(tmp_path: Path) -> None:
+    run = tmp_path / "run"
+    with pytest.raises(KeyboardInterrupt):
+        Harness(run, kill_at=(1, "A")).play()
+    first = resume(run, CFG)
+    snapshot = final_state_partial(run)
+    assert resume(run, CFG)[0] == first[0]
+    assert final_state_partial(run) == snapshot
+
+
+def test_repair_on_an_already_clean_run_changes_nothing(tmp_path: Path) -> None:
+    """The accepting case: repair must be a no-op when there is nothing to repair."""
+    run = tmp_path / "run"
+    Harness(run).play()
+    before = final_state(run)
+    resume(run, CFG)
+    assert final_state(run) == before
