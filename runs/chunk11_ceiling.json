@@ -1,0 +1,44 @@
+{
+  "budget_lane": {
+    "metric": "solve-vs-budget, sympy",
+    "movable_mass": 0,
+    "problems_played": 251,
+    "solved": 251,
+    "verdict": "SATURATED \u2014 the rung solves everything it plays, so its own score cannot move and it cannot be differenced against the z lane anyway"
+  },
+  "conclusion": "every candidate primary denominated in z-against-BFS-exact-par is at or within noise of its ceiling before the campaign starts. The anchor is at par on 1193/1200 suite problems and 387/389 paired problems, and nothing can score better than par where par is exact. This is not a finding about the model; it is the instrument's dynamic range being exhausted at iteration 0.",
+  "git_sha": "7af32f4572d9a176b740fb9ffdbc3b80a063761d",
+  "question": "for each candidate primary, what is the most it can move, and how does that compare to the interval that would have to separate?",
+  "rung_trajectory_z_lane": {
+    "ceiling_reason": "par on this set is BFS-exact, so z = 0 is the best attainable value per problem and the +1 cell is structurally empty \u2014 the same impossible cell the chunk-11 primary was rejected for measuring",
+    "ci": [
+      0.187661,
+      0.272494
+    ],
+    "ci_half_width": 0.042417,
+    "current_mean_difference": 0.228792,
+    "greedy_is_fixed": true,
+    "max_possible_movement": 0.005141,
+    "mean_model_z_ceiling": 0.0,
+    "mean_model_z_now": -0.005141,
+    "metric": "mean paired difference in z, model - greedy, over iterations",
+    "model_z_histogram": {
+      "-1.0": 2,
+      "0.0": 387,
+      "1.0": 0
+    },
+    "movable_problems": 2,
+    "movement_as_fraction_of_ci_half_width": 0.121212,
+    "n_pairs": 389,
+    "verdict": "SATURATED \u2014 the difference can only move as the model's z moves, and its entire remaining headroom is smaller than the interval that would have to separate"
+  },
+  "source": "runs/chunk11_part0_result.json",
+  "suite_tail_reduction": {
+    "metric": "over-par indicator on the frozen suites, iteration 0 vs ~20",
+    "movable_fraction": 0.005833,
+    "movable_mass_T": 7,
+    "problems": 1200,
+    "threshold_T": 36,
+    "verdict": "REJECTED by the pre-registered rule (T = 7 < 36)"
+  }
+}

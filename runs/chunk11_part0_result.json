@@ -1,0 +1,198 @@
+{
+  "M_A_headroom": {
+    "at_par": 1193,
+    "beat_par": 0,
+    "beat_par_note": "structurally empty: the suites carry BFS-exact par, nothing beats exact par, and three layers refuse a row claiming otherwise. Reported so its absence cannot read as nobody having looked",
+    "over_par_T": 7,
+    "over_par_fraction": 0.005833,
+    "primary_selected": "rung_trajectory",
+    "problems": 1200,
+    "threshold_T": 36,
+    "threshold_source": "PREREG-chunk11-part0.md, computed against no data"
+  },
+  "M_A_suite_composition": {
+    "per_suite": {
+      "solve_in_1": {
+        "capped": 0,
+        "problems": 200,
+        "seconds": 25.04,
+        "solved": 200,
+        "steps_minus_par": {
+          "0": 200,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0,
+          "6+": 0,
+          "<0": 0
+        },
+        "stuck": 0
+      },
+      "solve_in_2": {
+        "capped": 0,
+        "problems": 200,
+        "seconds": 79.0,
+        "solved": 200,
+        "steps_minus_par": {
+          "0": 200,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0,
+          "6+": 0,
+          "<0": 0
+        },
+        "stuck": 0
+      },
+      "solve_in_3": {
+        "capped": 0,
+        "problems": 200,
+        "seconds": 182.32,
+        "solved": 200,
+        "steps_minus_par": {
+          "0": 200,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0,
+          "6+": 0,
+          "<0": 0
+        },
+        "stuck": 0
+      },
+      "solve_in_4": {
+        "capped": 0,
+        "problems": 200,
+        "seconds": 290.38,
+        "solved": 200,
+        "steps_minus_par": {
+          "0": 199,
+          "1": 1,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0,
+          "6+": 0,
+          "<0": 0
+        },
+        "stuck": 0
+      },
+      "solve_in_5": {
+        "capped": 0,
+        "problems": 200,
+        "seconds": 405.16,
+        "solved": 200,
+        "steps_minus_par": {
+          "0": 194,
+          "1": 6,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0,
+          "6+": 0,
+          "<0": 0
+        },
+        "stuck": 0
+      },
+      "solve_in_6": {
+        "capped": 0,
+        "problems": 200,
+        "seconds": 517.69,
+        "solved": 200,
+        "steps_minus_par": {
+          "0": 200,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0,
+          "6+": 0,
+          "<0": 0
+        },
+        "stuck": 0
+      }
+    },
+    "pooled": {
+      "0": 1193,
+      "1": 7,
+      "2": 0,
+      "3": 0,
+      "4": 0,
+      "5": 0,
+      "6+": 0,
+      "<0": 0
+    },
+    "totals": {
+      "capped": 0,
+      "episodes": 1200,
+      "solved": 1200,
+      "stuck": 0
+    }
+  },
+  "M_B_rung_baselines": {
+    "budget_lane": {
+      "available": true,
+      "cas_version": "1.14.0",
+      "currency": "solve_vs_budget",
+      "note": "never differenced against the z lane; pair() refuses the construction, so this is a separate reported baseline",
+      "problems_played": 251,
+      "solved": 251
+    },
+    "paired_set": "runs/paired/smoke_v1.jsonl",
+    "problems": 389,
+    "rows_by_arm": {
+      "greedy": 389,
+      "model": 389,
+      "sympy": 251
+    },
+    "seconds_by_arm": {
+      "greedy": 0.352,
+      "model": 246.434,
+      "sympy": 0.114
+    },
+    "skipped_by_arm": {
+      "sympy": 138
+    },
+    "z_lane": {
+      "ci": [
+        0.187661,
+        0.272494
+      ],
+      "currency": "z_vs_par",
+      "excludes_zero": true,
+      "model_minus_greedy_mean": 0.228792,
+      "model_z_histogram": {
+        "-1.0": 2,
+        "0.0": 387,
+        "1.0": 0
+      },
+      "n_pairs": 389,
+      "rendering_note": "ordinary percentile interval over resampled paired differences",
+      "saturated": false,
+      "synthetic_elo_model_vs_greedy": 0.614396
+    }
+  },
+  "expectations_frozen_at": "7af32f4",
+  "git_sha": "7af32f4572d9a176b740fb9ffdbc3b80a063761d",
+  "protocol": {
+    "config_fingerprint": "f1d258a1161c5ba17f031a3ad89fae0e688ab135f8ced44c1dcd01b1e89491c1",
+    "device": "cpu",
+    "gumbel_m": 16,
+    "measure_dtype": "fp32",
+    "model": "runs/phase1/phase1.pt",
+    "perspective": "single",
+    "root_noise": false,
+    "sims": 48,
+    "step_cap": 24,
+    "threads": 8,
+    "value_scale": 0.0
+  },
+  "wall_clock_seconds": 1746.86,
+  "wall_clock_split": {
+    "M_A_suites": 1499.65,
+    "M_B_paired_set": 247.13
+  }
+}

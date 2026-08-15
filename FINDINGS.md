@@ -1179,3 +1179,90 @@ The record also carries **`whole_suite`**, because the obvious near-miss is a
 targeted run's total reading exactly like a full-suite total. That is F-16's
 failure in a new costume, and it is closed at the same time rather than left for
 the next repeat to find.
+
+---
+
+## F-20 — The anchor is saturated against exact par, and so is every primary denominated in it
+
+**Measured:** 2026-08-15, `runs/chunk11_part0_result.json` (Part 0, protocol
+frozen at `7af32f4`) and `runs/chunk11_ceiling.json` (arithmetic derived from it,
+nothing re-typed).
+
+### M-A — the anchor's suite z-composition, 1,200 problems, eval protocol
+
+| suite | solved | `<0` | `0` | `1` | `2`–`6+` | seconds |
+|---|---|---|---|---|---|---|
+| solve_in_1 | 200/200 | 0 | 200 | 0 | 0 | 25.04 |
+| solve_in_2 | 200/200 | 0 | 200 | 0 | 0 | 79.00 |
+| solve_in_3 | 200/200 | 0 | 200 | 0 | 0 | 182.32 |
+| solve_in_4 | 200/200 | 0 | 199 | 1 | 0 | 290.38 |
+| solve_in_5 | 200/200 | 0 | 194 | 6 | 0 | 405.16 |
+| solve_in_6 | 200/200 | 0 | 200 | 0 | 0 | 517.69 |
+| **pooled** | **1200/1200** | **0** | **1193** | **7** | **0** | **1499.65** |
+
+0 capped, 0 stuck. **T = 7 over par (0.58%)**, all of them by exactly one step,
+against a pre-registered threshold of **36**. The rule selects **rung
+trajectory**.
+
+The `<0` bin is 0 and is reported: definitional, not measured-and-absent.
+
+### M-B — rung baselines on `smoke_v1` (389 problems, digest `f0b10fd1…`)
+
+| | |
+|---|---|
+| model z histogram | **+1: 0, 0: 387, −1: 2** |
+| model − greedy, mean | **0.228792**, CI **[0.187661, 0.272494]**, excludes zero |
+| synthetic Elo, model vs greedy | 0.614396 |
+| sympy (budget lane) | 251 played, **251 solved**, 138 declined, v1.14.0 |
+| seconds by arm | model 246.434, greedy 0.352, sympy 0.114 |
+
+### The part the pre-registered rule could not ask
+
+The rule asked whether the **suite tail** could carry CI separation. It could not
+ask the same question of the branch it falls back to, because the anchor's
+paired-set z composition did not exist yet. M-B produced it, so the question is
+now answerable — and the answer is that **the fallback is saturated too**:
+
+```
+mean model z now          = -2/389   = -0.005141
+mean model z CEILING      =  0.0          (par is BFS-exact; +1 is impossible)
+max possible movement     =  0.005141
+CI half-width, model-greedy = 0.042417
+movement / CI half-width  =  0.1212
+```
+
+Greedy is deterministic and fixed, so the paired difference moves **only** as the
+model's z moves. Its entire remaining headroom is **12% of one CI half-width** —
+an eighth of the distance it would have to travel to separate. The budget lane is
+worse: sympy solves 251 of 251, so its score cannot move at all, and it cannot be
+differenced against the z lane by construction.
+
+**Every candidate primary denominated in z-against-exact-par is at or within
+noise of its ceiling before iteration 0.** This is not a finding about the model.
+It is the instrument's dynamic range being exhausted at the starting line: the
+anchor is at par on 1,193/1,200 suite problems and 387/389 paired problems, and
+nothing can score better than par where par is exact.
+
+The principal's catch generalises further than it was aimed. "Beat-par rate
+measures the impossible cell" was said of the *primary*; the same exactness makes
+the **at-par** metric a ceiling too, because at-par is the top of the scale rather
+than the middle of it. The chess succession lesson arrives here **by arithmetic
+before the campaign**, which is what Part 0 was run to make possible.
+
+### What has headroom, and what does not — for ruling, not for adoption
+
+Not decided here. The measurement licenses these observations and no choice:
+
+* **Search economy** has visible headroom and is already instrumented: the anchor
+  reaches par at `sims = 48`. Whether a trained model reaches par at `sims = 6`
+  is a question with a wide, movable range, and the wall clock says it matters —
+  one eval pass over the suites costs **1499.65s on CPU**, so a 20-iteration
+  campaign spends **≈ 8.3 hours** in eval alone at the current setting.
+* **Harder problems** — the suites top out at par 6 with `step_cap = 24`. Nothing
+  in the generator forbids deeper, and depth is where the tail lives (the only 7
+  over-par problems sit at par 4–5).
+* **Neither of the two currently frozen instruments** can carry a primary, and
+  that is a statement about the instruments, not about what should replace them.
+
+**Registered for ruling.** A new primary is a change to the campaign's criterion,
+which is the principal's call, and PREREG-m1 does not freeze until it is made.
