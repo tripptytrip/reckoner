@@ -1266,3 +1266,64 @@ Not decided here. The measurement licenses these observations and no choice:
 
 **Registered for ruling.** A new primary is a change to the campaign's criterion,
 which is the principal's call, and PREREG-m1 does not freeze until it is made.
+
+---
+
+## F-21 — The scripted solver's calibration was a ≤6-band property, and both of its clauses die at stratum 7
+
+**Measured:** 2026-08-15, `runs/chunk11_part0c_mint.json`, against the chunk-5
+calibration in `runs/par_delta.json`.
+
+L7 at the scripted solver's own boundary. The calibration was carried forward as a
+sentence — *"never more than one step above exact"* — and the boundary is exactly
+where that sentence had to be re-checked rather than re-applied.
+
+### The chunk-5 calibration, quoted from the record rather than recalled
+
+`runs/par_delta.json`, depths 1–6, 1,200 problems:
+
+| gap `scripted − bfs` | count |
+|---|---|
+| 0 (optimal) | **1176** |
+| 1 | **24** |
+| ≥2 | **0** |
+
+**1176/1200 = 98.0% optimal, maximum gap 1.** And by goal, the clause that matters
+most here:
+
+| goal | gap 0 | gap 1 |
+|---|---|---|
+| EVALUATE | 450 | 7 |
+| SIMPLIFY | 235 | 17 |
+| **SOLVE** | **491** | **0** |
+
+**On SOLVE the scripted solver was 491/491 — perfectly optimal — through depth 6.**
+
+### Stratum 7, 20-problem sample, BFS at cap 6
+
+| gap | count |
+|---|---|
+| 0 (optimal) | **0** |
+| 1 | **17** |
+| 2 | **3** |
+
+**0/20 optimal, maximum gap 2.** Every mid-strata problem is a SOLVE problem, so
+the comparison is like-for-like and it is the sharpest possible form of the
+boundary: **100% optimal at depth ≤6 → 0% optimal at 7.** Both clauses of the
+carried sentence fail, and the "never more than one step" clause fails too.
+
+### Why this is not a defect
+
+The floor was always declared provisional — `solver.py` says so, `scripted_par`
+is documented as "the floor this solver can certify", and `scripted_par_delta`
+exists precisely to quantify the gap. This is **the first measurement of how
+provisional**, taken at the first boundary where it mattered.
+
+What would have been the defect is quoting the ≤6 calibration at stratum 7. The
+sentence is now fenced: **the 98.0% / max-gap-1 / SOLVE-perfect calibration is a
+property of depths 1–6 and does not survive the boundary.** Anyone citing it
+outside that band is citing a number that has been measured false there.
+
+The mid-strata suites are unaffected as instruments — a bigger gap means a
+*more* beatable floor, which is what they were minted for. What changes is that
+nobody may assume the floor is nearly tight.

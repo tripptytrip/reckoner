@@ -162,3 +162,48 @@ selection arithmetic showing every branch of the rule that was tested and why it
 did or did not fire; s\* and its rate; the four-tuple's floor and null **as runs**;
 the ceiling distance; the mint's per-stratum counts, censuses, digests, and
 `scripted_par_delta` where computable, with its absence reasoned where not.
+
+---
+
+# Amendment P11B-A1 — 2026-08-15, two record items from the mint
+
+**Written after the mint ran**, and it affects no threshold: both items are
+transcriptions of arithmetic and sampling that were already fixed. Neither
+changes a rule above.
+
+## 1. The no-regress floor's arithmetic, restated on the page
+
+Ordered so the floor is readable rather than inferable. It appears in the
+no-regress section above and is repeated here in one place:
+
+```
+anchor at-par, measured (Part 0)    1193 / 1200 = 0.994167
+binomial SE at n = 1200             sqrt(0.994167 × 0.005833 / 1200) = 0.002192
+two-sided 95% lower bound           0.994167 − 1.96 × 0.002192 = 0.989871
+as a count                          0.989871 × 1200 = 1187.8  →  1188
+```
+
+**1188 = 1193 minus a 95% binomial noise band**, rounded up to a whole problem.
+The floor is the bottom of the band the anchor's own measurement could have
+landed in by chance, so holding it means "not distinguishably worse than the
+anchor", not "at least as good on every problem".
+
+## 2. `scripted_in_9`'s sampling margin
+
+Recorded for any future re-mint. From a 6,000-candidate pool the strata yielded:
+
+| stratum | candidates yielded | frozen | margin |
+|---|---|---|---|
+| `scripted_in_7` | 2044 | 200 | 10.2× |
+| `scripted_in_8` | 1849 | 200 | 9.2× |
+| **`scripted_in_9`** | **251** | **200** | **1.26×** |
+| `scripted_in_10` | 1707 | 200 | 8.5× |
+
+**`scripted_in_9` is a near-census of its own yield: 200 of 251, 79.7%.** The
+other three strata are samples; this one is very nearly the population the pool
+produced. A re-mint must not assume diversity headroom exists at par 9 — it does
+not, at this pool size and template set. `solve_mid_four_terms` lands on 10 far
+more often than 9, and par 9 is the thin cell between two thick ones.
+
+The census at par 9 therefore ran against 251 candidates rather than the 400 the
+other strata got; it returned 0 collisions at both levels, as they all did.
