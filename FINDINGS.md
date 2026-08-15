@@ -816,3 +816,62 @@ or "near the win value" — would have been satisfied by both the right answer a
 the wrong one, and the wrong one would have shipped. **Pin exactly; an exact pin
 that is wrong is a question, and an approximate pin that is wrong is a silence.**
 Fourth occasion a passing assertion has been the thing that exposed a defect.
+
+---
+
+## F-14 — The untrained value head was inert under solved-flat and is harmful under z
+
+**Found:** 2026-08-15, re-running the F-13-invalidated measurements. Caught by the
+**zero-value ablation**, which was a diagnostic nobody expected to move. Record:
+`runs/gate_phase1_search.json` at git `8de6fb1`.
+
+Gate 11 re-run under the ruled semantics (16 sims, m = 5, depth ≤ 2):
+
+| arm | `solve_in_1` | `solve_in_2` | depth ≤ 2 |
+|---|---:|---:|---:|
+| **trained** (value head live) | 168/200 = 0.8400 | 200/200 | **0.9200** |
+| stub null | 169/200 = 0.8450 | 154/200 | 0.8075 |
+| **zero-value ablation** | **200/200** | **200/200** | **1.0000** |
+
+**Gate 11 as registered: threshold 0.9500, measured 0.9200 — SHORT.** Not
+weakened, not re-thresholded. And the trained arm is now *indistinguishable from
+the null* on `solve_in_1` (0.8400 against 0.8450 — it is marginally **worse**).
+
+**The mechanism.** The W/D/L head is trained at loss weight **0** by design
+(spec §5): its output is an untrained head's noise. Under the old solved-flat
+scale a terminal solve backed up `+1.0` and dominated any noise the head could
+emit, so the head was invisible. Under the z scale an **at-par solve is 0.0**, and
+noise around zero routinely exceeds it — so the search now prefers a
+noisily-optimistic unexplored line over a **proven** at-par draw. Zeroing the head
+removes the noise, every child ties at 0.0, and selection falls back to priors and
+the Gumbel draw, which finds the solve.
+
+**Gate 12's earlier reading was an artifact, and this is its erratum.** Chunk 8
+reported the ablation as *inert* — 1.0000 against 1.0000 at every depth — and
+concluded that the weight-0 head neither helped nor hurt. That conclusion was
+true only of the solved-flat scale it was measured on. **The ablation was
+measuring a quantity the scale had made unmeasurable.** It is now the arm that
+separates a working search from a broken one by 8 points.
+
+**This is not an argument against the currency ruling.** It is the ruling doing
+what it was for: a flat `+1` was hiding the fact that an untrained value head
+outranks proven draws, and the par game cannot race while that is true. The defect
+was always there; the old scale made it invisible.
+
+**Registered decision, not taken here.** Phase 2 wakes the W/D/L head on real z,
+so the head is only noise at *iteration 0* — but iteration 0 is where self-play
+data comes from, and a search that avoids proven draws generates a corpus that
+teaches it to keep avoiding them. Options, none of them mine to pick: (a) force
+`value = 0` in search until the head has trained on real z, with a config key and
+a declared switch-over; (b) blend the head in by a schedule; (c) accept the
+degradation for iteration 0 and measure how fast it clears. **Gate 11 stays SHORT
+in the record until this is ruled.**
+
+**And the small lesson beside the large one:** the chunk-7 gate table re-runs
+*identically* — 90.0% / 100% / 100%, budget identity, determinism, StateTooLarge
+27, descent 7/17/32/49, parity EXACT — once its depth-1 gate is read from
+`terminal_solved` rather than from a value threshold. The chunk-7 gates were never
+scale-dependent in what they *meant*; only in how one of them was *written*. Two
+of my own scripts read the value threshold and only the test was fixed in the
+first pass — a re-expression applied to a test and not to its script is the same
+defect as a summary drifting from a derivation.

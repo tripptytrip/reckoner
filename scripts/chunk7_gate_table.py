@@ -119,7 +119,12 @@ def main() -> int:
         for i, row in enumerate(suite1):
             p = suite_problem(row)
             r = search(p, p.expr, ev, CFG, random.Random(1000 + i), sims=16, m=m)
-            if r.values.size and r.values.max() >= 1.0:
+            # Post-F-13 the terminal scale is z-against-par, so an at-par solve
+            # scores 0.0 — the same as the neutral stub predicts everywhere else.
+            # The gate is read from `terminal_solved`, which is what its
+            # arithmetic always meant (was the winning action considered and
+            # found) and is independent of the value scale.
+            if r.stats.terminal_solved > 0:
                 solved += 1
         gate[m] = solved
         print(f"    {m:>2} {solved:>14}/{len(suite1)} {100 * solved / len(suite1):>7.1f}%")

@@ -1,0 +1,349 @@
+"""The Phase-2 episode runner: many episodes in lockstep, one pooled evaluator.
+
+Batching is **across concurrent episode searches, never within one tree.** The
+plan's "batched leaves" wording predates F-06 and is superseded: inside a tree,
+simulation *k+1*'s selection depends on *k*'s backup, so pooling there changes
+what the tree does. Across episodes there is no coupling, so parity with
+sequential play stays an equality rather than a tolerance — and it is the shape
+AGENTS.md §8 prescribes anyway. `search.batch_searches` is the key and the law.
+
+Every live episode takes one search per round; their leaf requests are pooled by
+:func:`reckoner.search.run_batched`; each applies its chosen action and the round
+repeats until no episode is live.
+
+The descent gate rides in
+-------------------------
+Chunk 7 measured `evaluations == nodes` at every budget and the forward
+obligation was to assert it here. **The equality does not generalise, and the
+exception has a name rather than a relaxation:** a *terminal* leaf creates a node
+without an evaluation. The invariant that does hold universally, verified against
+the search before being asserted, is
+
+    nodes - evaluations
+        == terminal_solved + terminal_no_actions + state_too_large + step_cap_reached
+
+Chunk 7's `evals == nodes` is exactly its zero-terminal special case, which is why
+the descent gate saw it: a branchy depth-5 SOLVE at 48 sims reaches no terminal.
+Real episodes reach terminals constantly — that is the point of them — so
+asserting the equality here would have failed on correct behaviour, and widening
+it to an inequality would have asserted nothing. The identity is the honest form.
+
+The entropy split
+-----------------
+`logschema` has four waiting columns: prior and target entropy, each on start
+states and on reached states. Prior entropy alone cannot distinguish a confident
+policy from a collapsed one — that is the chess lesson — so the search-improved
+target is logged beside it. "Start" is an episode's first search; "reached" is
+every search after at least one rewrite. That mapping is the faithful analog of
+chess's start-vs-book split and is an interpretation, not a transplant: there is
+no openings book here.
+"""
+
+from __future__ import annotations
+
+import random
+import time
+from dataclasses import dataclass, field
+from statistics import fmean
+
+import numpy as np
+
+from reckoner.config import Config
+from reckoner.episode import Problem, verify
+from reckoner.expr import Expr
+from reckoner.logschema import STEPS_MINUS_PAR_BINS
+from reckoner.replay import ReplayRing
+from reckoner.rules import apply, legal_actions
+from reckoner.search import Evaluator, SearchResult, run_batched
+
+
+def entropy(distribution: np.ndarray) -> float:
+    """Shannon entropy in nats. An empty or degenerate distribution is 0.0."""
+    p = np.asarray(distribution, dtype=np.float64)
+    p = p[p > 0.0]
+    if p.size == 0:
+        return 0.0
+    return float(-np.sum(p * np.log(p)))
+
+
+@dataclass
+class _Live:
+    problem: Problem
+    expr: Expr
+    rng: random.Random
+    steps: int = 0
+    index: int = 0
+
+
+@dataclass
+class IterationStats:
+    """Everything an iteration row needs, and the identity that guards it."""
+
+    episodes: int = 0
+    episodes_solved: int = 0
+    episodes_capped: int = 0
+    episodes_stuck: int = 0
+    nodes: int = 0
+    evaluations: int = 0
+    terminal_solved: int = 0
+    terminal_no_actions: int = 0
+    state_too_large: int = 0
+    step_cap_reached: int = 0
+    solved_by_depth: dict[int, int] = field(default_factory=dict)
+    seen_by_depth: dict[int, int] = field(default_factory=dict)
+    z_by_par_source: dict[str, dict[str, int]] = field(default_factory=dict)
+    steps_minus_par: dict[str, int] = field(
+        default_factory=lambda: dict.fromkeys(STEPS_MINUS_PAR_BINS, 0)
+    )
+    h_prior_start: list[float] = field(default_factory=list)
+    h_prior_reached: list[float] = field(default_factory=list)
+    h_target_start: list[float] = field(default_factory=list)
+    h_target_reached: list[float] = field(default_factory=list)
+    seconds: float = 0.0
+
+    @property
+    def terminals(self) -> int:
+        return (
+            self.terminal_solved
+            + self.terminal_no_actions
+            + self.state_too_large
+            + self.step_cap_reached
+        )
+
+    def check_descent_identity(self) -> None:
+        """`nodes - evaluations == terminals`. Chunk 7's forward obligation.
+
+        Raises rather than warns: a violation means a node was created without
+        being either evaluated or resolved, which is the F-06 family — a search
+        doing something other than searching, reported as if it had.
+        """
+        if self.nodes - self.evaluations != self.terminals:
+            raise AssertionError(
+                f"descent identity violated: nodes {self.nodes} - evaluations "
+                f"{self.evaluations} = {self.nodes - self.evaluations}, but terminals "
+                f"= {self.terminals} (solved {self.terminal_solved}, no-actions "
+                f"{self.terminal_no_actions}, too-large {self.state_too_large}, cap "
+                f"{self.step_cap_reached}). Every node is evaluated exactly once "
+                "unless it is terminal; a mismatch means one was neither."
+            )
+
+    def solve_rate_by_depth(self) -> dict[str, float]:
+        return {
+            str(d): round(self.solved_by_depth.get(d, 0) / n, 6)
+            for d, n in sorted(self.seen_by_depth.items())
+        }
+
+    def entropies(self) -> dict[str, float]:
+        """Means, or 0.0 for a population that did not occur.
+
+        A 0.0 here is a *premise-dependent* reading, not a measured entropy: an
+        iteration with no reached states has no reached entropy. The runner
+        surfaces the population sizes beside it so the row's reader can tell.
+        """
+        return {
+            "entropy_prior_step1_start": round(fmean(self.h_prior_start), 6)
+            if self.h_prior_start
+            else 0.0,
+            "entropy_prior_step1_reached": round(fmean(self.h_prior_reached), 6)
+            if self.h_prior_reached
+            else 0.0,
+            "entropy_target_step1_start": round(fmean(self.h_target_start), 6)
+            if self.h_target_start
+            else 0.0,
+            "entropy_target_step1_reached": round(fmean(self.h_target_reached), 6)
+            if self.h_target_reached
+            else 0.0,
+        }
+
+
+def _bin_for(delta: int) -> str:
+    if delta < 0:
+        return "<0"
+    return str(delta) if delta <= 5 else "6+"
+
+
+def _record(stats: IterationStats, result: SearchResult, live: _Live) -> None:
+    """Fold one search's numbers into the iteration, including the H split."""
+    s = result.stats
+    stats.nodes += s.nodes
+    stats.evaluations += s.evaluations
+    stats.terminal_solved += s.terminal_solved
+    stats.terminal_no_actions += s.terminal_no_actions
+    stats.state_too_large += s.state_too_large
+    stats.step_cap_reached += s.step_cap_reached
+
+    h_prior = entropy(result.root_priors)
+    h_target = entropy(result.improved_policy())
+    if live.steps == 0:
+        stats.h_prior_start.append(h_prior)
+        stats.h_target_start.append(h_target)
+    else:
+        stats.h_prior_reached.append(h_prior)
+        stats.h_target_reached.append(h_target)
+
+
+def run_iteration(
+    problems: list[Problem],
+    evaluator: Evaluator,
+    cfg: Config,
+    ring: ReplayRing | None = None,
+    *,
+    sims: int | None = None,
+    m: int | None = None,
+    seed: int = 0,
+    batch_size: int | None = None,
+) -> IterationStats:
+    """Play every problem to a terminal outcome, pooling searches across episodes.
+
+    Seeding is a **per-episode, per-step fan-out**, never one shared stream —
+    F-11's precedent generalised: a null computed with shared randomness is not a
+    null, and an episode set driven by one stream is not a sample of independent
+    episodes.
+    """
+    sims = sims if sims is not None else cfg.search.sims
+    m = m if m is not None else cfg.search.gumbel_m
+    stats = IterationStats(episodes=len(problems))
+    started = time.perf_counter()
+
+    live = [
+        _Live(problem=p, expr=p.expr, rng=random.Random(seed * 100_003 + i), index=i)
+        for i, p in enumerate(problems)
+    ]
+    for problem in problems:
+        stats.seen_by_depth[problem.par or 0] = stats.seen_by_depth.get(problem.par or 0, 0) + 1
+
+    trail: dict[int, list] = {e.index: [] for e in live}
+
+    while live:
+        items = [
+            (e.problem, e.expr, random.Random(seed * 100_003 + e.index * 977 + e.steps), e.steps)
+            for e in live
+        ]
+        results = run_batched(items, evaluator, cfg, sims=sims, m=m, batch_size=batch_size)
+
+        still: list[_Live] = []
+        for e, result in zip(live, results, strict=True):
+            _record(stats, result, e)
+
+            if result.chosen is None:
+                stats.episodes_stuck += 1
+                _settle(stats, ring, e, trail, solved=False, capped=False)
+                continue
+
+            trail[e.index].append((result, e.expr, e.steps))
+            e.expr = apply(e.expr, *result.chosen)
+            e.steps += 1
+
+            if verify(e.problem, e.expr, cfg, e.rng):
+                stats.episodes_solved += 1
+                _settle(stats, ring, e, trail, solved=True, capped=False)
+                continue
+            if e.steps >= cfg.episode.step_cap or not legal_actions(e.expr):
+                capped = e.steps >= cfg.episode.step_cap
+                if capped:
+                    stats.episodes_capped += 1
+                else:
+                    stats.episodes_stuck += 1
+                _settle(stats, ring, e, trail, solved=False, capped=capped)
+                continue
+            still.append(e)
+        live = still
+
+    stats.seconds = round(time.perf_counter() - started, 3)
+    stats.check_descent_identity()
+    return stats
+
+
+def _settle(
+    stats: IterationStats,
+    ring: ReplayRing | None,
+    e: _Live,
+    trail: dict[int, list],
+    *,
+    solved: bool,
+    capped: bool,
+) -> None:
+    """Score the episode and write its steps into the ring, z known at last."""
+    par = e.problem.par or 0
+    if solved:
+        delta = e.steps - par
+        z = 1 if delta < 0 else (0 if delta == 0 else -1)
+        stats.steps_minus_par[_bin_for(delta)] += 1
+        stats.solved_by_depth[par] = stats.solved_by_depth.get(par, 0) + 1
+    else:
+        z = -1
+
+    source = e.problem.par_source
+    cell = stats.z_by_par_source.setdefault(source, {"+1": 0, "0": 0, "-1": 0})
+    cell[{1: "+1", 0: "0", -1: "-1"}[z]] += 1
+
+    if ring is None:
+        return
+    for result, _expr, steps in trail[e.index]:
+        order = np.argsort(-result.visits)[: ring.visit_actions.shape[1]]
+        ring.append(
+            tokens=np.array([], dtype=np.int16),
+            site_positions=np.array([], dtype=np.int16),
+            visit_actions=order.astype(np.int32),
+            visit_counts=result.visits[order].astype(np.int32),
+            root_q=result.root_value,
+            z=z,
+            par_source=source,
+            par=par,
+            steps_remaining=max(0, e.steps - steps),
+            depth=par,
+            goal=e.problem.goal,
+        )
+
+
+def iteration_row(
+    stats: IterationStats,
+    *,
+    iteration: int,
+    run_name: str,
+    git_sha: str,
+    config_fingerprint: str,
+    cfg: Config,
+    ruleset_version: int,
+    vocab_version: int,
+    schema_era: int,
+    seconds_train: float = 0.0,
+    absent: dict[str, str] | None = None,
+) -> dict:
+    """Assemble a `logschema` row. The schema validates it; this only fills it."""
+    return {
+        "iteration": iteration,
+        "schema_era": schema_era,
+        "run_name": run_name,
+        "git_sha": git_sha,
+        "config_fingerprint": config_fingerprint,
+        "ruleset_version": ruleset_version,
+        "vocab_version": vocab_version,
+        "measure_dtype": cfg.numerics.measure_dtype,
+        "train_dtype": cfg.numerics.train_dtype,
+        "solve_rate_by_depth": stats.solve_rate_by_depth(),
+        "z_by_par_source": stats.z_by_par_source,
+        "steps_minus_par_histogram": stats.steps_minus_par,
+        "episodes": stats.episodes,
+        "episodes_solved": stats.episodes_solved,
+        "episodes_capped": stats.episodes_capped,
+        "episodes_stuck": stats.episodes_stuck,
+        "search_nodes_total": stats.nodes,
+        "search_evaluations_total": stats.evaluations,
+        "terminal_no_actions": stats.terminal_no_actions,
+        "state_too_large": stats.state_too_large,
+        "nan_skips": 0,
+        "pool_refusals": 0,
+        "seconds_self_play": stats.seconds,
+        "seconds_train": seconds_train,
+        "seconds_total": round(stats.seconds + seconds_train, 3),
+        "absent": absent
+        or {
+            "pool_par_fraction": "league.par_from_pool_frac not yet wired (chunk 9 part 2)",
+            "ladder_pass": "not a ladder iteration",
+        },
+        **stats.entropies(),
+    }
+
+
+__all__ = ["IterationStats", "entropy", "iteration_row", "run_iteration"]

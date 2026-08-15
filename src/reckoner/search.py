@@ -95,6 +95,13 @@ class SearchResult:
     chosen: tuple[int, int] | None
     root_value: float
     stats: SearchStats = field(default_factory=SearchStats)
+    #: Softmaxed network prior over the LEGAL actions at the root. Needed for the
+    #: H_prior half of logschema's entropy split — prior entropy alone cannot
+    #: distinguish a confident policy from a collapsed one, so both halves are
+    #: logged and both need their source exposed here. Declared AFTER `stats`:
+    #: every existing call site passes `stats` sixth positionally, and inserting
+    #: a defaulted field ahead of it silently rebinds that argument.
+    root_priors: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.float32))
 
     def improved_policy(self) -> np.ndarray:
         total = self.visits.sum()
@@ -425,6 +432,7 @@ def _simulate(
         root_actions[best],
         float(tree.value[root]),
         stats,
+        _softmax(logits),
     )
 
 
