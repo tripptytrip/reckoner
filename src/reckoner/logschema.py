@@ -67,7 +67,7 @@ SCHEMA_ERA = 1
 #: non-zero the row says which source allowed it.
 STEPS_MINUS_PAR_BINS: tuple[str, ...] = ("<0", "0", "1", "2", "3", "4", "5", "6+")
 
-#: par_source values that are EXACT — the minimum in this rule system. Beating
+#: **Definitional zero.** par_source values that are EXACT — the minimum in this rule system. Beating
 #: one is impossible by construction, and `EpisodeResult.__post_init__` already
 #: refuses it. Listing them here makes the log a SECOND, independent tripwire on
 #: the project's most load-bearing invariant (F-02's descendant).
@@ -88,6 +88,20 @@ class Field:
     doc: str
     required: bool = True
     absence: str | None = None
+    #: Which SPECIES of zero this column carries, when zero is the expected
+    #: reading. Two kinds, two dispositions, because they are different diseases:
+    #:
+    #: * ``"definitional"`` — nonzero is impossible *by the meaning of the terms*.
+    #:   A nonzero reading means the pipeline is broken, so the row is REFUSED at
+    #:   write time. Suppressing it loses nothing: the number could not have been
+    #:   evidence of anything except its own wrongness.
+    #: * ``"premise"`` — zero is *proven under premises that can break*. A nonzero
+    #:   reading does not mean the pipeline lied; it means a premise did (a round
+    #:   fired, an emission constraint slipped, a rule changed). That row IS the
+    #:   evidence, so it WRITES and ALARMS — refusing it would suppress exactly
+    #:   the observation worth having. ``zero_premises`` names what must hold.
+    zero_class: str | None = None
+    zero_premises: str | None = None
     #: Era in which this column first existed. A row from an earlier era may
     #: omit it, and that absence is valid with the synthetic reason
     #: ``predates_field`` — computed from (row era, this number), never asserted
@@ -100,6 +114,19 @@ class Field:
             raise SchemaError(f"{self.name}: role {self.role!r} is not in {sorted(ROLES)}")
         if self.required and self.absence is not None:
             raise SchemaError(f"{self.name}: a required field cannot declare an absence reason")
+        if self.zero_class not in (None, "definitional", "premise"):
+            raise SchemaError(
+                f"{self.name}: zero_class must be None, 'definitional' or 'premise'; "
+                f"got {self.zero_class!r}"
+            )
+        if self.zero_class == "premise" and not self.zero_premises:
+            raise SchemaError(
+                f"{self.name}: a premise-dependent zero MUST name its premises. "
+                "A nonzero reading is a finding about which premise broke, and a "
+                "finding nobody can attribute is an alarm nobody can act on."
+            )
+        if self.zero_class != "premise" and self.zero_premises:
+            raise SchemaError(f"{self.name}: only a premise-dependent zero names premises")
         if not self.required and not self.absence:
             raise SchemaError(
                 f"{self.name}: an optional field MUST declare why it may be absent. "
@@ -219,7 +246,16 @@ ITERATION_FIELDS: tuple[Field, ...] = (
         "Episodes that ran out of legal actions before solving. An EPISODE "
         "outcome — not to be confused with `terminal_no_actions`, which counts "
         "no-action nodes encountered INSIDE a search tree and does not end an "
-        "episode.",
+        "episode. **Premise-dependent zero: this row writes and alarms rather "
+        "than refusing.**",
+        zero_class="premise",
+        zero_premises=(
+            "chunk 5's proof sketch: dead ends are unreachable from well-formed "
+            "v1 problems, because every non-goal state admits at least one legal "
+            "rewrite. A nonzero reading means a premise broke, not that the "
+            "counter lied — candidates: ROUND-02 fired, an emission constraint "
+            "slipped, or the rule set changed under a dataset built before it."
+        ),
     ),
     Field(
         "search_nodes_total",
@@ -283,7 +319,7 @@ def field_map(fields: tuple[Field, ...] = ITERATION_FIELDS) -> dict[str, Field]:
     return {f.name: f for f in fields}
 
 
-def validate_row(row: dict[str, Any], fields: tuple[Field, ...] = ITERATION_FIELDS) -> None:
+def validate_row(row: dict[str, Any], fields: tuple[Field, ...] = ITERATION_FIELDS) -> list[str]:
     """Raise :class:`SchemaError` unless ``row`` matches the schema exactly.
 
     Four checks, and the third is the one that earns this module's place:
@@ -294,6 +330,10 @@ def validate_row(row: dict[str, Any], fields: tuple[Field, ...] = ITERATION_FIEL
        conversely, nothing named in ``absent`` that is actually present
     4. no ``None`` values: absence is expressed in ``absent``, never as null,
        because a null reads as zero to the next thing that aggregates it
+
+    Returns the list of **alarms** — premise-dependent zeros that came back
+    nonzero. Alarms do not raise: that row is the evidence a premise broke, and
+    refusing it would suppress the observation. Hard violations still raise.
     """
     known = field_map(fields)
     era = row.get("schema_era")
@@ -303,7 +343,7 @@ def validate_row(row: dict[str, Any], fields: tuple[Field, ...] = ITERATION_FIEL
     if not isinstance(absent, dict):
         raise SchemaError("'absent' must be a mapping of field -> reason")
 
-    unknown = set(row) - set(known) - {"absent"}
+    unknown = set(row) - set(known) - {"absent", "alarms"}
     if unknown:
         raise SchemaError(f"unknown columns: {sorted(unknown)}")
 
@@ -342,6 +382,22 @@ def validate_row(row: dict[str, Any], fields: tuple[Field, ...] = ITERATION_FIEL
     _check_pinned_bins(row)
     _check_exact_par_cannot_be_beaten(row)
     _check_splits_sum(row)
+    return _premise_zero_alarms(row, known)
+
+
+def _premise_zero_alarms(row: dict[str, Any], known: dict[str, Field]) -> list[str]:
+    """Premise-dependent zeros that came back nonzero — the row still ships."""
+    alarms = []
+    for name, spec in known.items():
+        if spec.zero_class != "premise" or name not in row:
+            continue
+        if row[name]:
+            alarms.append(
+                f"{name} = {row[name]}, expected 0. This zero holds only under "
+                f"premises that can break: {spec.zero_premises} The row is written "
+                "and flagged rather than refused — it is the evidence."
+            )
+    return alarms
 
 
 def _check_pinned_bins(row: dict[str, Any]) -> None:
@@ -392,6 +448,12 @@ def _check_splits_sum(row: dict[str, Any]) -> None:
 def _check_exact_par_cannot_be_beaten(row: dict[str, Any]) -> None:
     """The log layer as a second tripwire on the win-condition invariant.
 
+    **Zero species: definitional.** Nothing beats exact par by the meaning of the
+    words, so a nonzero cell means the pipeline is broken and the row is REFUSED.
+    Contrast ``episodes_stuck``, whose zero is proven only under premises that can
+    break — that one writes and alarms, because the row is the evidence. Two
+    zeros, two diseases, two dispositions.
+
     ``EpisodeResult.__post_init__`` already refuses ``z > 0`` against an exact
     ``par_source``; this refuses it again at write time, from a different module
     with a different code path. The cell is **present and zero**, never absent —
@@ -427,10 +489,16 @@ def append_row(
     Writing an invalid row and validating later is how a run produces 50
     iterations of unreadable log and discovers it at analysis time.
     """
-    validate_row(row, fields)
+    alarms = validate_row(row, fields)
+    if alarms:
+        # The alarm travels IN the row. An alarm returned but not recorded is a
+        # comment that happens to be computed (rider (b)); this one cannot be
+        # dropped by a caller who forgets to look at the return value.
+        row = {**row, "alarms": alarms}
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a") as fh:
         fh.write(json.dumps(row, sort_keys=True) + "\n")
+    return alarms
 
 
 def read_rows(path: Path, fields: tuple[Field, ...] = ITERATION_FIELDS) -> list[dict[str, Any]]:

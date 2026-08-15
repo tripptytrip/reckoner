@@ -353,3 +353,63 @@ def test_the_histogram_must_account_for_every_solved_episode() -> None:
     row["steps_minus_par_histogram"]["0"] = 4  # one solved episode unaccounted
     with pytest.raises(SchemaError, match="episodes_solved"):
         validate_row(row)
+
+
+# ---------------------------------------------------------------------------
+# Two species of zero, two dispositions
+# ---------------------------------------------------------------------------
+
+
+def test_a_definitional_zero_refuses_the_row(tmp_path: Path) -> None:
+    """Nothing beats exact par by the meaning of the words.
+
+    A nonzero reading could not have been evidence of anything except its own
+    wrongness, so suppressing it loses nothing.
+    """
+    row = good_row()
+    row["z_by_par_source"]["bfs"]["+1"] = 1
+    path = tmp_path / "iterations.jsonl"
+    with pytest.raises(SchemaError, match="EXACT par"):
+        append_row(path, row)
+    assert not path.exists(), "a definitionally impossible row must not land"
+
+
+def test_a_premise_zero_writes_and_alarms(tmp_path: Path) -> None:
+    """The row IS the evidence, so refusing it would suppress the observation.
+
+    A nonzero `episodes_stuck` does not mean the counter lied — it means chunk
+    5's reachability premise broke, and which premise broke is the finding.
+    """
+    row = good_row(episodes_solved=4, episodes_stuck=1)
+    path = tmp_path / "iterations.jsonl"
+    row["steps_minus_par_histogram"] = dict.fromkeys(STEPS_MINUS_PAR_BINS, 0) | {"0": 4}
+    alarms = append_row(path, row)
+
+    assert len(alarms) == 1
+    assert "episodes_stuck = 1" in alarms[0]
+    assert "premises that can break" in alarms[0]
+    assert "ROUND-02" in alarms[0], "the alarm must name candidate premises"
+
+    written = read_rows(path)
+    assert len(written) == 1, "the row must land — it is the evidence"
+    assert written[0]["alarms"] == alarms, "the alarm travels IN the row"
+
+
+def test_a_premise_zero_at_zero_raises_no_alarm() -> None:
+    """The other polarity: the alarm must be capable of staying silent."""
+    assert validate_row(good_row()) == []
+
+
+def test_a_premise_zero_field_must_name_its_premises() -> None:
+    with pytest.raises(SchemaError, match="MUST name its premises"):
+        Field("x", int, "counter", "doc", zero_class="premise")
+
+
+def test_only_a_premise_zero_may_name_premises() -> None:
+    with pytest.raises(SchemaError, match="only a premise-dependent zero"):
+        Field("x", int, "counter", "doc", zero_class="definitional", zero_premises="because")
+
+
+def test_an_unknown_zero_species_is_refused() -> None:
+    with pytest.raises(SchemaError, match="zero_class must be"):
+        Field("x", int, "counter", "doc", zero_class="probably")
