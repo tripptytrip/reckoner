@@ -64,6 +64,7 @@ runs/**
 # computed against, and A1 made them a standing obligation rather than a one-off.
 !runs/*contamination*.json
 !runs/*independence*.json
+!runs/gpu_*.json
 # Per-run records: the result a run reported, and the environment it ran in. The
 # checkpoint beside them stays ignored — it is bulk, and its provenance travels
 # in its own meta.

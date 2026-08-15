@@ -105,6 +105,7 @@ MUST_REACH: list[str] = [
     "runs/phase1/phase1_result.json",
     "runs/m1/check_env.txt",
     "runs/phase1/anchor.json",  # the anchor every later pass is compared against
+    "runs/gpu_equivalence_smoke.json",  # chunk 9 part 0b
 ]
 
 # The counterpart polarity: things that must STAY ignored.

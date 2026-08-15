@@ -9,6 +9,11 @@ description = "Math in base-625, trained by search against a checker (experiment
 requires-python = ">=3.12"
 dependencies = [
     "torch>=2.2.0",
+    # ROCm's torch depends on triton-rocm, which lives only on the pytorch ROCm
+    # index. `tool.uv.sources` is honoured for DIRECT dependencies only, so a
+    # transitive triton-rocm is looked up on PyPI, where it does not exist. Naming
+    # it here is what makes the source mapping below apply to it.
+    "triton-rocm>=3.7.1; sys_platform == 'linux'",
     "numpy>=1.26.0",
     "pyyaml>=6.0",
 ]
@@ -45,11 +50,13 @@ packages = ["src/reckoner"]
 # always wrong. See AGENTS.md §2 for the full rule.
 # ---------------------------------------------------------------------------
 [tool.uv.sources]
-torch = { index = "pytorch-cpu" }
+torch = { index = "pytorch-rocm" }
+triton-rocm = { index = "pytorch-rocm" }
+pytorch-triton-rocm = { index = "pytorch-rocm" }
 
 [[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
+name = "pytorch-rocm"
+url = "https://download.pytorch.org/whl/rocm7.2"
 explicit = true
 
 [tool.ruff]

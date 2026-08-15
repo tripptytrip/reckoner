@@ -246,3 +246,113 @@ leaked".
 ---
 
 **Frozen.** Amendments A1.1–A1.3 close the declaration. Execution of 0a follows.
+
+---
+
+# Amendment A2 — 2026-08-15, written AFTER a measurement
+
+**Stated first, per this file's own policy: this amendment was written after
+seeing a measurement it affects.** The comparator self-check declared in A1.1 was
+run and reported `1.000000238418579` against a required exact `1.0`. Nothing else
+had been measured — the run aborts at the self-check, by design, before any
+device comparison.
+
+**What was wrong: the declaration, not the result.** A1.1 said "given a tensor
+`T` and `T + 1.0`, the harness must report `max|Δ| == 1.0` exactly". That is
+**false for arbitrary `T`** in fp32: for a non-integer `x`, `x + 1.0` rounds, so
+`x - (x + 1.0)` is `-1.0 ± ulp`. The harness used `torch.randn`, and the property
+it was asserting cannot hold for that input.
+
+**The threshold is unchanged and is not weakened.** Exact equality to `1.0` is
+achievable and remains the requirement; the amendment is that the probe must be
+**exactly representable**, so the arithmetic is exact rather than approximately
+exact. Measured:
+
+| probe | `max|Δ|(T, T + 1.0)` | `== 1.0` |
+|---|---|---|
+| `torch.randn(16, 32)` | 1.000000238418579 | **False** |
+| `torch.arange(512).reshape(16, 32)` | 1.0 | **True** |
+| `torch.zeros(16, 32)` | 1.0 | True |
+
+The harness now uses the integer probe. **No tolerance was added** — the
+alternative fix, asserting `|self_check − 1.0| < 1e-6`, was available and
+rejected: it would have replaced an exact check with an approximate one to
+accommodate a defect in the probe rather than fixing the probe, which is the
+shape of weakening a gate to pass it.
+
+**Worth recording as the thing that happened:** the self-check's entire purpose is
+to prove the comparison machinery is wired to two different things, and the first
+time it ran it failed on its own implementation and aborted the smoke before any
+result could be produced. A null that can detect its own harness defect is doing
+more than its job description.
+
+---
+
+# RESULTS — 0a and 0b, 2026-08-15
+
+Recorded against the declaration above and amendments A1–A2. No threshold was
+changed to accommodate a result; A2 is the only amendment written after a
+measurement and it says so in its first sentence.
+
+## 0a — the blessed stack, installed
+
+**Three attempts, per the execution law's counter.**
+
+1. Repin `torch` to `https://download.pytorch.org/whl/rocm7.2`. **Failed** — uv
+   could not resolve `triton-rocm==3.7.1`.
+2. Add `triton-rocm` and `pytorch-triton-rocm` to `[tool.uv.sources]`. **Failed
+   identically.**
+3. **Diagnosis before the last attempt** (diagnosis is not an attempt): the wheel
+   `triton_rocm-3.7.1-cp312-cp312-linux_x86_64.whl` *does* exist on the index, so
+   this was never a missing package. `tool.uv.sources` is honoured for **direct**
+   dependencies only; `triton-rocm` arrives transitively through torch, so its
+   source mapping was ignored and uv looked on PyPI, where it does not exist —
+   which is exactly what "there is no version of triton-rocm==3.7.1" was saying.
+   **Attempt 3: promote `triton-rocm` to a direct dependency.** Succeeded.
+
+| | |
+|---|---|
+| torch | **2.13.0+rocm7.2** |
+| triton | **triton-rocm 3.7.1** |
+| build | ROCm |
+| device | AMD Radeon 8060S, **gfx1151** |
+| `HSA_OVERRIDE_GFX_VERSION` | not set, not needed |
+| `torch.compile` | off |
+| matmul 2048³ fp32 | **2.98 TFLOP/s on GPU** vs 1.05 on CPU |
+
+Clean-clone gate re-run after the `uv.lock` change: **`make lint test` — 569
+passed in 134.48 s**, still CPU-only, GPU never a test dependency.
+
+## 0b — equivalence, against the frozen tolerances
+
+**Width-bucket census of the tier-1 sample** (A1.2), n = 512:
+
+| bucket | taken | available |
+|---|---:|---:|
+| 1–64 | 128 | 50,040 |
+| 65–128 | 128 | 35,562 |
+| 129–256 | 128 | 12,512 |
+| ≥ 257 | 128 | 171 |
+
+Spans all four buckets: **True**. `phase1_eval`-only sample spans: **False** —
+the contrast premise holds, so the span assertion is not vacuous.
+
+### Four-tuple (rider (c))
+
+| | |
+|---|---|
+| floor | not applicable a-priori; two identical computations agree trivially, which is why the null is a run |
+| **null** | perturbed arm: max abs Δ **2.057e+01** — DETECTED, 4 orders above the 1e-3 bound. Comparator self-check exact at **1.0** |
+| threshold | 1.000000 argmax agreement, unperturbed, fp32 |
+| **measured** | **1.000000** (512/512 argmax, 512/512 top-8 set) |
+
+**VERDICT: 0b PASSES.** Tier 1 holds at every width bucket.
+
+**Tier 2 exceeded on policy logits — 3.721e-03 against a 1e-3 bound.** Handled by
+the disposition declared before measuring: a finding, not a failure; recorded;
+**the bound is not widened**. `FINDINGS.md` F-12 carries the per-bucket
+breakdown and the correction that divergence does **not** track width, so A1.2's
+stratification is not what surfaced it.
+
+bf16, informational and ungated: argmax agreement **0.998047** (511/512) at max
+abs Δ **1.369e-01**.

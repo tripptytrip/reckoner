@@ -635,3 +635,74 @@ be passed at all?* and *does passing it mean anything?* — and a gate needs bot
 answered. The practical consequence for later chunks: when a search budget makes
 a gate reachable, check what it did to the null in the same breath, because the
 same knob moves both.
+
+---
+
+## F-12 — Tier 1 held at every width; tier 2 was exceeded at every width, and the width stratification is not what caught it
+
+**Found:** 2026-08-15, chunk 9 part 0b, against tolerances frozen at `abc765c`
+while the venv was still CPU-only. Record: `runs/gpu_equivalence_smoke.json`.
+
+**The gate passed.** CPU vs GPU (`torch 2.13.0+rocm7.2`, gfx1151), fp32, 512
+states stratified across four width buckets:
+
+| | |
+|---|---:|
+| legal-masked argmax identical | **512 / 512 (1.000000)** |
+| legal-masked top-8 set identical | **512 / 512 (1.000000)** |
+
+**The diagnostic tier was exceeded**, on the channel the declaration priced most
+tightly:
+
+| quantity | measured | declared bound | |
+|---|---:|---:|---|
+| policy logits | **3.721e-03** | 1e-3 | **EXCEEDED (3.7×)** |
+| value probabilities | 3.779e-05 | 1e-4 | within |
+| steps head | 3.204e-04 | 1e-3 | within |
+
+Pre-declared disposition, applied without amendment: *"if tier 2 is exceeded
+while tier 1 holds, that is a finding, not a failure — the number gets recorded
+rather than the bound quietly widened."* **The bound is not widened.** 3.721e-03
+against logits spanning ~10.3 is 3.6e-4 relative; the declared 1e-3 absolute
+(~1e-4 relative) was an estimate of fp32 cross-device divergence for a 6-layer
+transformer, and it was optimistic by 3.7×. The estimate was wrong; the gate was
+not.
+
+**And the part that corrects my own reasoning.** Amendment A1.2 added width
+stratification on the argument that L = 64 and L = 300 exercise different kernel
+paths, so equivalence proven narrow might not hold wide. Measured per bucket:
+
+| width bucket | n | max abs Δ logits | argmax agreement |
+|---|---:|---:|---:|
+| 1–64 | 128 | 2.759e-03 | 1.000000 |
+| 65–128 | 128 | **3.721e-03** | 1.000000 |
+| 129–256 | 128 | 3.660e-03 | 1.000000 |
+| ≥ 257 | 128 | 3.024e-03 | 1.000000 |
+
+**Divergence does not track width.** Every bucket exceeds; the *narrowest*
+exceeds at 2.759e-03; the maximum is in 65–128, not at the wide end. A
+Phase-1-only sample would have exceeded the bound too, so **the width
+stratification is not what surfaced this** — the tight bound is. A1.2 closed a
+real blind spot in principle (a property proven for a set that is about to grow),
+and it happens not to be the safeguard that mattered here. Saying which safeguard
+actually caught a thing is worth more than claiming the credit for the one that
+was argued for hardest.
+
+**bf16, informational and not gated** (AGENTS.md §4.5 prescribes it for training):
+argmax agreement **0.998047** — 511 of 512, one disagreement — at max abs Δ
+**1.369e-01**. So bf16 is ~37× noisier than fp32 cross-device divergence and
+still agrees on all but one decision. Recorded because "we did not test it" and
+"we tested it and it was 0.998" are different states.
+
+**The null.** `rule_embedding.weight[0] += 1.0` on the GPU copy: max abs Δ
+**2.057e+01**, four orders above the 1e-3 detection bound — **DETECTED**. Its
+argmax agreement was **0.314453**, recorded and not asserted per A1.1. Worth
+noting against the original declaration: the enlarged perturbation moved 68% of
+decisions, whereas the retired 1e-2 single-scalar version was the one at risk of
+moving none. Enlarging it was the right call for a reason that turned out to be
+demonstrable rather than merely prudent.
+
+**What the gate now licenses.** Every chunk-8 number was measured on CPU. Tier 1
+holding at 512/512 across all four width buckets means the device change is
+invisible to every gate this project has — the decisions are identical, and the
+margins are wide enough that 3.7e-3 of logit noise cannot reach them.
