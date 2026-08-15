@@ -46,6 +46,12 @@ par:
 # spelled exactly as the plan, the amendment and every future PREREG spell it.
 league:
   par_from_pool_frac: 0.20  # [v1.1] pool-derived par; par escalates with the model
+  # [chunk 9] membership and sampling, declared rather than emergent. The Phase-1
+  # anchor seeds the pool — otherwise par_from_pool_frac is dead until snapshots
+  # accumulate, and the anchor is the natural rung-zero member.
+  seed_pool_with_anchor: true
+  pool_size: 8
+  pool_sample: uniform
 
 # --- model [plan chunk 6] ---------------------------------------------------
 model:

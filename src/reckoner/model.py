@@ -268,7 +268,9 @@ def steps_loss(
 # ---------------------------------------------------------------------------
 
 
-def checkpoint_meta(cfg: Config, step: int, repo: Path | None = None) -> dict:
+def checkpoint_meta(
+    cfg: Config, step: int, repo: Path | None = None, *, value_head: dict | None = None
+) -> dict:
     """What a checkpoint must carry to be interpretable on its own.
 
     ``ruleset_version`` and ``vocab_version`` sit beside the config fingerprint
@@ -286,11 +288,26 @@ def checkpoint_meta(cfg: Config, step: int, repo: Path | None = None) -> dict:
         "config_fingerprint": config_fingerprint(cfg),
         "git_sha": git_sha(repo or Path(__file__).resolve().parents[2]),
         "step": step,
+        # **A snapshot's wiring is part of its identity.** Pool par is a par
+        # re-solved BY THIS SNAPSHOT, so it must be solved under the declaration
+        # the snapshot was trained and played under — not the running run's. A
+        # pre-switch snapshot re-solved with post-switch wiring produces a par
+        # that snapshot never achieved: a wrong number under a provenance tag
+        # true in its own terms, which is F-02 one layer up.
+        "value_head": value_head or {"live": False, "switched_at_iteration": None},
     }
 
 
-def save_checkpoint(path: Path, model: Reckoner, cfg: Config, step: int, **extra) -> dict:
-    meta = checkpoint_meta(cfg, step)
+def save_checkpoint(
+    path: Path,
+    model: Reckoner,
+    cfg: Config,
+    step: int,
+    *,
+    value_head: dict | None = None,
+    **extra,
+) -> dict:
+    meta = checkpoint_meta(cfg, step, value_head=value_head)
     meta.update(extra)
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({"state_dict": model.state_dict(), "meta": meta}, path)

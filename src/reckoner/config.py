@@ -106,6 +106,21 @@ class LeagueConfig:
     # is the other half.
     par_from_pool_frac: float = 0.20
 
+    # [chunk 9] Pool membership and sampling, DECLARED rather than emergent.
+    #
+    # The Phase-1 anchor seeds the pool: without it `par_from_pool_frac` is dead
+    # until enough snapshots accumulate, and the anchor is the natural rung-zero
+    # member — it is the checkpoint every later pass is already compared against.
+    # Declared either way rather than left to whichever happens first.
+    seed_pool_with_anchor: bool = True
+    # Most recent snapshots retained as pool members. Bounded because pool par is
+    # re-solved at episode time, so membership is a cost as well as a population.
+    pool_size: int = 8
+    # How a member is drawn per episode. "uniform" over current members; the key
+    # exists so a future recency-weighted policy is a one-lever round rather than
+    # a silent change of what "pool par" means.
+    pool_sample: str = "uniform"
+
 
 @dataclass
 class ModelConfig:
@@ -356,6 +371,14 @@ def validate(cfg: Config) -> None:
             f"model.param_budget_min ({cfg.model.param_budget_min}) exceeds "
             f"param_budget_max ({cfg.model.param_budget_max})."
         )
+    if cfg.league.pool_sample not in ("uniform",):
+        raise ValueError(
+            f"league.pool_sample must be 'uniform'; got {cfg.league.pool_sample!r}. "
+            "A new sampling policy changes what 'pool par' means and is a "
+            "one-lever round, not a config edit."
+        )
+    if cfg.league.pool_size < 1:
+        raise ValueError(f"league.pool_size must be >= 1; got {cfg.league.pool_size}")
     if cfg.numerics.measure_dtype != "fp32":
         raise ValueError(
             f"numerics.measure_dtype must be 'fp32'; got {cfg.numerics.measure_dtype!r}. "
