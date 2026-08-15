@@ -1,0 +1,14 @@
+{
+  "collected": 812,
+  "error": 0,
+  "exitstatus": 0,
+  "failed": 0,
+  "passed": 812,
+  "selected": [
+    "tests"
+  ],
+  "skipped": 0,
+  "whole_suite": true,
+  "xfailed": 0,
+  "xpassed": 0
+}

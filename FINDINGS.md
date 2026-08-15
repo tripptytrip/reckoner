@@ -1153,3 +1153,29 @@ meets the reason at the point of failure rather than in this file.
 
 Both polarities are tested. There is no other paired-set census path: `census` is
 the only entry point, and it is now total over the two levels.
+
+### F-16 — repeat, 2026-08-15, and the rule replaced by a mechanism
+
+**Written after the repeat, and it is a repeat of the thing this entry is about.**
+
+The commit that filed F-18's disposition (`chunk 10 closes: …`) carries
+`make lint test: 811 passed`. That number was written into a `git commit`
+that ran *before* the `pytest` in the same shell block. It happened to be
+correct — the run returned 811 — and the method was exactly the one F-16
+forbids, **one commit after F-16 was accepted**.
+
+The diagnosis the principal kept ("a number authored before its measurement
+exists is a prediction wearing a report's clothes") was right and was not enough,
+because the fix was a **rule of composition order** and the ergonomics push the
+other way: message and run are convenient to send together, and a rule that
+fights convenience loses to it every time the convenience recurs.
+
+**So the number stops being authored.** `tests/conftest.py::pytest_sessionfinish`
+writes `runs/testcount.json` at the end of every session — collected, passed,
+failed, exit status — and a commit quotes or includes that file. Helpers prevent,
+documentation warns; this had been documentation.
+
+The record also carries **`whole_suite`**, because the obvious near-miss is a
+targeted run's total reading exactly like a full-suite total. That is F-16's
+failure in a new costume, and it is closed at the same time rather than left for
+the next repeat to find.

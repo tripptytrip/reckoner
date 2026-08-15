@@ -63,6 +63,13 @@ runs/**
 # first and `paired_census_postfreeze.json` hit the guard on the very next write —
 # the same "widen to the class" lesson as runs/gate_*.json, met once more.
 !runs/paired_census*.json
+# The test count, WRITTEN BY THE RUN rather than typed into a commit message.
+# F-16's rule ("compose the message after the run") broke one commit after it was
+# written, because message and run are convenient to send together and a rule that
+# fights convenience loses. A number nobody types cannot be a number nobody
+# measured. Carries `whole_suite` so a targeted run's total cannot read as a full
+# one — the same failure in a new costume.
+!runs/testcount.json
 # Instrument outputs that later chunks cite as evidence.
 !runs/rule_participation.json
 !runs/state_extent.json

@@ -75,6 +75,7 @@ MUST_REACH: list[str] = [
     # first pass runs — `git check-ignore` answers for hypothetical paths, and
     # `pairedset.freeze` asserts its own trackedness before the bytes land.
     "runs/paired/smoke_v1.jsonl",  # runs/paired/*.jsonl — the frozen paired set
+    "runs/testcount.json",  # written by the run itself, never typed (F-16)
     "runs/paired_census.json",  # runs/paired_census*.json — the two-level censuses
     "runs/paired_census_postfreeze.json",  # the re-census proving it was born clean
     "runs/ladder_smoke_result.json",  # runs/**/*_result.json — the smoke verdicts
