@@ -42,12 +42,26 @@ factorised, or reshaped — the only non-stock parts are the heads.
 
 | component | count | |
 |---|---:|---|
-| embeddings | 299,264 | token (657 × 256) + position (512 × 256) |
+| embeddings | 299,264 | token (657 × 256) + position (512 × 256) — **verified against `token_embedding.weight.shape` and `position_embedding.weight.shape`**, not factored out of the total |
 | trunk | 4,739,072 | 6 layers + final norm |
 | policy head | 33,792 | `rule_embedding` (7 × 128) + `site_projection` (256 → 128) |
 | value head | 771 | 256 → 3 (W/D/L vs par) |
 | steps head | 257 | 256 → 1 |
 | **total** | **5,073,156** | inside the spec's 2–7 M envelope |
+
+## Why this card exists: a factorisation is not a verification
+
+299,264 factors as 657 × 256 + 512 × 256 — and also as 668 × 448, and as
+1,169 × 256, and others. **Multiple factorisations always fit one number**, so
+picking one and calling it verified is the same defect as F-10's floor-versus-
+chance: correct arithmetic against the wrong reference. A decomposition is
+verified only when its *factors* are independently confirmed — here, against
+`VOCAB_SIZE = 657`, `seq_len = 512`, and the tensor shapes themselves.
+
+That is the fourth instance of the pattern this project keeps meeting:
+**summaries drift; derivations don't.** A card is the confirmation channel, and
+the numbers on it are read off the built model rather than reconstructed from a
+total.
 
 ## The activation retention constant
 

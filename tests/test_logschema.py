@@ -1,0 +1,220 @@
+"""The log schema, on both polarities.
+
+Every check here has an accepting case beside its rejecting one. A schema
+validator that only ever sees good rows is a validator nobody has shown can
+refuse — rider (a): the first gate measures the component doing its central job,
+and this component's central job is *saying no*.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from reckoner.logschema import (
+    ITERATION_FIELDS,
+    ROLES,
+    Field,
+    SchemaError,
+    append_row,
+    describe,
+    field_map,
+    read_rows,
+    validate_row,
+)
+
+
+def good_row(**overrides) -> dict:
+    row = {
+        "iteration": 0,
+        "run_name": "shakedown",
+        "git_sha": "0" * 40,
+        "config_fingerprint": "a" * 64,
+        "ruleset_version": 1,
+        "vocab_version": 1,
+        "measure_dtype": "fp32",
+        "train_dtype": "bf16",
+        "solve_rate_by_depth": {"1": 1.0},
+        "z_by_par_source": {"bfs": {"+1": 0, "0": 5, "-1": 1}},
+        "steps_minus_par_histogram": {"0": 5},
+        "entropy_prior_step1_start": 1.2,
+        "entropy_prior_step1_reached": 1.1,
+        "entropy_target_step1_start": 0.8,
+        "entropy_target_step1_reached": 0.7,
+        "episodes": 6,
+        "search_nodes_total": 96,
+        "search_evaluations_total": 96,
+        "terminal_no_actions": 0,
+        "state_too_large": 0,
+        "nan_skips": 0,
+        "pool_refusals": 0,
+        "seconds_self_play": 1.0,
+        "seconds_train": 2.0,
+        "seconds_total": 3.0,
+        "absent": {
+            "pool_par_fraction": "league.par_from_pool_frac is 0 in the shakedown config",
+            "ladder_pass": "not a ladder iteration",
+        },
+    }
+    row.update(overrides)
+    return row
+
+
+# ---------------------------------------------------------------------------
+# The accepting case
+# ---------------------------------------------------------------------------
+
+
+def test_a_complete_row_validates() -> None:
+    validate_row(good_row())
+
+
+def test_every_field_declares_a_known_role() -> None:
+    for f in ITERATION_FIELDS:
+        assert f.role in ROLES, f"{f.name} has role {f.role!r}"
+
+
+def test_the_schema_covers_every_obligation_the_brief_named() -> None:
+    """The brief lists the columns by name; this asserts they exist.
+
+    Not decoration: `logschema.py` from field one is only worth anything if the
+    fields the brief registered are the fields it has, and the check belongs
+    beside the schema rather than in a reviewer's memory.
+    """
+    names = set(field_map())
+    for required in (
+        "entropy_prior_step1_start",
+        "entropy_prior_step1_reached",
+        "entropy_target_step1_start",
+        "entropy_target_step1_reached",
+        "solve_rate_by_depth",
+        "z_by_par_source",
+        "steps_minus_par_histogram",
+        "state_too_large",
+        "nan_skips",
+        "pool_refusals",
+        "seconds_self_play",
+        "seconds_train",
+        "seconds_total",
+    ):
+        assert required in names, f"the brief registered {required} and it is missing"
+
+
+# ---------------------------------------------------------------------------
+# The rejecting cases — one per rule
+# ---------------------------------------------------------------------------
+
+
+def test_unknown_column_is_refused() -> None:
+    with pytest.raises(SchemaError, match="unknown columns"):
+        validate_row(good_row(solve_rate=0.9))
+
+
+def test_missing_required_column_is_refused() -> None:
+    row = good_row()
+    del row["episodes"]
+    with pytest.raises(SchemaError, match="required field missing"):
+        validate_row(row)
+
+
+def test_absent_optional_without_a_reason_is_refused() -> None:
+    """The rule this module exists for."""
+    row = good_row()
+    del row["absent"]["ladder_pass"]
+    with pytest.raises(SchemaError, match="absent without a reason"):
+        validate_row(row)
+
+
+def test_an_empty_reason_is_not_a_reason() -> None:
+    row = good_row()
+    row["absent"]["ladder_pass"] = "   "
+    with pytest.raises(SchemaError, match="absent without a reason"):
+        validate_row(row)
+
+
+def test_null_is_refused_even_for_an_optional_field() -> None:
+    """A null reads as zero to the next histogram that touches it."""
+    row = good_row(pool_par_fraction=None)
+    del row["absent"]["pool_par_fraction"]
+    with pytest.raises(SchemaError, match="null is not how absence is expressed"):
+        validate_row(row)
+
+
+def test_absent_naming_a_present_column_is_refused() -> None:
+    row = good_row(pool_par_fraction=0.2)
+    with pytest.raises(SchemaError, match="named in 'absent' but present"):
+        validate_row(row)
+
+
+def test_absent_naming_an_unknown_column_is_refused() -> None:
+    row = good_row()
+    row["absent"]["not_a_column"] = "because"
+    with pytest.raises(SchemaError, match="unknown column"):
+        validate_row(row)
+
+
+def test_wrong_type_is_refused() -> None:
+    with pytest.raises(SchemaError, match="expected"):
+        validate_row(good_row(episodes="six"))
+
+
+# ---------------------------------------------------------------------------
+# The Field constructor guards its own invariants
+# ---------------------------------------------------------------------------
+
+
+def test_optional_field_must_declare_an_absence_reason() -> None:
+    with pytest.raises(SchemaError, match="MUST declare why it may be absent"):
+        Field("x", int, "counter", "doc", required=False)
+
+
+def test_required_field_may_not_declare_an_absence_reason() -> None:
+    with pytest.raises(SchemaError, match="cannot declare an absence reason"):
+        Field("x", int, "counter", "doc", absence="sometimes")
+
+
+def test_role_outside_the_closed_vocabulary_is_refused() -> None:
+    with pytest.raises(SchemaError, match="is not in"):
+        Field("x", int, "vibes", "doc")
+
+
+# ---------------------------------------------------------------------------
+# Round trip
+# ---------------------------------------------------------------------------
+
+
+def test_append_and_read_round_trip(tmp_path: Path) -> None:
+    path = tmp_path / "iterations.jsonl"
+    append_row(path, good_row(iteration=0))
+    append_row(path, good_row(iteration=1))
+    rows = read_rows(path)
+    assert [r["iteration"] for r in rows] == [0, 1]
+
+
+def test_append_refuses_to_write_an_invalid_row(tmp_path: Path) -> None:
+    """Validation at write time, not at analysis time.
+
+    Writing first and validating later is how a run produces fifty iterations of
+    unreadable log and finds out after the run is over.
+    """
+    path = tmp_path / "iterations.jsonl"
+    with pytest.raises(SchemaError):
+        append_row(path, good_row(episodes="six"))
+    assert not path.exists(), "an invalid row must not reach the file"
+
+
+def test_read_reports_the_offending_line(tmp_path: Path) -> None:
+    path = tmp_path / "iterations.jsonl"
+    append_row(path, good_row(iteration=0))
+    with path.open("a") as fh:
+        fh.write(json.dumps({"iteration": 1}) + "\n")
+    with pytest.raises(SchemaError, match=r":2: "):
+        read_rows(path)
+
+
+def test_describe_renders_every_column(tmp_path: Path) -> None:
+    text = describe()
+    for f in ITERATION_FIELDS:
+        assert f"`{f.name}`" in text
