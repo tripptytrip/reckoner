@@ -52,6 +52,28 @@ ROLES = frozenset(
 )
 
 
+#: Current schema era. Bumped whenever a field is ADDED or a pinned binning
+#: CHANGES. A row records the era it was written under, which is what lets a
+#: reader distinguish "this run predates the column" from "this run dropped it".
+SCHEMA_ERA = 1
+
+#: Bins for ``steps_minus_par_histogram``, **pinned here and versioned with the
+#: schema — never in config.** A histogram whose bins moved is two instruments
+#: sharing a name, and config is where numbers drift. Changing these is an era
+#: bump, which is exactly the friction the change deserves.
+#:
+#: ``<0`` is reachable only against non-exact par (pool par), because nothing
+#: beats BFS-exact par by construction. It is present so that when it becomes
+#: non-zero the row says which source allowed it.
+STEPS_MINUS_PAR_BINS: tuple[str, ...] = ("<0", "0", "1", "2", "3", "4", "5", "6+")
+
+#: par_source values that are EXACT — the minimum in this rule system. Beating
+#: one is impossible by construction, and `EpisodeResult.__post_init__` already
+#: refuses it. Listing them here makes the log a SECOND, independent tripwire on
+#: the project's most load-bearing invariant (F-02's descendant).
+EXACT_PAR_SOURCES = frozenset({"bfs"})
+
+
 class SchemaError(ValueError):
     """A row that does not match the schema. Raised, never warned."""
 
@@ -66,6 +88,12 @@ class Field:
     doc: str
     required: bool = True
     absence: str | None = None
+    #: Era in which this column first existed. A row from an earlier era may
+    #: omit it, and that absence is valid with the synthetic reason
+    #: ``predates_field`` — computed from (row era, this number), never asserted
+    #: by the row, because a row written before a field existed cannot have
+    #: explained the absence of something nobody had named yet.
+    since: int = 1
 
     def __post_init__(self) -> None:
         if self.role not in ROLES:
@@ -84,6 +112,14 @@ class Field:
 ITERATION_FIELDS: tuple[Field, ...] = (
     # --- identity ---------------------------------------------------------
     Field("iteration", int, "identity", "0-based loop index."),
+    Field(
+        "schema_era",
+        int,
+        "identity",
+        "Schema era this row was written under. Distinguishes 'predates the "
+        "column' from 'dropped the column' — without it, era handling is a "
+        "guess about history.",
+    ),
     Field("run_name", str, "identity", "Run directory name; rows are portable without it."),
     # --- provenance -------------------------------------------------------
     Field("git_sha", str, "provenance", "Repo SHA at the moment the row was written."),
@@ -224,6 +260,9 @@ def validate_row(row: dict[str, Any], fields: tuple[Field, ...] = ITERATION_FIEL
        because a null reads as zero to the next thing that aggregates it
     """
     known = field_map(fields)
+    era = row.get("schema_era")
+    if era is not None and not isinstance(era, int):
+        raise SchemaError("schema_era must be an int")
     absent = row.get("absent", {})
     if not isinstance(absent, dict):
         raise SchemaError("'absent' must be a mapping of field -> reason")
@@ -242,8 +281,16 @@ def validate_row(row: dict[str, Any], fields: tuple[Field, ...] = ITERATION_FIEL
         if present and not isinstance(row[name], spec.kind):
             raise SchemaError(f"{name}: expected {spec.kind}, got {type(row[name])}")
         if not present:
+            # Absence by ERA is valid, and its reason is computed rather than
+            # asserted: a row written before a field existed could not have
+            # explained the absence of something nobody had named yet.
+            if era is not None and era < spec.since:
+                continue
             if spec.required:
-                raise SchemaError(f"{name}: required field missing")
+                raise SchemaError(
+                    f"{name}: required field missing"
+                    + (f" (row era {era} >= field since {spec.since})" if era is not None else "")
+                )
             if name not in absent or not str(absent[name]).strip():
                 raise SchemaError(
                     f"{name}: optional field is absent without a reason. "
@@ -255,6 +302,55 @@ def validate_row(row: dict[str, Any], fields: tuple[Field, ...] = ITERATION_FIEL
             raise SchemaError(f"'absent' names unknown column {name!r}")
         if name in row:
             raise SchemaError(f"{name}: named in 'absent' but present in the row")
+
+    _check_pinned_bins(row)
+    _check_exact_par_cannot_be_beaten(row)
+
+
+def _check_pinned_bins(row: dict[str, Any]) -> None:
+    """The histogram's bins are the schema's, not the row's."""
+    hist = row.get("steps_minus_par_histogram")
+    if hist is None:
+        return
+    if set(hist) != set(STEPS_MINUS_PAR_BINS):
+        missing = sorted(set(STEPS_MINUS_PAR_BINS) - set(hist))
+        extra = sorted(set(hist) - set(STEPS_MINUS_PAR_BINS))
+        raise SchemaError(
+            f"steps_minus_par_histogram bins must be exactly {list(STEPS_MINUS_PAR_BINS)}; "
+            f"missing {missing}, unexpected {extra}. Every bin is present in every row "
+            "including the zeros, so rows are directly comparable and a missing bin is "
+            "never read as a zero that was measured."
+        )
+
+
+def _check_exact_par_cannot_be_beaten(row: dict[str, Any]) -> None:
+    """The log layer as a second tripwire on the win-condition invariant.
+
+    ``EpisodeResult.__post_init__`` already refuses ``z > 0`` against an exact
+    ``par_source``; this refuses it again at write time, from a different module
+    with a different code path. The cell is **present and zero**, never absent —
+    an absent cell cannot be checked, and this is the one number in the project
+    that must never drift silently (F-02's descendant).
+    """
+    table = row.get("z_by_par_source")
+    if table is None:
+        return
+    for source, cells in table.items():
+        if source not in EXACT_PAR_SOURCES:
+            continue
+        if "+1" not in cells:
+            raise SchemaError(
+                f"z_by_par_source[{source!r}] must carry an explicit '+1' cell. "
+                "It is structurally impossible to beat exact par, so the cell is "
+                "present at zero — an absent cell is a tripwire that cannot fire."
+            )
+        if cells["+1"] != 0:
+            raise SchemaError(
+                f"z_by_par_source[{source!r}]['+1'] == {cells['+1']}, but {source} is "
+                "EXACT par: beating it is impossible by construction. Either the "
+                "labeller is wrong or the outcome is — this is F-02's shape and the "
+                "row does not ship."
+            )
 
 
 def append_row(

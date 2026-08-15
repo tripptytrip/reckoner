@@ -16,6 +16,8 @@ import pytest
 from reckoner.logschema import (
     ITERATION_FIELDS,
     ROLES,
+    SCHEMA_ERA,
+    STEPS_MINUS_PAR_BINS,
     Field,
     SchemaError,
     append_row,
@@ -29,6 +31,7 @@ from reckoner.logschema import (
 def good_row(**overrides) -> dict:
     row = {
         "iteration": 0,
+        "schema_era": SCHEMA_ERA,
         "run_name": "shakedown",
         "git_sha": "0" * 40,
         "config_fingerprint": "a" * 64,
@@ -38,7 +41,7 @@ def good_row(**overrides) -> dict:
         "train_dtype": "bf16",
         "solve_rate_by_depth": {"1": 1.0},
         "z_by_par_source": {"bfs": {"+1": 0, "0": 5, "-1": 1}},
-        "steps_minus_par_histogram": {"0": 5},
+        "steps_minus_par_histogram": dict.fromkeys(STEPS_MINUS_PAR_BINS, 0) | {"0": 5},
         "entropy_prior_step1_start": 1.2,
         "entropy_prior_step1_reached": 1.1,
         "entropy_target_step1_start": 0.8,
@@ -218,3 +221,97 @@ def test_describe_renders_every_column(tmp_path: Path) -> None:
     text = describe()
     for f in ITERATION_FIELDS:
         assert f"`{f.name}`" in text
+
+
+# ---------------------------------------------------------------------------
+# The era boundary — both sides, because this is the one seam where "absence
+# carries a reason" and "the row could not have known" collide
+# ---------------------------------------------------------------------------
+
+NEWER = ITERATION_FIELDS + (
+    Field("added_later", int, "counter", "A column introduced in era 2.", since=2),
+)
+
+
+def test_an_old_era_row_may_omit_a_field_that_did_not_exist_yet() -> None:
+    """Reading history must not require history to have predicted the future.
+
+    The reason for this absence is *computed* from (row era, field.since), never
+    asserted by the row — a row written under era 1 could not have explained the
+    absence of a column nobody had named.
+    """
+    validate_row(good_row(schema_era=1), NEWER)
+
+
+def test_a_current_era_row_may_not_omit_that_same_field() -> None:
+    """The other side. Without it, era handling degenerates into 'stop checking'."""
+    with pytest.raises(SchemaError, match="required field missing"):
+        validate_row(good_row(schema_era=2), NEWER)
+
+
+def test_the_era_message_names_both_numbers() -> None:
+    with pytest.raises(SchemaError, match=r"row era 2 >= field since 2"):
+        validate_row(good_row(schema_era=2), NEWER)
+
+
+def test_a_field_present_before_its_era_is_still_accepted() -> None:
+    """Writing a column early is not an error; omitting it late is."""
+    validate_row(good_row(schema_era=1, added_later=3), NEWER)
+
+
+# ---------------------------------------------------------------------------
+# Pinned bins — schema, not config
+# ---------------------------------------------------------------------------
+
+
+def test_every_bin_is_present_in_every_row_including_the_zeros() -> None:
+    row = good_row()
+    assert set(row["steps_minus_par_histogram"]) == set(STEPS_MINUS_PAR_BINS)
+    validate_row(row)
+
+
+def test_a_missing_bin_is_refused_rather_than_read_as_zero() -> None:
+    row = good_row()
+    del row["steps_minus_par_histogram"]["6+"]
+    with pytest.raises(SchemaError, match="bins must be exactly"):
+        validate_row(row)
+
+
+def test_an_invented_bin_is_refused() -> None:
+    row = good_row()
+    row["steps_minus_par_histogram"]["7"] = 1
+    with pytest.raises(SchemaError, match="unexpected"):
+        validate_row(row)
+
+
+# ---------------------------------------------------------------------------
+# The (exact-par, +1) tripwire — the second, independent layer
+# ---------------------------------------------------------------------------
+
+
+def test_the_impossible_cell_is_present_at_zero() -> None:
+    validate_row(good_row())  # fixture carries {"bfs": {"+1": 0, ...}}
+
+
+def test_an_absent_impossible_cell_is_refused() -> None:
+    """A tripwire that can be omitted is a tripwire that cannot fire."""
+    row = good_row()
+    del row["z_by_par_source"]["bfs"]["+1"]
+    with pytest.raises(SchemaError, match="explicit '\\+1' cell"):
+        validate_row(row)
+
+
+def test_beating_exact_par_is_refused_at_write_time() -> None:
+    """F-02's shape, refused by a second module on a second code path."""
+    row = good_row()
+    row["z_by_par_source"]["bfs"]["+1"] = 1
+    with pytest.raises(SchemaError, match="EXACT par"):
+        validate_row(row)
+
+
+def test_a_non_exact_source_may_legitimately_beat_its_par() -> None:
+    """Pool par is not exact — beating it is the whole escalation mechanism, and
+    widening the invariant to silence that is what BRIEF-chunk9 forbids."""
+    row = good_row()
+    row["z_by_par_source"]["pool"] = {"+1": 4, "0": 2, "-1": 1}
+    validate_row(row)
