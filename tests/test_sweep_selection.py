@@ -101,20 +101,32 @@ def test_equal_rates_tie_and_the_smaller_sims_wins() -> None:
     assert fired["tie_broken_toward_smaller_sims"] is True
 
 
-def test_decimal_symmetric_rates_are_not_ties_under_float_comparison() -> None:
-    """Recorded so the tie-break's reach is not overstated.
+def test_decimal_symmetric_rates_now_tie_and_the_smaller_sims_wins() -> None:
+    """P11B-A5: the secondary key reaches symmetric pairs too.
 
-    0.50 and 0.60 look equidistant from 0.55 on paper, but the criterion compares
-    ``abs(rate - TARGET)`` as floats: 0.05000000000000004 against
-    0.049999999999999996. The nearer-in-float point wins outright and no tie is
-    declared. The break is live for equal rates and silent for symmetric ones —
-    which is the honest description of the frozen rule, not a defect in it.
+    0.50 and 0.60 are equidistant from 0.55 on paper, and under the amended
+    criterion they are equidistant in the rule as well. Before A5 the comparison
+    ran in binary float — 0.05000000000000004 against 0.049999999999999996 — and
+    sims=8 won outright on an artifact of representation. It is now sims=4, on
+    the declared economy key, at every tie level.
     """
     verdict = sweep.select([point(4, 0.50), point(8, 0.60), point(16, 0.99)])
 
-    assert verdict["s_star"] == 8
+    assert verdict["s_star"] == 4
     fired = [b for b in verdict["branches"] if b.get("fired")][0]
-    assert fired["tie_broken_toward_smaller_sims"] is False
+    assert fired["tie_broken_toward_smaller_sims"] is True
+
+
+def test_the_distance_key_carries_no_float_sensitivity() -> None:
+    """The property A5 actually buys, asserted rather than trusted.
+
+    Checked directly on the key so a future refactor that reintroduces float
+    arithmetic fails here rather than in a selection nobody re-derives.
+    """
+    assert sweep._distance(point(4, 0.50)) == sweep._distance(point(8, 0.60))
+    assert sweep._distance(point(4, 0.54)) == sweep._distance(point(8, 0.56))
+    # and the ordering key puts the cheaper rung first at that tie level
+    assert sweep._rank(point(4, 0.50)) < sweep._rank(point(8, 0.60))
 
 
 # ------------------------------------------------- branch (b), as withdrawn

@@ -17,6 +17,7 @@ import argparse
 import json
 import time
 from dataclasses import replace
+from decimal import Decimal
 from pathlib import Path
 
 import torch
@@ -84,6 +85,30 @@ def measure(model, cfg: Config, sims: int, problems_by_suite: dict) -> dict:
     }
 
 
+def _distance(point: dict) -> Decimal:
+    """Distance from the target, in exact decimal.
+
+    P11B-A5. Rates are counts over 1,200 rounded to six places and the target is
+    0.55, so both are exact decimals — but ``abs(0.50 - 0.55)`` and
+    ``abs(0.60 - 0.55)`` differ in binary float (`0.05000000000000004` against
+    `0.049999999999999996`), which silently decided a comparison the rule
+    intended to call a tie. Going through ``Decimal(str(...))`` removes float
+    sensitivity from the criterion entirely.
+    """
+    return abs(Decimal(str(point["at_par_rate"])) - Decimal(str(TARGET)))
+
+
+def _rank(point: dict) -> tuple[Decimal, int]:
+    """The declared order: nearest the target, then **smaller sims at every tie
+    level**.
+
+    The secondary key is economy-motivated and is the primary's own axis — at
+    equal informativeness the cheaper rung serves the campaign — so it is stated
+    as a key rather than left to sort stability.
+    """
+    return (_distance(point), point["sims"])
+
+
 def select(points: list[dict]) -> dict:
     """Apply the frozen rule. Every branch reports whether it fired and why."""
     low, high = WINDOW
@@ -91,12 +116,8 @@ def select(points: list[dict]) -> dict:
     branches = []
 
     if in_window:
-        best = min(in_window, key=lambda p: (abs(p["at_par_rate"] - TARGET), p["sims"]))
-        tied = [
-            p
-            for p in in_window
-            if abs(p["at_par_rate"] - TARGET) == abs(best["at_par_rate"] - TARGET)
-        ]
+        best = min(in_window, key=_rank)
+        tied = [p for p in in_window if _distance(p) == _distance(best)]
         branches.append(
             {
                 "branch": "in_window",

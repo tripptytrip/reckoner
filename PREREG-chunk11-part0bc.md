@@ -449,3 +449,53 @@ actually produces, four rungs having returned a byte-identical 1189 — and
 **silent for decimal-symmetric ones**. Stated so the rule's reach is not
 overstated later. This is a characterisation, not a defect, and no threshold
 moves.
+
+---
+
+# Amendment P11B-A5 — 2026-08-16, the tie-break gains its secondary key
+
+**No measurement this amendment affects exists.** It touches branch (a) alone,
+which has never fired: every rung measured — 1, 2, 3, 4 at `0.9800` and 6, 8, 12,
+16, 48 at `0.9908`–`0.9942` — sits above the window's upper edge, so no selection
+has ever reached the in-window node. This is the same allowance A3 §2(c) used:
+completing a rule at a node no data has reached.
+
+## 1. What is amended
+
+The declared break — nearest 0.55, ties toward smaller `sims` — gains an
+**explicit secondary key: at every tie level, smaller `sims` wins**, stated as a
+key rather than left to sort stability.
+
+It is **economy-motivated**, and the motive is the primary's own axis: at equal
+informativeness the cheaper rung serves the campaign. A rule whose whole purpose
+is siting a budget should not be indifferent about budget when everything else
+ties.
+
+## 2. And the comparison becomes decimal-exact
+
+A4 §5 recorded that the criterion compared `abs(rate - TARGET)` in binary float,
+so decimal-symmetric rates were not ties. That record **stands untouched as the
+description of what the code was**. This amendment records what it becomes:
+
+```
+before   abs(0.50 - 0.55) = 0.05000000000000004
+         abs(0.60 - 0.55) = 0.049999999999999996     -> sims=8 wins outright
+after    Decimal("0.50") and Decimal("0.60") are equidistant from
+         Decimal("0.55")                             -> tie, sims=4 wins
+```
+
+Rates are counts over 1,200 rounded to six places and the target is 0.55; both
+are exact decimals, so `Decimal(str(...))` removes float sensitivity from the
+criterion entirely. The old behaviour selected on an artifact of binary
+representation — not a threshold anyone declared.
+
+**No threshold moves.** Target, window and the direction of the break are
+unchanged. What changes is that the declared break now reaches the symmetric
+pairs it always read as though it covered.
+
+## 3. Implementation
+
+`_distance()` and `_rank()` in `scripts/chunk11_part0b.py`, asserted in
+`tests/test_sweep_selection.py` — including a test on the key itself, so a future
+refactor that reintroduces float arithmetic fails at the key rather than inside a
+selection nobody re-derives.
