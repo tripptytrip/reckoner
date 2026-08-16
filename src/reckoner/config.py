@@ -334,6 +334,37 @@ class LadderConfig:
 
 
 @dataclass
+class CampaignConfig:
+    """[M1-A2] The campaign's extent, treatment size, and thread pins.
+
+    These were absent, which is why the driver could not take its extent from
+    fingerprinted config and honour the no-behavioural-flags rule at the same
+    time. Adding them moves the fingerprint; M1-A2 records both eras.
+    """
+
+    # EXTENT, and it is hard rather than approximate. "~20 iterations" carried an
+    # ambiguity the prereg could not afford: a campaign extended until the CI
+    # excludes zero is p-hacking wearing patience. The analysis point is 20 and
+    # MAY NOT BE RAISED AFTER LAUNCH; early termination happens only through the
+    # prereg's BLOCKED and decision branches, with the primary then evaluated at
+    # the last completed ladder pass and reported as exactly that.
+    iterations: int = 20
+
+    # TREATMENT SIZE, chosen-not-derived — see M1-A2 §3. No measured staleness
+    # optimum exists; this is a judgement about reuse and criterion viability
+    # whose consequences are computed on the page.
+    episodes_per_iteration: int = 400
+
+    # THREAD PINS, recording what the licence ran under rather than selecting new
+    # values. Evidential classes are stated in M1-A2 §4: intra_op is EXERCISED
+    # (defaults differed 16/32 across hosts and only the clamp made the licence's
+    # parity possible); interop is OBSERVED (constant at 32 throughout,
+    # undiscriminated, so it licenses only "this is what ran").
+    intra_op_threads: int = 8
+    interop_threads: int = 32
+
+
+@dataclass
 class Config:
     """Root configuration container."""
 
@@ -349,6 +380,7 @@ class Config:
     numerics: NumericsConfig = field(default_factory=NumericsConfig)
     generator: GeneratorConfig = field(default_factory=GeneratorConfig)
     ladder: LadderConfig = field(default_factory=LadderConfig)
+    campaign: CampaignConfig = field(default_factory=CampaignConfig)
 
 
 # ---------------------------------------------------------------------------

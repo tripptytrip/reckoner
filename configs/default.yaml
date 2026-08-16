@@ -133,3 +133,13 @@ ladder:
   problems_per_pass: 200    # [provisional — chunk 10]
   sympy_step_budget: 16     # [provisional — chunk 10] sympy is a RUNG, never par
   sympy_time_budget_s: 1.0  # [provisional — chunk 10]
+
+# --- the campaign [M1-A2] ----------------------------------------------------
+# Extent, treatment size, and the thread pins. These were absent, which is why
+# the driver could not take its extent from fingerprinted config and honour the
+# no-behavioural-flags rule at the same time.
+campaign:
+  iterations: 20            # [M1-A2] HARD analysis point; may NOT be raised after launch
+  episodes_per_iteration: 400  # [M1-A2 §3] CHOSEN-not-derived; consequences computed on the page
+  intra_op_threads: 8       # [M1-A2 §4] EXERCISED pin — the clamp that made the licence's parity possible
+  interop_threads: 32       # [M1-A2 §4] OBSERVED pin — constant on both hosts, undiscriminated

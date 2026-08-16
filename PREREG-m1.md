@@ -469,3 +469,187 @@ coincidence.
 
 **This remains an open finding and gates nothing.** Its record is
 `runs/chunk11_misses_diagnostic.json`.
+
+---
+
+# Amendment M1-A2 — 2026-08-16, CampaignConfig, the thread pins, and the watchlist
+
+**Disclosure.** M1 has not run; no campaign number exists. This amendment's
+`episodes_per_iteration` is **derived from measurements taken after the freeze** —
+the campaign-cost pilot of 2026-08-16, run on the campaign host — and those
+measurements are pre-launch instrument timings, not results. The derivation
+direction is the licensed one: thresholds freeze before measurement, treatment
+values derive from it.
+
+**One diff, one fingerprint, one era.** Every fingerprint change closes
+comparison paths, so pending changes batch: `CampaignConfig` and the thread pins
+land together rather than as two eras.
+
+## 1. The exact diff, and both fingerprints of both profiles
+
+The whole of it, additive — **no existing key changed value**:
+
+```diff
++ campaign:
++   episodes_per_iteration: 400
++   interop_threads: 32
++   intra_op_threads: 8
++   iterations: 20
+```
+
+This project carries **two** fingerprints, and §3 above records only one of them:
+
+| profile | pre-A2 | post-A2 |
+|---|---|---|
+| **eval** (`root_noise=False`) — what §3 records | `f1d258a1161c5ba1…` | `314fbeb99b6640f6…` |
+| **campaign** (`root_noise=True`) — what the driver runs | `09157f706fcc3d0b…` | `ce41af96ee85f0a2…` |
+
+**The driver asserts the campaign fingerprint `ce41af96…`**, not the eval one.
+Stated because BRIEF-chunk11-driver's ruling 3 says "asserted == PREREG-m1's
+recorded fingerprint", and taken literally that would have the driver assert an
+eval-profile value while running the campaign profile — a check that could never
+pass. Both profiles are now recorded so neither is inferred.
+
+**Every pre-launch measurement ran under the pre-A2 values**, which their own
+protocol blocks already state: Part-0b, Part-0d, Part-0e and the misses
+diagnostic all record `f1d258a1…`, and the campaign-cost pilot deliberately cites
+the pre-A2 era in its own record. Nothing is retro-stamped.
+
+**The retired merge path stays retired.** `chunk11_part0b.load_prior()` will now
+refuse a union against the existing sweep record, because the fingerprint moved.
+That is the guard working, not a defect, and it is not special-cased.
+
+## 2. The campaign's measured cost
+
+Every term prices from a measurement already on the record. Host-scaling uses the
+single dual-measured point: `1814.8 / 1475.88 = 1.2296` pod-over-local at
+`sims=48`, basis stated rather than assumed.
+
+**The cadence unit — one ladder pass, every fifth iteration:**
+
+| term | cost | source |
+|---|---:|---|
+| no-regress suite @48 (1,200) | 30.2 min | pilot, pod-measured, 1.5123 s/ep |
+| no-regress suite @1 (1,200) | 3.3 min | sweep `sims=1`, pod-scaled |
+| **primary scripted {7,8,10} @48 (600)** | **70.9 min** | Part-0d per-stratum, pod-scaled |
+| model rung (200 @48) | 5.0 min | pilot rate |
+| greedy rung (200) | 0.0 min | pilot, 0.0062 s/arm-problem |
+| **total** | **109.5 min** | |
+
+**The primary's own measurement pass is the single largest term in the
+campaign** — 70.9 of every 109.5 minutes. The scripted strata cost 5.844
+s/problem, **4.75× the suite rate**, because par 7–10 problems run far longer
+episodes. A rate carried across populations keeps its number and loses its
+denominator; per-episode cost is a property of the problems, not of the machine.
+
+**The campaign total**, 20 iterations, four cadence units, training fixed at
+623.8 s/iteration:
+
+| episodes/iter | self-play/it | train/it | 20 iters | instruments | **total** |
+|---:|---:|---:|---:|---:|---:|
+| 100 | 2.5 m | 10.4 m | 4.3 h | 7.3 h | 11.6 h |
+| 200 | 5.0 m | 10.4 m | 5.1 h | 7.3 h | 12.4 h |
+| **400** | **10.1 m** | **10.4 m** | **6.8 h** | **7.3 h** | **14.1 h** |
+| 800 | 20.2 m | 10.4 m | 10.2 h | 7.3 h | 17.5 h |
+
+The instrument column is roughly half the campaign and is **invariant in
+`episodes_per_iteration`** — it cannot be traded against.
+
+## 3. `episodes_per_iteration = 400`, and which word applies to it
+
+**CHOSEN, not derived.** No measured staleness optimum exists, so this is a
+judgement. What is *computed* is its consequences, and those are shown:
+
+| computed consequence | at 400 |
+|---|---|
+| fresh ring rows / iteration | 1,304 (3.26 rows/episode, pilot-measured) |
+| training draws / iteration | 51,200 (400 steps × 128 batch) |
+| **reuse ratio** | **≈ 40×** |
+| ring fill after 20 iterations | 26,080 of 500,000 — **10%, never wraps** |
+| **holdout rows / iteration** | **130.4** (`ring_holdout_frac` 0.1) |
+| holdout rows over the campaign | 2,608 |
+
+**The holdout line is the deciding one.** The switch criterion requires **100 in
+the rarest class**. At 100 episodes that is 32.6 holdout rows per iteration — a
+criterion structurally starved by its own support requirement, unfirable for most
+of the campaign regardless of what the value head learns. At 400 it is 130.4, and
+the criterion can wake.
+
+**Registered as an M2 lever:** the reuse ratio, if staleness symptoms appear in
+the loss curves or the funnel columns. Chosen here, revisable there, and named so
+the revision is a decision rather than a drift.
+
+## 4. The three pins, each with its evidential class
+
+A pin is a claim about the future wearing evidence from the past, and the classes
+license different sentences — the floor taxonomy's move, applied to pins.
+
+**`intra_op_threads = 8` — EXERCISED.** The hosts' defaults *differed*: 16 on the
+local box, 32 on the pod. Only `min(8, …)` made the licence's parity possible, and
+the reproduction gate returned `1193/1200` with identical failing sets across
+both. The clamp was load-bearing before anyone declared it; this pin declares it
+with the measured counterfactual attached. Licenses: *this value was varied
+across hosts and its effect measured.*
+
+**`interop_threads = 32` — OBSERVED.** Constant at 32 on both hosts by coincidence
+of default, never varied, never discriminated. Licenses **only** *this is what
+ran*. It says nothing about whether interop affects numerics. A future host with
+a different interop default stands **outside** this evidence, not inside it.
+
+**The OMP family — RECORDED ABSENT.** `OMP_NUM_THREADS`, `MKL_NUM_THREADS`,
+`OPENBLAS_NUM_THREADS` and `NUMEXPR_NUM_THREADS` were **unset** on both hosts
+throughout the licence. Unset is a value: setting them later is a gated
+configuration change, not a tidy-up. The driver asserts they are unset at
+startup.
+
+**Raising any of these is not a config tweak.** It is a new configuration whose
+reproduction gate re-runs — the set-growth law, standing at the thread knob.
+
+## 5. The watchlist — informational, no gate contact
+
+The 24 problems certified on 2026-08-16 as the shared miss set of the anchor at
+`sims=1` and the scripted solver (intersection 24/24, Jaccard 1.0) enter the
+RUNLOG as a **frozen** named watchlist. Two columns, computed per ladder pass
+from data the pass already produces:
+
+```
+family_remaining = |pass_miss_set ∩ frozen_24|      the family shrinking
+novel_misses     = |pass_miss_set \ frozen_24|      a new family growing
+```
+
+Neither column re-derives the family. A re-derived family per pass would conflate
+*"the family shrank"* with *"the family's definition moved"* — a histogram whose
+bins drift, cured the same way: freeze the reference, observe against it.
+
+The pair exists because the aggregate no-regress floor catches net regression and
+**cannot attribute it**. Together these two can, for free.
+
+The question they answer: does self-play training shrink the trap family — does
+search correcting the policy at root-adjacent traps teach the correction back
+into the priors? That is the amortization thesis at its most localized.
+
+**No gate contact. Informational only.**
+
+## 6. The switch criterion's classes are two-population, not two-class
+
+Stated because the machinery is already correct and the *wording* is what would
+mislead a reader of the first `+1`.
+
+Self-play draws par from two populations: `par_from_pool_frac = 0.2` with
+`seed_pool_with_anchor = True`, so **80% of ring rows carry `bfs` par and 20%
+carry `pool` par.**
+
+* Against **`bfs`** par, `+1` is impossible by construction, and the tripwire
+  scopes the impossibility to exactly those rows — `replay.py` raises on
+  `par_source == "bfs" and z > 0`, the third layer of the same check.
+* Against **`pool`** par, `+1` is **beatable by construction** and merely rare by
+  dynamics early: at iteration 1 the model ≈ the anchor that seeded the pool, so
+  it matches its own snapshot's step count and pool rows score 0.
+
+So `K` — classes *with support* — starts at **2** and becomes **3** when the model
+begins beating pool snapshots, at which point the threshold `1/K + 0.15` moves
+from **0.65** toward **0.483** by the criterion's own definition. No machinery
+changes; `valuegate` already anticipates the two-class start.
+
+**The first `pool`/`+1` row in the ring is not an anomaly. It is the escalation
+mechanism working, and a campaign milestone** — greeted, not investigated.
