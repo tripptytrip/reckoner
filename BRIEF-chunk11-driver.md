@@ -127,3 +127,54 @@ In the driver this is **not a flag**: a mandatory pre-flight before iteration 0
 that runs one micro-iteration through every row class into a scratch directory,
 validates each row, and discards it. Retrofitting the chunk-11 measurement
 scripts follows.
+
+---
+
+# Amendment D-A2 — 2026-08-16, an unsatisfiable DONE-WHEN, and two fingerprint consumers
+
+**No measurement is affected**: the driver does not exist, so nothing has been
+run against the gate this corrects.
+
+## 1. The three-iteration rehearsal could never have passed
+
+The DONE-WHEN asked for a **3-iteration dress rehearsal at campaign config** with
+**every row class present**. Those two clauses contradict each other:
+`ladder.ladder_every = 5`, so the cadence never fires inside three iterations and
+no ladder row, instrument row or funnel row can exist in such a run.
+
+It is the same species as the check-that-could-never-pass found one document over
+in M1-A2 §1 — an expectation no compliant run could meet, authored here and
+caught only by walking the arithmetic against the config the clause itself names.
+A gate whose satisfaction is impossible is not a strict gate; it is a gate that
+will be quietly reinterpreted at the moment it fails.
+
+**Amended: the dress rehearsal is FIVE iterations** — the minimal count at
+campaign config that exercises every row class, including one full cadence unit
+with its instrument passes, a switch evaluation on real accrued holdout, and the
+funnel row. Cost ≈ 3.4 h sequential at the measured rates (M1-A2 §2). Expectations
+still committed first; artifacts still deleted after recording.
+
+## 2. Two profiles, two assertions, each pinned where it acts
+
+The driver runs **two** configs — the campaign profile (`root_noise=True`) for
+self-play, and the eval profile (`root_noise=False`) for every instrument pass —
+so ruling 3's single assertion is one concern with two consumers.
+
+| assertion | value | where |
+|---|---|---|
+| campaign fingerprint | `ce41af96ee85f0a2…` | once, at startup |
+| eval fingerprint | `314fbeb99b6640f6…` | at **every** instrument pass |
+
+The cadence measurements are comparable to their baselines **only if they
+provably ran the eval profile**, and a drift in either profile should be caught
+at the boundary where that profile acts rather than inferred later from a single
+startup check. Rows carry their producing profile's fingerprint, which the
+schema's provenance habits already supply.
+
+## 3. The instrument seam
+
+The cadence step invokes a mono-instance ``run_instruments()``. That is what the
+mono-instance discipline requires regardless — and it also means Lever B
+(unit-parallel instrument passes, ratified in principle, construction gate
+pending) lands behind the seam later without the driver noticing. The dependency
+dissolves by building correctly rather than by sequencing around it.
