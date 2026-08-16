@@ -23,7 +23,7 @@ from pathlib import Path
 import torch
 
 from reckoner.config import Config, config_fingerprint, validate
-from reckoner.dataset import git_sha, training_problems
+from reckoner.dataset import anchored_data, git_sha, training_problems
 from reckoner.logschema import (
     ITERATION_FIELDS,
     SCHEMA_ERA,
@@ -77,7 +77,7 @@ def main() -> int:
     # solve_in_2 — a frozen instrument — which did no harm because nothing
     # trained, but demonstrated that the loop would happily consume its own
     # measuring stick. training_problems() refuses instruments first thing.
-    source = REPO / "runs" / "data" / "train_100k"
+    source = anchored_data("train_100k")
     checks: list[tuple[str, bool, str]] = []
 
     for n in range(args.iterations):

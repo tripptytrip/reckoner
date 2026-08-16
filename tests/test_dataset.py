@@ -18,6 +18,7 @@ import pytest
 
 from reckoner.config import Config
 from reckoner.dataset import (
+    DATA_ROOT,
     FIELDS,
     InstrumentAsTrainingSource,
     RecordWouldBeUntracked,
@@ -44,7 +45,7 @@ from reckoner.vocab import GOAL_SOLVE, VAR_X, VOCAB_VERSION
 
 REPO = Path(__file__).resolve().parents[1]
 SUITES = REPO / "runs" / "suites"
-DATA = REPO / "runs" / "data"
+DATA = REPO / DATA_ROOT
 CFG = Config()
 X = var(VAR_X)
 

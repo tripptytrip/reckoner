@@ -232,6 +232,156 @@ def assert_tracked(path: Path, repo: Path | None = None) -> None:
         )
 
 
+# ---------------------------------------------------------------------------
+# ANCHORS: the integrity registry
+#
+# SCOPE WIDENED 2026-08-16, and the justification is re-derived rather than the
+# wording re-applied.
+#
+# The registry was scoped to *instruments* — frozen suites, paired sets, the
+# anchor — because its original job was freeze verification: proving an
+# instrument had not moved under the numbers measured on it. That scope has a
+# blind spot shaped exactly like itself. During the campaign-host migration the
+# transfer gate reported "26/26, 0 mismatches" while 85 MB of supervision data
+# had not crossed at all, because *the gate cannot fail on data it does not know
+# about*. The suite caught it one step later, by the luck of touching those
+# files.
+#
+# So the scope stops being a category judgement ("is this an instrument?") and
+# becomes mechanical: **ANCHORS is the integrity registry of every load-bearing
+# artifact.** Anything a test or gate reads from ``runs/data`` carries an entry.
+#
+# The instrument-versus-training distinction survives untouched where it already
+# lives — :data:`SOURCE_ROLES` — because that distinction governs what may train
+# on what, which is a different question from what deserves integrity. And
+# regenerable-in-principle does not exempt: a silently truncated regenerable file
+# poisons a run exactly as thoroughly as a corrupted frozen one. Regenerability
+# changes the recovery cost, not the detection need.
+# ---------------------------------------------------------------------------
+
+
+class UnanchoredPath(RuntimeError):
+    """A load-bearing path was used without an integrity registry entry."""
+
+
+#: The one place the string ``runs/data`` appears in this repository.
+#:
+#: Not stylistic. A path nobody else can name is a path nobody else can read
+#: ungoverned: a third loader cannot come into existence bypassing the registry,
+#: because it cannot construct an argument. The class closes, not just the
+#: instances — the one-formatter precedent, applied to paths.
+DATA_ROOT = Path("runs") / "data"
+
+
+def data_path(name: str, repo: Path | None = None) -> Path:
+    """A dataset path by name, **ungated** — for writers creating new artifacts.
+
+    A dataset being written does not yet have a registry entry; it acquires one
+    at birth, in :func:`write_dataset`. Readers use :func:`anchored_data`.
+    """
+    repo = repo or Path(__file__).resolve().parents[2]
+    return repo / DATA_ROOT / name
+
+
+def anchored_data(name: str, repo: Path | None = None, *, verify: bool = False) -> Path:
+    """A dataset path by name, **gated** — the reader's door."""
+    return anchored_path(DATA_ROOT / name, repo, verify=verify)
+
+
+def anchors_path(repo: Path | None = None) -> Path:
+    repo = repo or Path(__file__).resolve().parents[2]
+    return repo / "runs" / "ANCHORS.sha256"
+
+
+def read_anchors(repo: Path | None = None) -> dict[str, str]:
+    """The registry as ``{repo-relative path: sha256}``."""
+    path = anchors_path(repo)
+    if not path.exists():
+        return {}
+    out: dict[str, str] = {}
+    for line in path.read_text().splitlines():
+        if line.strip():
+            digest, rel = line.split(None, 1)
+            out[rel.strip()] = digest
+    return out
+
+
+def write_anchors(entries: dict[str, str], repo: Path | None = None) -> None:
+    """**The** registry writer, with one sort order.
+
+    There were two: ``anchor_phase1`` sorted whole lines (hence by digest) and
+    ``generate`` sorted by path, so the file's order depended on which script
+    touched it last. Two writers of one registry is the same defect class the
+    registry exists to catch, one level up. Line order is not load-bearing, so
+    the existing on-disk order (by digest) is kept and the choice is made once.
+    """
+    path = anchors_path(repo)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(sorted(f"{d}  {rel}\n" for rel, d in entries.items())))
+
+
+def register_anchor(path: Path, repo: Path | None = None, *, digest: str | None = None) -> str:
+    """Enter a file in the registry, or refresh its digest. Returns the digest.
+
+    Called by the writers at the moment of writing, so registration is a property
+    of the artifact existing rather than a chore of remembering — the way
+    :data:`SOURCE_ROLES` is stamped at birth.
+    """
+    repo = repo or Path(__file__).resolve().parents[2]
+    rel = str(path.resolve().relative_to(repo.resolve()))
+    digest = digest or sha256_file(path)
+    entries = read_anchors(repo)
+    entries[rel] = digest
+    write_anchors(entries, repo)
+    return digest
+
+
+def anchored_path(target: Path | str, repo: Path | None = None, *, verify: bool = False) -> Path:
+    """Resolve a load-bearing path, refusing one the registry does not know.
+
+    **The mono-instance gate.** Every test and gate that reads from ``runs/data``
+    resolves through here, so used-but-unregistered fails at use, immediately, on
+    any host — instead of surviving until something happens to notice.
+
+    A directory is anchored only when *every file in it* is registered: a dataset
+    whose ``tokens.i32`` is covered and whose ``meta.json`` is not is exactly the
+    partial coverage this exists to refuse.
+
+    ``verify=True`` additionally re-digests. Off by default because the entry's
+    existence is the gate — verification is the transfer-time check, and paying
+    20 MB of hashing on every open would buy a guarantee the caller did not ask
+    for.
+    """
+    repo = repo or Path(__file__).resolve().parents[2]
+    path = (repo / target) if not Path(target).is_absolute() else Path(target)
+    rel_root = str(path.resolve().relative_to(repo.resolve()))
+    entries = read_anchors(repo)
+
+    wanted = (
+        sorted(str(p.resolve().relative_to(repo.resolve())) for p in path.rglob("*") if p.is_file())
+        if path.is_dir()
+        else [rel_root]
+    )
+    if not wanted:
+        raise UnanchoredPath(f"{rel_root} contains no files to anchor")
+
+    missing = [rel for rel in wanted if rel not in entries]
+    if missing:
+        raise UnanchoredPath(
+            f"{rel_root} is load-bearing but {len(missing)} of {len(wanted)} of its "
+            f"files carry no ANCHORS entry: {missing[:4]}. A gate cannot fail on "
+            "data it does not know about — register it (write_dataset does this at "
+            "birth) or stop reading it from a gate."
+        )
+    if verify:
+        wrong = [rel for rel in wanted if sha256_file(repo / rel) != entries[rel]]
+        if wrong:
+            raise UnanchoredPath(
+                f"{rel_root}: {len(wrong)} digests do not match ANCHORS: {wrong[:4]}"
+            )
+    return path
+
+
 def write_record(path: Path, payload: dict, *, repo: Path | None = None) -> Path:
     """Write a JSON record, refusing to write one git would ignore.
 
@@ -381,10 +531,52 @@ def write_dataset(
         "digests": {name: sha256_file(path / f"{name}.i32") for name in FIELDS},
     }
     (path / "meta.json").write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n")
+
+    # REGISTRATION AT BIRTH. A dataset that exists is a dataset the integrity
+    # registry knows about — the same move as stamping its role, and for the same
+    # reason: a property of existing rather than a chore of remembering. The
+    # per-field digests are already computed above, so the field files cost
+    # nothing; meta.json is digested here because it carries the role tag and the
+    # digests themselves, which makes it load-bearing in its own right.
+    # A dataset written outside the repo is a fixture, not a load-bearing
+    # artifact, and has nothing to be load-bearing *to*. Skipped rather than
+    # failed, on the same reasoning as assert_tracked outside a git checkout.
+    try:
+        rels = {
+            **{
+                str((path / f"{name}.i32").resolve().relative_to(repo.resolve())): meta["digests"][
+                    name
+                ]
+                for name in FIELDS
+            },
+            str((path / "meta.json").resolve().relative_to(repo.resolve())): sha256_file(
+                path / "meta.json"
+            ),
+        }
+    except ValueError:
+        return meta
+    write_anchors({**read_anchors(repo), **rels}, repo)
     return meta
 
 
-def read_dataset(path: Path) -> Dataset:
+def read_dataset(path: Path, repo: Path | None = None) -> Dataset:
+    """Open a training set. **Every read is gated by the integrity registry.**
+
+    The gate is here rather than at the call sites because a rule enforced at
+    call sites is a rule that holds until someone writes a new call site. A
+    reader that constructs its own path still arrives at this function, so
+    used-but-unregistered fails at use however the path was built.
+
+    Datasets outside the repo are fixtures — skipped, per the precedent in
+    :func:`assert_tracked`.
+    """
+    repo = repo or Path(__file__).resolve().parents[2]
+    try:
+        Path(path).resolve().relative_to(repo.resolve())
+    except ValueError:
+        pass
+    else:
+        anchored_path(path, repo)
     meta = json.loads((path / "meta.json").read_text())
     n, max_len = meta["n"], meta["max_len"]
     load = lambda name, shape: np.memmap(  # noqa: E731

@@ -22,7 +22,7 @@ from pathlib import Path
 
 from reckoner.arms import GreedyHeuristic, RandomRewriter, SympySolver
 from reckoner.config import Config, validate
-from reckoner.dataset import git_sha, read_dataset, sample_indices, write_record
+from reckoner.dataset import anchored_data, git_sha, read_dataset, sample_indices, write_record
 from reckoner.episode import Problem, decode_state
 from reckoner.ladder import paired_bootstrap, rigged_null, self_match, synthetic_elo
 from reckoner.ladderpass import comparison_from_pass, is_complete, read_pair_scores, run_pass
@@ -43,7 +43,7 @@ def candidates(count: int, seed: int) -> list[Problem]:
     `range(count)` on a stratum-ordered set is the whole shallowest stratum and
     none of the rest (F-03, F-10). `sample_indices` is the one subsampler.
     """
-    dataset = read_dataset(REPO / "runs" / "data" / "eval_held_out")
+    dataset = read_dataset(anchored_data("eval_held_out"))
     out = []
     for i in sample_indices(len(dataset), count, seed):
         goal, target, expr = decode_state(dataset.state(i))
@@ -79,9 +79,9 @@ def build_paired_set(count: int, seed: int, verdicts: dict) -> tuple[list[Proble
 
     pool = candidates(count, seed)
     print(f"  censusing {len(pool)} candidates at both levels…")
-    problem_level = {"train_100k": source_census_keys(REPO / "runs" / "data" / "train_100k")}
+    problem_level = {"train_100k": source_census_keys(anchored_data("train_100k"))}
     print(f"    problem-level reference: {len(problem_level['train_100k'])} keys")
-    state_level = {"phase1_train": source_census_keys(REPO / "runs" / "data" / "phase1_train")}
+    state_level = {"phase1_train": source_census_keys(anchored_data("phase1_train"))}
     print(f"    state-level reference:   {len(state_level['phase1_train'])} keys")
 
     result = census(pool, problem_sources=problem_level, state_sources=state_level)

@@ -15,6 +15,7 @@ import pytest
 import torch
 
 from reckoner.config import Config
+from reckoner.dataset import anchored_data, data_path
 from reckoner.model import Reckoner
 from reckoner.train import (
     SupervisionSet,
@@ -28,7 +29,7 @@ from reckoner.valuegate import ValueHeadState
 from reckoner.vocab import PAD
 
 REPO = Path(__file__).resolve().parents[1]
-DATA = REPO / "runs" / "data" / "phase1_train"
+DATA = anchored_data("phase1_train")
 CFG = Config()
 
 needs_data = pytest.mark.skipif(
@@ -208,19 +209,19 @@ def test_a_full_rehearsal_fraction_is_refused() -> None:
 
 
 def a_filled_ring(cfg: Config, n: int = 8):
-    from reckoner.dataset import training_problems
+    from reckoner.dataset import anchored_data, training_problems
     from reckoner.replay import ReplayRing
     from reckoner.runner import run_iteration
     from reckoner.search import uniform_stub
 
     ring = ReplayRing(2048, cfg)
-    problems = training_problems(REPO / "runs" / "data" / "train_100k", n, seed=0)
+    problems = training_problems(anchored_data("train_100k"), n, seed=0)
     run_iteration(problems, uniform_stub(cfg), cfg, ring, sims=8, m=5, seed=0)
     return ring
 
 
 needs_train_set = pytest.mark.skipif(
-    not (REPO / "runs" / "data" / "train_100k").exists(), reason="training set not generated"
+    not data_path("train_100k").exists(), reason="training set not generated"
 )
 
 

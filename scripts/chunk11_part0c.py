@@ -32,7 +32,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from reckoner.config import Config
-from reckoner.dataset import git_sha, problem_key, write_record
+from reckoner.dataset import data_path, git_sha, problem_key, write_record
 from reckoner.episode import Problem, bfs_par
 from reckoner.generator import MID_TEMPLATES, emit_mid
 from reckoner.pairedset import census, freeze, source_census_keys
@@ -132,8 +132,8 @@ def main() -> int:
         )
 
     print("  censusing at both levels…", flush=True)
-    problem_level = {"train_100k": source_census_keys(REPO / "runs" / "data" / "train_100k")}
-    state_level = {"phase1_train": source_census_keys(REPO / "runs" / "data" / "phase1_train")}
+    problem_level = {"train_100k": source_census_keys(data_path("") / "train_100k")}
+    state_level = {"phase1_train": source_census_keys(data_path("") / "phase1_train")}
 
     strata_records = {}
     for k in STRATA:

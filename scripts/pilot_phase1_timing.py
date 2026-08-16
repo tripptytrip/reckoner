@@ -37,7 +37,7 @@ from pathlib import Path
 import torch
 
 from reckoner.config import Config, config_fingerprint
-from reckoner.dataset import git_sha, write_record
+from reckoner.dataset import anchored_data, git_sha, write_record
 from reckoner.model import Reckoner, policy_loss, steps_loss
 from reckoner.train import SupervisionSet, make_batch
 from reckoner.vocab import PAD
@@ -171,7 +171,7 @@ def measure_the_crop(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data", type=Path, default=REPO / "runs" / "data" / "phase1_train")
+    parser.add_argument("--data", type=Path, default=anchored_data("phase1_train"))
     parser.add_argument("--batch-sizes", type=int, nargs="+", default=[64, 128, 256, 512])
     parser.add_argument("--steps", type=int, default=12, help="timed steps per configuration")
     parser.add_argument("--warmup", type=int, default=3)

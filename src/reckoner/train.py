@@ -33,7 +33,7 @@ import torch
 from torch import nn
 
 from reckoner.config import Config
-from reckoner.dataset import sample_indices
+from reckoner.dataset import anchored_path, sample_indices
 from reckoner.episode import Problem, decode_state
 from reckoner.model import N_RULES, Reckoner, StateTooLarge, encode, policy_loss, steps_loss
 from reckoner.valuegate import ValueHeadState, value_contribution
@@ -78,7 +78,26 @@ class TrainStats:
 class SupervisionSet:
     """Mapped Phase-1 examples. Host RAM is the scarce pool; nothing is loaded."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, repo: Path | None = None) -> None:
+        # THE SECOND LOADER, gated. `read_dataset` governs the train_100k /
+        # eval_held_out family and was structurally blind to this one, which
+        # reads phase1_train and phase1_eval — the two datasets that carried no
+        # registry entry at all until 2026-08-16. Both holes were the same shape
+        # and they lined up, because SupervisionSet and those datasets are
+        # pre-discipline contemporaries: born before registration-at-birth
+        # existed, they travelled together under the old rules while every
+        # mechanism built since covered the newer families.
+        #
+        # Hence the coverage-form corollary: a gate on births governs nothing
+        # already alive, so a retrofit's completion criterion is a census of the
+        # past, not merely a gate on the future.
+        repo = repo or Path(__file__).resolve().parents[2]
+        try:
+            Path(path).resolve().relative_to(repo.resolve())
+        except ValueError:
+            pass  # a fixture outside the repo, per assert_tracked's precedent
+        else:
+            anchored_path(path, repo)
         self.path = path
         self.meta = json.loads((path / "meta.json").read_text())
         n, width = self.meta["n"], self.meta["max_len"]

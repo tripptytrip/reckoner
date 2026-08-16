@@ -32,7 +32,7 @@ from pathlib import Path
 import numpy as np
 
 from reckoner.config import Config
-from reckoner.dataset import git_sha, sha256_file
+from reckoner.dataset import data_path, git_sha, sha256_file
 from reckoner.episode import Problem, bfs_solution, decode_state, encode_state
 from reckoner.model import action_index
 from reckoner.rules import RULESET_VERSION
@@ -154,8 +154,8 @@ def build(source: Path, out: Path, workers: int, limit: int | None, seed: int = 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", type=Path, default=REPO / "runs" / "data" / "train_100k")
-    parser.add_argument("--out", type=Path, default=REPO / "runs" / "data" / "phase1_train")
+    parser.add_argument("--source", type=Path, default=data_path("") / "train_100k")
+    parser.add_argument("--out", type=Path, default=data_path("phase1_train"))
     parser.add_argument("--workers", type=int, default=24)
     parser.add_argument("--limit", type=int, default=None, help="sample this many problems")
     parser.add_argument("--seed", type=int, default=0)

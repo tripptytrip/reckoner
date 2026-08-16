@@ -30,7 +30,7 @@ import numpy as np
 import torch
 
 from reckoner.config import Config
-from reckoner.dataset import git_sha, write_record
+from reckoner.dataset import anchored_data, git_sha, write_record
 from reckoner.model import Reckoner
 from reckoner.train import SupervisionSet, make_batch
 
@@ -82,7 +82,7 @@ def measured_topk(model: Reckoner, data: SupervisionSet, cfg: Config) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data", type=Path, default=REPO / "runs" / "data" / "phase1_eval")
+    parser.add_argument("--data", type=Path, default=anchored_data("phase1_eval"))
     parser.add_argument("--checkpoint", type=Path, default=REPO / "runs" / "phase1" / "phase1.pt")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()

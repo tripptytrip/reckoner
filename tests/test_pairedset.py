@@ -7,7 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from reckoner.dataset import InstrumentAsTrainingSource, assert_training_source, read_suite
+from reckoner.dataset import (
+    InstrumentAsTrainingSource,
+    anchored_data,
+    assert_training_source,
+    read_suite,
+)
 from reckoner.dataset import problem_key as strict_key
 from reckoner.episode import Problem
 from reckoner.expr import add, eq, mul, num, var
@@ -110,7 +115,7 @@ def test_paired_sets_are_refused_as_a_training_source() -> None:
     """Both polarities of the runtime guard, at the new directory."""
     with pytest.raises(InstrumentAsTrainingSource, match="instrument"):
         assert_training_source(REPO / "runs" / "paired" / "anything.jsonl", REPO)
-    assert_training_source(REPO / "runs" / "data" / "train_100k", REPO)
+    assert_training_source(anchored_data("train_100k"), REPO)
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +190,7 @@ def test_the_census_key_is_looser_than_the_pairing_key() -> None:
 
 
 def test_source_census_keys_reads_a_real_set() -> None:
-    data = REPO / "runs" / "data" / "eval_held_out"
+    data = anchored_data("eval_held_out")
     if not data.exists():
         pytest.skip("datasets not generated")
     keys = source_census_keys(data)

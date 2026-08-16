@@ -29,7 +29,7 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 from reckoner.config import Config
-from reckoner.dataset import problem_key, sha256_file, write_dataset, write_suite
+from reckoner.dataset import DATA_ROOT, problem_key, sha256_file, write_dataset, write_suite
 from reckoner.episode import Problem
 from reckoner.generator import emit, label
 
@@ -237,7 +237,7 @@ def main() -> int:
         if len(pool) < count:
             raise SystemExit(f"{mode}: only {len(pool)}/{count}")
         rows = pool[:count]
-        path = args.out / "data" / mode
+        path = args.out / DATA_ROOT.name / mode
         meta = write_dataset(path, rows, CFG, mode=mode, seed=args.seed, repo=REPO)
         for name, digest in meta["digests"].items():
             anchors[_rel(path / f"{name}.i32")] = digest

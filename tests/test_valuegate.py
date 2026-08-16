@@ -13,6 +13,7 @@ import random
 
 import pytest
 
+from reckoner.dataset import anchored_data
 from reckoner.valuegate import (
     MARGIN,
     MIN_CLASS_SUPPORT,
@@ -264,18 +265,18 @@ def test_two_well_supported_classes_are_evaluable() -> None:
 
 REPO = __import__("pathlib").Path(__file__).resolve().parents[1]
 needs_train_set = pytest.mark.skipif(
-    not (REPO / "runs" / "data" / "train_100k").exists(), reason="training set not generated"
+    not (anchored_data("train_100k")).exists(), reason="training set not generated"
 )
 
 
 def _filled_ring(cfg):
-    from reckoner.dataset import training_problems
+    from reckoner.dataset import anchored_data, training_problems
     from reckoner.replay import ReplayRing
     from reckoner.runner import run_iteration
     from reckoner.search import uniform_stub
 
     ring = ReplayRing(2048, cfg)
-    problems = training_problems(REPO / "runs" / "data" / "train_100k", 20, seed=0)
+    problems = training_problems(anchored_data("train_100k"), 20, seed=0)
     run_iteration(problems, uniform_stub(cfg), cfg, ring, sims=8, m=5, seed=0)
     return ring
 

@@ -31,7 +31,7 @@ from collections import Counter
 from pathlib import Path
 
 from reckoner.config import Config
-from reckoner.dataset import read_dataset, read_suite, suite_problem
+from reckoner.dataset import anchored_data, read_dataset, read_suite, suite_problem
 from reckoner.episode import Problem, bfs_solution, decode_state
 from reckoner.rules import RULES
 from reckoner.vocab import GOAL_EVALUATE, GOAL_SIMPLIFY, GOAL_SOLVE
@@ -93,7 +93,7 @@ def main() -> int:
                 rows = read_suite(path)
                 problems += [suite_problem(r) for r in (rows if depth <= 4 else rows[:60])]
     if args.train_sample:
-        dataset = read_dataset(REPO / "runs" / "data" / "train_100k")
+        dataset = read_dataset(anchored_data("train_100k"))
         rng = random.Random(20260814)
         for i in rng.sample(range(len(dataset)), min(args.train_sample, len(dataset))):
             goal, target, expr = decode_state(dataset.state(i))

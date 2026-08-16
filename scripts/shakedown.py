@@ -22,7 +22,7 @@ import numpy as np
 import torch
 
 from reckoner.config import Config, config_fingerprint, save_config, validate
-from reckoner.dataset import git_sha, training_problems, write_record
+from reckoner.dataset import anchored_data, git_sha, training_problems, write_record
 from reckoner.logschema import (
     ITERATION_FIELDS,
     SCHEMA_ERA,
@@ -140,7 +140,7 @@ def main() -> int:
     # solve_in_2 — a frozen instrument — which did no harm because nothing
     # trained, but demonstrated that the loop would happily consume its own
     # measuring stick. training_problems() refuses instruments first thing.
-    source = REPO / "runs" / "data" / "train_100k"
+    source = anchored_data("train_100k")
     solve_by_depth: list[dict] = []
     pool_sizes: list[int] = []
 

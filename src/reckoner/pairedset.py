@@ -49,9 +49,11 @@ import numpy as np
 
 from reckoner.dataset import (
     ShippingError,
+    anchors_path,
     assert_tracked,
     check_shippable,
     problem_key,
+    read_anchors,
     read_suite,
     sha256_file,
     suite_problem,
@@ -194,20 +196,10 @@ def census(
 # ---------------------------------------------------------------------------
 
 
-def _anchors_path(repo: Path) -> Path:
-    return repo / "runs" / "ANCHORS.sha256"
-
-
-def read_anchors(repo: Path) -> dict[str, str]:
-    path = _anchors_path(repo)
-    if not path.exists():
-        return {}
-    out = {}
-    for line in path.read_text().splitlines():
-        if line.strip():
-            digest, rel = line.split(None, 1)
-            out[rel.strip()] = digest
-    return out
+# The registry lives in `dataset` now that its scope is every load-bearing
+# artifact rather than instruments alone. Re-exported here so existing callers
+# and tests keep their import, and so there is still exactly one implementation.
+_anchors_path = anchors_path
 
 
 def freeze(path: Path, problems: list[Problem], *, repo: Path) -> str:

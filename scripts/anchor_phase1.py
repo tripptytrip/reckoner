@@ -26,7 +26,7 @@ from pathlib import Path
 
 import torch
 
-from reckoner.dataset import git_sha, sha256_file, write_record
+from reckoner.dataset import data_path, git_sha, sha256_file, write_record
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -51,7 +51,7 @@ def main() -> int:
     meta = state["meta"]
 
     # The anchor's training data must still be the data the run recorded.
-    train_meta = json.loads((REPO / "runs" / "data" / "phase1_train" / "meta.json").read_text())
+    train_meta = json.loads((data_path("phase1_train") / "meta.json").read_text())
     if provenance["data_digests"] != train_meta["digests"]:
         raise SystemExit(
             "phase1_train has changed since the run: the anchor would claim a "

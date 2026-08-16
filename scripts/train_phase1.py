@@ -25,7 +25,7 @@ from pathlib import Path
 import torch
 
 from reckoner.config import Config, config_fingerprint, save_config, validate
-from reckoner.dataset import git_sha, write_record
+from reckoner.dataset import anchored_data, git_sha, write_record
 from reckoner.model import Reckoner, save_checkpoint
 from reckoner.train import SupervisionSet, make_batch, train
 
@@ -98,7 +98,7 @@ def shared_state_indices(eval_path: Path) -> set[int]:
     from reckoner.episode import decode_state
     from reckoner.expr import identity_key
 
-    train_set = SupervisionSet(REPO / "runs" / "data" / "phase1_train")
+    train_set = SupervisionSet(anchored_data("phase1_train"))
     seen = set()
     for i in range(len(train_set)):
         goal, _t, expr = decode_state(
@@ -123,8 +123,8 @@ def main() -> int:
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--log-every", type=int, default=100)
     parser.add_argument("--init-weights", type=Path, default=None)
-    parser.add_argument("--data", type=Path, default=REPO / "runs" / "data" / "phase1_train")
-    parser.add_argument("--eval", type=Path, default=REPO / "runs" / "data" / "phase1_eval")
+    parser.add_argument("--data", type=Path, default=anchored_data("phase1_train"))
+    parser.add_argument("--eval", type=Path, default=anchored_data("phase1_eval"))
     args = parser.parse_args()
 
     if args.steps > MAX_STEPS:

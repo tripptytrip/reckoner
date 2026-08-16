@@ -30,7 +30,14 @@ from pathlib import Path
 import torch
 
 from reckoner.config import Config, validate
-from reckoner.dataset import git_sha, read_suite, sample_indices, suite_problem, write_record
+from reckoner.dataset import (
+    anchored_data,
+    git_sha,
+    read_suite,
+    sample_indices,
+    suite_problem,
+    write_record,
+)
 from reckoner.episode import Problem, decode_state, encode_state
 from reckoner.expr import Expr
 from reckoner.model import Reckoner, StateTooLarge, encode
@@ -56,7 +63,7 @@ def width_of(problem: Problem, expr: Expr) -> int:
 
 def narrow_states(cfg: Config, k: int) -> list[tuple[Problem, Expr, int]]:
     """Phase-1 states, drawn with the blessed subsampler — never a prefix."""
-    data = SupervisionSet(REPO / "runs" / "data" / "phase1_eval")
+    data = SupervisionSet(anchored_data("phase1_eval"))
     out = []
     for i in sample_indices(len(data), k, seed=0):
         goal, target, expr = decode_state(tuple(int(t) for t in data.tokens[i, : data.lengths[i]]))

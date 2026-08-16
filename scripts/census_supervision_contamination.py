@@ -33,7 +33,7 @@ from pathlib import Path
 
 import numpy as np
 
-from reckoner.dataset import git_sha, read_suite, sha256_file, write_record
+from reckoner.dataset import anchored_data, git_sha, read_suite, sha256_file, write_record
 from reckoner.episode import decode_state
 from reckoner.expr import identity_key
 from reckoner.rules import RULESET_VERSION
@@ -215,7 +215,7 @@ def apply_removal(data: Path, report: dict) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data", type=Path, default=REPO / "runs" / "data" / "phase1_train")
+    parser.add_argument("--data", type=Path, default=anchored_data("phase1_train"))
     parser.add_argument("--apply", action="store_true", help="remove the collisions")
     parser.add_argument(
         "--reference",
