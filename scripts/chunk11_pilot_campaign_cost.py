@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import time
 from pathlib import Path
 
@@ -80,6 +81,37 @@ def thread_report() -> dict:
     }
 
 
+def preflight(model, cfg: Config) -> None:
+    """All three phases at micro scale, before any of them is paid for.
+
+    D-A1 §3. This script did not have one, and it cost two runs: an invented
+    ladder role, then a constructor called with an argument it does not take —
+    both raising in phase 3, after phases 1 and 2 had been measured. Both die
+    here in seconds.
+    """
+    started = time.perf_counter()
+    ring = ReplayRing(1024, cfg)
+    probe = training_problems(anchored_data("train_100k"), 2, seed=0)
+    run_iteration(probe, model_evaluator(model, cfg, 0.0), cfg, ring, sims=1, m=1, seed=0)
+    train_on_ring(Reckoner(cfg), ring, cfg, steps=1, seed=0)
+    rows = read_suite(SUITES / "solve_in_1.jsonl")[:2]
+    scratch = REPO / "runs" / "_preflight_ladder"
+    run_pass(
+        scratch,
+        0,
+        [GreedyHeuristic()],
+        [suite_problem(r) for r in rows],
+        cfg,
+        roles={"greedy": "rung"},
+        calibration_note="pre-flight, not a result",
+        seed=0,
+    )
+    shutil.rmtree(scratch, ignore_errors=True)
+    write_record(REPO / "runs" / "chunk11_preflight_probe.json", {"preflight": True})
+    (REPO / "runs" / "chunk11_preflight_probe.json").unlink()
+    print(f"  pre-flight OK (all three phases, {time.perf_counter() - started:.1f}s)\n")
+
+
 def main() -> int:
     cfg = Config()
     validate(cfg)
@@ -95,6 +127,7 @@ def main() -> int:
     model.eval()
     print(f"  anchor {digest[:16]}  fingerprint {fingerprint[:16]}")
     print(f"  threads {thread_report()['intra_op']}/{thread_report()['interop']}\n")
+    preflight(model, cfg)
 
     out: dict = {
         "purpose": "BRIEF-m1-host item 4 — measured per-phase campaign cost",
@@ -169,7 +202,7 @@ def main() -> int:
     run_pass(
         root,
         0,
-        [GreedyHeuristic(cfg)],
+        [GreedyHeuristic()],
         ladder_problems,
         cfg,
         # "rung" per LADDER_ROLES and RULING-chunk11-primary: greedy is an
