@@ -141,7 +141,7 @@ def main() -> int:
             "gumbel_m": GUMBEL_M,
             "root_noise": cfg.search.root_noise,
             "step_cap": cfg.episode.step_cap,
-            "measure_dtype": cfg.model.measure_dtype,
+            "measure_dtype": cfg.numerics.measure_dtype,
             "seed": SEED,
             "config_fingerprint": config_fingerprint(cfg),
             "device": "cpu",

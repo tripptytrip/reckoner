@@ -1,0 +1,124 @@
+{
+  "anchor_baseline_from_part0d": {
+    "scripted_in_10": {
+      "beat": 32,
+      "beat_par_rate": 0.16,
+      "problems": 200
+    },
+    "scripted_in_7": {
+      "beat": 43,
+      "beat_par_rate": 0.215,
+      "problems": 200
+    },
+    "scripted_in_8": {
+      "beat": 26,
+      "beat_par_rate": 0.13,
+      "problems": 200
+    }
+  },
+  "comparison": {
+    "anchor_minus_null": 0.168333,
+    "anchor_pooled_beat_par": "101/600",
+    "anchor_pooled_rate": 0.168333,
+    "note": "the null row P1's baseline is read against; no CI is computed here \u2014 the paired-difference bootstrap belongs to the primary",
+    "null_pooled_beat_par": "0/600",
+    "null_pooled_rate": 0.0
+  },
+  "excluded": {
+    "scripted_in_9": "born saturated from above in Part-0d (beat-par 164/200 = 0.82); informational only"
+  },
+  "git_sha": "940e554506fddf487c9a90f27a8f11bfb5293286",
+  "per_stratum": {
+    "scripted_in_10": {
+      "at_par_z_0": 0,
+      "beat_par_rate": 0.0,
+      "beat_par_z_plus_1": 0,
+      "capped": 200,
+      "mean_z": -1.0,
+      "over_par_or_unsolved_z_minus_1": 200,
+      "par": 10,
+      "par_source": "scripted",
+      "problems": 200,
+      "seconds": 56.92,
+      "solved": 0,
+      "steps_minus_par": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 0
+      },
+      "stuck": 0
+    },
+    "scripted_in_7": {
+      "at_par_z_0": 0,
+      "beat_par_rate": 0.0,
+      "beat_par_z_plus_1": 0,
+      "capped": 200,
+      "mean_z": -1.0,
+      "over_par_or_unsolved_z_minus_1": 200,
+      "par": 7,
+      "par_source": "scripted",
+      "problems": 200,
+      "seconds": 55.1,
+      "solved": 0,
+      "steps_minus_par": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 0
+      },
+      "stuck": 0
+    },
+    "scripted_in_8": {
+      "at_par_z_0": 0,
+      "beat_par_rate": 0.0,
+      "beat_par_z_plus_1": 0,
+      "capped": 200,
+      "mean_z": -1.0,
+      "over_par_or_unsolved_z_minus_1": 200,
+      "par": 8,
+      "par_source": "scripted",
+      "problems": 200,
+      "seconds": 55.56,
+      "solved": 0,
+      "steps_minus_par": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 0
+      },
+      "stuck": 0
+    }
+  },
+  "protocol": {
+    "config_fingerprint": "f1d258a1161c5ba17f031a3ad89fae0e688ab135f8ced44c1dcd01b1e89491c1",
+    "device": "cpu",
+    "evaluator": "reckoner.search.uniform_stub (flat priors, neutral value)",
+    "gumbel_m": 16,
+    "inherited_from": "runs/chunk11_part0d_scripted_strata.json",
+    "measure_dtype": "fp32",
+    "root_noise": false,
+    "seed": 0,
+    "sims": 48,
+    "step_cap": 24
+  },
+  "purpose": "the four-tuple's null row for the successor axis; rider (c) does not exempt successors",
+  "strata": [
+    "scripted_in_7",
+    "scripted_in_8",
+    "scripted_in_10"
+  ],
+  "wall_clock_seconds": 167.67
+}
