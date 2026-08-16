@@ -21,7 +21,68 @@ only in how one of them was written.
 
 from __future__ import annotations
 
+from decimal import ROUND_CEILING, Decimal, localcontext
+
 from reckoner.search import SearchResult
+
+#: Working precision for floor arithmetic. Generous, because the whole point is
+#: that no intermediate rounding happens anywhere between the counts and the
+#: integerization.
+_FLOOR_PRECISION = 40
+
+#: One-sided 95%.
+Z_95 = Decimal("1.96")
+
+
+def one_sided_lower_bound(successes: int, trials: int, z: Decimal = Z_95) -> Decimal:
+    """The anchor's one-sided band, **in count units**, at full precision.
+
+    ``p - z * sqrt(p(1-p)/n)``, multiplied back into counts. Returned as a
+    ``Decimal`` rather than a float so the caller cannot lose the digits that
+    decide the integerization — the whole failure mode this construction exists
+    to prevent is an intermediate rounding changing the floor.
+    """
+    with localcontext() as ctx:
+        ctx.prec = _FLOOR_PRECISION
+        n = Decimal(trials)
+        p = Decimal(successes) / n
+        se = (p * (1 - p) / n).sqrt()
+        return (p - z * se) * n
+
+
+def ceil_count(count: Decimal) -> int:
+    """Integerize a floor by **ceiling**, and never by rounding.
+
+    PREREG-m1 §4.1, and the justification is semantic rather than numeric, which
+    is what lets it travel to every future floor without re-litigation:
+    **a floor is an inequality.** The gate is ``count >= b`` for a real ``b``;
+    counts are integers; ceiling is the only integerization that never admits a
+    count the bound itself excludes. Round-half-up would admit 1166 against a
+    bound of 1166.4945 — a count the declared construction rejects — and would do
+    so or not depending on where the decimals happened to fall.
+
+    An exact integer is its own ceiling. That case is pinned by test, because it
+    is the boundary every hand-rolled ceiling gets wrong.
+    """
+    with localcontext() as ctx:
+        ctx.prec = _FLOOR_PRECISION
+        return int(count.to_integral_value(rounding=ROUND_CEILING))
+
+
+def no_regress_floor(successes: int, trials: int, z: Decimal = Z_95) -> int:
+    """The declared no-regress construction, end to end.
+
+    **This is an indistinguishability floor.** Holding it means *not below the
+    anchor's own one-sided 95% band* — it does not mean *at least as good on
+    every problem*, and it does not mean *at least as good on average*. Three
+    different gates, three different licensed sentences, so the kind is named
+    where the floor is computed as well as where it is declared.
+
+    Defined here rather than in the script that checks it, per this module's
+    reason for existing: a floor expressed in a prereg and separately in a
+    checker is two floors wearing one name.
+    """
+    return ceil_count(one_sided_lower_bound(successes, trials, z))
 
 
 def search_found_a_solve(result: SearchResult) -> bool:

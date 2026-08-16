@@ -365,3 +365,107 @@ for a greedy symbolic solver and a one-simulation neural policy alike.
 not exist. The successor was certified live by measurement, not by expectation.
 Both floors carry their derivation, their kind, and the convention that
 integerized them. Every branch that fired was written before its number was.*
+
+---
+
+# Amendment M1-A1 — 2026-08-16, the trigger's disambiguator, the convention's test, and a hypothesis registered mid-diagnostic
+
+**Disclosure, first sentence, two parts.** §1 and §2 below affect **no measurement
+that exists** — M1 has not run and the funnel trigger has never been evaluated.
+§3 **is** written after seeing partial output: the misses diagnostic has returned
+its `sims = 1` row and its scripted column, and their per-depth distributions
+match cell for cell. It has **not** yet returned the by-key intersection, which is
+the thing §3's predictions are about. The hypothesis is therefore registered
+after the distributions and **before the keys**, and it is written down now
+precisely so the keys score it rather than confirm it.
+
+## 1. The funnel trigger's row carries the contemporaneous beat-par delta
+
+§6 named the signature as the closing prior-to-target gap on the reached
+population, and argued that a falling entropy alone cannot distinguish
+confidence from collapse. **The same ambiguity applies to the gap, one level up.**
+A gap that closes because the policy has learned what the search knows is
+mastery; a gap that closes because the search has nothing left to explore is
+collapse. The entropy columns cannot tell those apart either.
+
+The disambiguator is whether the primary moved while the gap closed. So:
+
+> **Every row that evaluates the funnel trigger carries the contemporaneous
+> pooled beat-par delta on `{7, 8, 10}` against the anchor baseline of
+> `101/600 = 0.168333`, and the per-stratum deltas beside it.**
+
+Gap closing **with** the primary rising is mastery — the loop is learning, and the
+Phase-3 treatment would be firing at success. Gap closing **with the primary flat
+or falling** is collapse, which is what the treatment exists for. The trigger says
+*look*; the row must carry *what to look at*, or the reader is left inferring the
+distinction from two numbers that were never printed together.
+
+The trigger's firing conditions in §6 are **unchanged**. This adds a required
+column, not a threshold.
+
+## 2. The convention is now executable-verified, and dual derivation is protocol
+
+**What happened.** The ceiling in the derivation script was written
+``-((-x) // 1)`` — correct for `int` and `float`, and **floor** for `Decimal`,
+whose `__floordiv__` truncates toward zero. It produced 1187 and 1166 where the
+declared construction gives 1188 and 1167. Two of this record's own rulings
+composed into a defect at their seam: `P11B-A5` migrated the arithmetic to
+`Decimal`, and the ceiling idiom silently changed meaning underneath it.
+
+**What caught it.** Exactly one mechanism: the numbers had to agree with an
+independent derivation. No test existed. Review would have read `ceiling` in the
+name and moved on.
+
+Two consequences, both landed:
+
+**L1 treatment — the construction moves into code with reference vectors.**
+`reckoner.gates.no_regress_floor`, `one_sided_lower_bound` and `ceil_count`,
+tested in `tests/test_no_regress_floor.py` against both frozen rows to ten
+places, an exact-integer boundary case, the property that ceiling never admits a
+count the bound excludes, and the `Decimal //` trap itself pinned so nobody
+re-enters it. It lives in `gates.py` for that module's own stated reason: a floor
+expressed in a prereg and separately in a checker is two floors wearing one name.
+
+**Dual derivation is the review, for any threshold that reaches a frozen page.**
+The reviewer computes the number independently **before** reading the derivation,
+deliberately rather than incidentally. This has been happening informally since
+chunk 0; from here it is the protocol, because it is the only thing that caught
+this and it caught it twice in one day.
+
+## 3. The template-family hypothesis, registered with its discriminating predictions
+
+**What is already visible.** The anchor at `sims = 1` misses 24 of 1,200. The
+scripted solver misses 24 of the same 1,200. Their distributions:
+
+```
+scripted solver   by depth   {2: 4, 3: 4, 4: 10, 5: 6}   depths 1 and 6 perfect
+anchor sims = 1   by par     {2: 4, 3: 4, 4: 10, 5: 6}   pars   1 and 6 perfect
+```
+
+Cell for cell, four cells, both endpoints perfect — from two systems sharing no
+code, no representation and no search.
+
+**Candidate mechanism, named so it can be killed.** *Imitation error concentrates
+where BFS-optimality contradicts greedy salience.* These are the states whose
+locally attractive move costs a step. The scripted solver takes that move by
+design — it is greedy, and that is exactly why its par is a provisional floor
+rather than an exact minimum. The anchor's residual 2% policy error pools in the
+same states because the Phase-1 training signal fights salience hardest there. On
+this reading the anchor's residual **is the greedy prior showing through**, and
+six simulations of search rescue thirteen of the twenty-four.
+
+**Discriminating predictions, registered before the keys return:**
+
+| # | prediction | kills the hypothesis if |
+|---|---|---|
+| 1 | intersection is **24/24** — the same problems, not merely the same count | the sets differ materially by key |
+| 2 | goal split of the shared set is **7 EVALUATE / 17 SIMPLIFY**, matching the scripted table | the shared set's goals do not match |
+| 3 | the 48-sim residual **7 ⊂ the 24** | the stubborn seven include problems outside the shared set |
+
+If the keys come back matching, this is not trivia: it is a portrait of what
+Phase 1 did not learn, drawn before Phase 2 starts learning it. If they do not,
+the coincidence dies in one table and this amendment records that it was a
+coincidence.
+
+**This remains an open finding and gates nothing.** Its record is
+`runs/chunk11_misses_diagnostic.json`.
