@@ -1,0 +1,58 @@
+{
+  "git_sha": "d4f8fc5fec4ccd2c8285d999c904a8c7f3c2f25f",
+  "host": "017b36dae37b",
+  "ladder": {
+    "arms_timed": [
+      "greedy"
+    ],
+    "campaign_problems_per_pass": 200,
+    "note": "one arm timed; the campaign's pass runs every enrolled arm, so the pass total scales with arm count \u2014 stated rather than extrapolated",
+    "problems": 25,
+    "seconds": 0.16,
+    "seconds_per_arm_problem": 0.0062
+  },
+  "protocol": {
+    "anchor_sha256": "45333caa8a066b0e8a1d3213aca48470d47dbcafaf3053b1bca4dfa54e6e269b",
+    "config_fingerprint": "09157f706fcc3d0ba87cc9af2da6fe60552db08fc2391873e013baffb73405c3",
+    "evaluator": "model_evaluator(anchor) \u2014 model-in-search, NOT uniform_stub",
+    "fingerprint_era": "PRE-M1-A2 (the arrangement every Part-0 measurement used)",
+    "gumbel_m": 16,
+    "probe_sizes_are_measurement_not_treatment": {
+      "episodes": 100,
+      "ladder_problems": 25,
+      "train_steps": 25
+    },
+    "root_noise": true,
+    "sims": 48,
+    "threads_licensed": {
+      "interop": 32,
+      "intra_op": 8,
+      "omp_family": "unset"
+    },
+    "threads_observed": {
+      "interop": 32,
+      "intra_op": 8,
+      "omp_env": {
+        "MKL_NUM_THREADS": "<unset>",
+        "OMP_NUM_THREADS": "<unset>",
+        "OPENBLAS_NUM_THREADS": "<unset>"
+      }
+    }
+  },
+  "purpose": "BRIEF-m1-host item 4 \u2014 measured per-phase campaign cost",
+  "self_play": {
+    "episodes": 100,
+    "ring_rows": 326,
+    "ring_rows_per_episode": 3.26,
+    "seconds": 151.23,
+    "seconds_per_episode": 1.5123,
+    "solved": 100
+  },
+  "train": {
+    "campaign_steps_per_iteration": 400,
+    "projected_seconds_per_iteration": 623.8,
+    "seconds": 38.99,
+    "seconds_per_step": 1.5594,
+    "steps": 25
+  }
+}
