@@ -1,0 +1,136 @@
+{
+  "git_sha": "46e1fdcfa7c18a5135882e0d835dbe605a304d64",
+  "per_stratum": {
+    "scripted_in_10": {
+      "at_par_z_0": 159,
+      "beat_par_rate": 0.16,
+      "beat_par_z_plus_1": 32,
+      "born_saturated_from_above": false,
+      "capped": 9,
+      "mean_z": 0.115,
+      "over_par_or_unsolved_z_minus_1": 9,
+      "par": 10,
+      "par_source": "scripted",
+      "problems": 200,
+      "seconds": 1587.3,
+      "solved": 191,
+      "steps_minus_par": {
+        "0": 159,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 32
+      },
+      "stuck": 0
+    },
+    "scripted_in_7": {
+      "at_par_z_0": 157,
+      "beat_par_rate": 0.215,
+      "beat_par_z_plus_1": 43,
+      "born_saturated_from_above": false,
+      "capped": 0,
+      "mean_z": 0.215,
+      "over_par_or_unsolved_z_minus_1": 0,
+      "par": 7,
+      "par_source": "scripted",
+      "problems": 200,
+      "seconds": 818.95,
+      "solved": 200,
+      "steps_minus_par": {
+        "0": 157,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 43
+      },
+      "stuck": 0
+    },
+    "scripted_in_8": {
+      "at_par_z_0": 171,
+      "beat_par_rate": 0.13,
+      "beat_par_z_plus_1": 26,
+      "born_saturated_from_above": false,
+      "capped": 3,
+      "mean_z": 0.115,
+      "over_par_or_unsolved_z_minus_1": 3,
+      "par": 8,
+      "par_source": "scripted",
+      "problems": 200,
+      "seconds": 1053.54,
+      "solved": 197,
+      "steps_minus_par": {
+        "0": 171,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 26
+      },
+      "stuck": 0
+    },
+    "scripted_in_9": {
+      "at_par_z_0": 36,
+      "beat_par_rate": 0.82,
+      "beat_par_z_plus_1": 164,
+      "born_saturated_from_above": true,
+      "capped": 0,
+      "mean_z": 0.82,
+      "over_par_or_unsolved_z_minus_1": 0,
+      "par": 9,
+      "par_source": "scripted",
+      "problems": 200,
+      "seconds": 1215.3,
+      "solved": 200,
+      "steps_minus_par": {
+        "0": 36,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 164
+      },
+      "stuck": 0
+    }
+  },
+  "prediction_scoring": {
+    "all_four_born_saturated": false,
+    "claim_1_measured_mean_z": 0.215,
+    "claim_1_scripted_in_7_strongly_positive": false,
+    "claim_2_liveness_at_9_or_10": true,
+    "strata_not_saturated_from_above": [
+      "scripted_in_7",
+      "scripted_in_8",
+      "scripted_in_10"
+    ]
+  },
+  "protocol": {
+    "config_fingerprint": "f1d258a1161c5ba17f031a3ad89fae0e688ab135f8ced44c1dcd01b1e89491c1",
+    "device": "cpu",
+    "gumbel_m": 16,
+    "model": "runs/phase1/phase1.pt",
+    "root_noise": false,
+    "seed": 0,
+    "sims": 48,
+    "step_cap": 24,
+    "value_scale": 0.0
+  },
+  "registered_prediction": {
+    "claim_1": "scripted_in_7 mean z comes back strongly positive",
+    "claim_2": "liveness, if anywhere, sits at strata 9-10",
+    "consequence_if_all_saturated": "mint at TRUE difficulty beyond the anchor's reach \u2014 genuinely harder problems wearing scripted floors. The measurement, not the framing, decides",
+    "source": "RULING-chunk11-scripted-strata.md @ 48556a3"
+  },
+  "ruling_frozen_at": "48556a3",
+  "saturated_from_above_threshold": 0.5,
+  "wall_clock_seconds": 4675.17
+}

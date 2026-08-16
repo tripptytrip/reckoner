@@ -1,0 +1,159 @@
+{
+  "expectations_frozen_at": "5872ca8",
+  "git_sha": "46e1fdcfa7c18a5135882e0d835dbe605a304d64",
+  "protocol": {
+    "config_fingerprint": "f1d258a1161c5ba17f031a3ad89fae0e688ab135f8ced44c1dcd01b1e89491c1",
+    "device": "cpu",
+    "gumbel_m_rule": "min(16, sims), declared in PREREG-chunk11-part0bc",
+    "model": "runs/phase1/phase1.pt",
+    "root_noise": false,
+    "seed": 0,
+    "step_cap": 24,
+    "value_scale": 0.0
+  },
+  "selection": {
+    "branches": [
+      {
+        "branch": "in_window",
+        "fired": false,
+        "reason": "no swept value landed in [0.4, 0.7]"
+      },
+      {
+        "action": "extend downward over (1, 2, 3, 4) and re-apply",
+        "branch": "all_above_window",
+        "extension": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "fired": true
+      }
+    ],
+    "needs": "downward_extension",
+    "s_star": null
+  },
+  "sweep": [
+    {
+      "at_par": 1189,
+      "at_par_rate": 0.990833,
+      "beat_par": 0,
+      "capped": 0,
+      "episodes": 1200,
+      "gumbel_m": 6,
+      "over_par": 11,
+      "seconds": 452.38,
+      "sims": 6,
+      "solved": 1200,
+      "steps_minus_par": {
+        "0": 1189,
+        "1": 11,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 0
+      },
+      "stuck": 0
+    },
+    {
+      "at_par": 1189,
+      "at_par_rate": 0.990833,
+      "beat_par": 0,
+      "capped": 0,
+      "episodes": 1200,
+      "gumbel_m": 8,
+      "over_par": 11,
+      "seconds": 550.76,
+      "sims": 8,
+      "solved": 1200,
+      "steps_minus_par": {
+        "0": 1189,
+        "1": 5,
+        "2": 6,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 0
+      },
+      "stuck": 0
+    },
+    {
+      "at_par": 1189,
+      "at_par_rate": 0.990833,
+      "beat_par": 0,
+      "capped": 0,
+      "episodes": 1200,
+      "gumbel_m": 12,
+      "over_par": 11,
+      "seconds": 684.81,
+      "sims": 12,
+      "solved": 1200,
+      "steps_minus_par": {
+        "0": 1189,
+        "1": 5,
+        "2": 6,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 0
+      },
+      "stuck": 0
+    },
+    {
+      "at_par": 1189,
+      "at_par_rate": 0.990833,
+      "beat_par": 0,
+      "capped": 0,
+      "episodes": 1200,
+      "gumbel_m": 16,
+      "over_par": 11,
+      "seconds": 776.47,
+      "sims": 16,
+      "solved": 1200,
+      "steps_minus_par": {
+        "0": 1189,
+        "1": 0,
+        "2": 11,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 0
+      },
+      "stuck": 0
+    },
+    {
+      "at_par": 1193,
+      "at_par_rate": 0.994167,
+      "beat_par": 0,
+      "capped": 0,
+      "episodes": 1200,
+      "gumbel_m": 16,
+      "over_par": 7,
+      "seconds": 1475.88,
+      "sims": 48,
+      "solved": 1200,
+      "steps_minus_par": {
+        "0": 1193,
+        "1": 7,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 0
+      },
+      "stuck": 0
+    }
+  ],
+  "target": 0.55,
+  "wall_clock_seconds": 3940.3,
+  "window": [
+    0.4,
+    0.7
+  ]
+}

@@ -1,11 +1,12 @@
 {
-  "collected": 13,
+  "collected": 80,
   "error": 0,
   "exitstatus": 0,
   "failed": 0,
-  "passed": 13,
+  "passed": 80,
   "selected": [
-    "tests/test_midstrata.py"
+    "tests/test_gitignore_musttrack.py",
+    "tests/test_sweep_selection.py"
   ],
   "skipped": 0,
   "whole_suite": false,

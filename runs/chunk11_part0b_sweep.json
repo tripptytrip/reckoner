@@ -1,0 +1,288 @@
+{
+  "expectations_frozen_at": "5872ca8",
+  "git_sha": "f195306173cf6a1a688ca4526bf2136b313993e4",
+  "invocations": {
+    "amendment": "P11B-A3",
+    "note": "one rule, two invocations; merged by rung key with collision-refusal and re-judged by the committed select()",
+    "sources": [
+      {
+        "file": "chunk11_part0b_sweep.5pt.json",
+        "rungs": [
+          6,
+          8,
+          12,
+          16,
+          48
+        ],
+        "sha256": "bb766733a12e3136c26fb99fdf4daec86aba1a8581610304aff89a27eeeb9065"
+      },
+      {
+        "file": "chunk11_part0b_sweep.4pt.json",
+        "rungs": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "sha256": "8e0b6670fc70840c632b49d6c569fd6f0804fa6fd540332677e2ac978f6eeaef",
+        "superseded_selection": "downward_extension"
+      }
+    ]
+  },
+  "protocol": {
+    "config_fingerprint": "f1d258a1161c5ba17f031a3ad89fae0e688ab135f8ced44c1dcd01b1e89491c1",
+    "device": "cpu",
+    "gumbel_m_rule": "min(16, sims), declared in PREREG-chunk11-part0bc",
+    "model": "runs/phase1/phase1.pt",
+    "root_noise": false,
+    "seed": 0,
+    "step_cap": 24,
+    "value_scale": 0.0
+  },
+  "selection": {
+    "branches": [
+      {
+        "branch": "in_window",
+        "fired": false,
+        "reason": "no swept value landed in [0.4, 0.7]"
+      },
+      {
+        "action": "succession fires at iteration 0: the suite-economy primary is saturated at the floor of its own domain",
+        "at_domain_floor": true,
+        "branch": "all_above_window",
+        "fired": true,
+        "successor": "P1 becomes the scripted {7, 8, 10} paired beat-par trajectory (Part-0d certified live 2026-08-16)",
+        "successor_strata": [
+          7,
+          8,
+          10
+        ]
+      }
+    ],
+    "needs": "succession",
+    "s_star": null
+  },
+  "selector": {
+    "git_sha": "f195306173cf6a1a688ca4526bf2136b313993e4",
+    "governed_by": [
+      "P11B-A3",
+      "P11B-A4",
+      "P11B-A5"
+    ],
+    "note": "the four-point exit file was judged by the pre-A4 select(), whose all-above node had one polarity; this union is judged by the reconciled rule"
+  },
+  "sweep": [
+    {
+      "at_par": 1176,
+      "at_par_rate": 0.98,
+      "beat_par": 0,
+      "capped": 0,
+      "episodes": 1200,
+      "gumbel_m": 1,
+      "over_par": 24,
+      "seconds": 162.59,
+      "sims": 1,
+      "solved": 1200,
+      "steps_minus_par": {
+        "0": 1176,
+        "1": 24,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 0
+      },
+      "stuck": 0
+    },
+    {
+      "at_par": 1176,
+      "at_par_rate": 0.98,
+      "beat_par": 0,
+      "capped": 0,
+      "episodes": 1200,
+      "gumbel_m": 2,
+      "over_par": 24,
+      "seconds": 242.74,
+      "sims": 2,
+      "solved": 1200,
+      "steps_minus_par": {
+        "0": 1176,
+        "1": 24,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 0
+      },
+      "stuck": 0
+    },
+    {
+      "at_par": 1176,
+      "at_par_rate": 0.98,
+      "beat_par": 0,
+      "capped": 0,
+      "episodes": 1200,
+      "gumbel_m": 3,
+      "over_par": 24,
+      "seconds": 321.19,
+      "sims": 3,
+      "solved": 1200,
+      "steps_minus_par": {
+        "0": 1176,
+        "1": 17,
+        "2": 7,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 0
+      },
+      "stuck": 0
+    },
+    {
+      "at_par": 1176,
+      "at_par_rate": 0.98,
+      "beat_par": 0,
+      "capped": 0,
+      "episodes": 1200,
+      "gumbel_m": 4,
+      "over_par": 24,
+      "seconds": 396.84,
+      "sims": 4,
+      "solved": 1200,
+      "steps_minus_par": {
+        "0": 1176,
+        "1": 17,
+        "2": 7,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 0
+      },
+      "stuck": 0
+    },
+    {
+      "at_par": 1189,
+      "at_par_rate": 0.990833,
+      "beat_par": 0,
+      "capped": 0,
+      "episodes": 1200,
+      "gumbel_m": 6,
+      "over_par": 11,
+      "seconds": 452.38,
+      "sims": 6,
+      "solved": 1200,
+      "steps_minus_par": {
+        "0": 1189,
+        "1": 11,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 0
+      },
+      "stuck": 0
+    },
+    {
+      "at_par": 1189,
+      "at_par_rate": 0.990833,
+      "beat_par": 0,
+      "capped": 0,
+      "episodes": 1200,
+      "gumbel_m": 8,
+      "over_par": 11,
+      "seconds": 550.76,
+      "sims": 8,
+      "solved": 1200,
+      "steps_minus_par": {
+        "0": 1189,
+        "1": 5,
+        "2": 6,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 0
+      },
+      "stuck": 0
+    },
+    {
+      "at_par": 1189,
+      "at_par_rate": 0.990833,
+      "beat_par": 0,
+      "capped": 0,
+      "episodes": 1200,
+      "gumbel_m": 12,
+      "over_par": 11,
+      "seconds": 684.81,
+      "sims": 12,
+      "solved": 1200,
+      "steps_minus_par": {
+        "0": 1189,
+        "1": 5,
+        "2": 6,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 0
+      },
+      "stuck": 0
+    },
+    {
+      "at_par": 1189,
+      "at_par_rate": 0.990833,
+      "beat_par": 0,
+      "capped": 0,
+      "episodes": 1200,
+      "gumbel_m": 16,
+      "over_par": 11,
+      "seconds": 776.47,
+      "sims": 16,
+      "solved": 1200,
+      "steps_minus_par": {
+        "0": 1189,
+        "1": 0,
+        "2": 11,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 0
+      },
+      "stuck": 0
+    },
+    {
+      "at_par": 1193,
+      "at_par_rate": 0.994167,
+      "beat_par": 0,
+      "capped": 0,
+      "episodes": 1200,
+      "gumbel_m": 16,
+      "over_par": 7,
+      "seconds": 1475.88,
+      "sims": 48,
+      "solved": 1200,
+      "steps_minus_par": {
+        "0": 1193,
+        "1": 7,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6+": 0,
+        "<0": 0
+      },
+      "stuck": 0
+    }
+  ],
+  "target": 0.55,
+  "window": [
+    0.4,
+    0.7
+  ]
+}
