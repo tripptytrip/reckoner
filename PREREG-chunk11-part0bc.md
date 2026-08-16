@@ -245,3 +245,121 @@ quoted:
 These are three different gates and they license three different sentences. From
 here, **every no-regress floor in this project names its kind** at the point it
 is declared. The 1188 floor is an **indistinguishability** floor.
+
+---
+
+# Amendment P11B-A3 — 2026-08-16, the downward extension armed before it runs
+
+**Written after Part-0b ran and after seeing its selection return
+`s_star: null, needs: downward_extension`** — the measurement that forces this
+amendment is already on the record at `runs/chunk11_part0b_sweep.json`. What was
+known when it changed: all five swept budgets returned at-par in
+`[0.9908, 0.9942]`, every one of them above the window's upper edge of 0.70, so
+the `all_above_window` branch fired exactly as pre-registered.
+
+## 1. What changes, and what does not
+
+**One rule, two invocations.** The selection criterion is untouched: target 0.55,
+window `[0.4, 0.7]`, nearest-to-target with ties broken toward smaller `sims`.
+The **domain** extends downward-only over `(1, 2, 3, 4)` — forced by data, and
+covering only points that carry no measurement. That is the amendment policy's
+allowance exercised as designed, not a widened window and not a moved target.
+
+**The m-clamp is unchanged and is stated per extended point.** The rule is
+`m = min(cfg.search.gumbel_m, sims)` with `gumbel_m = 16`, i.e. `min(16, sims)`,
+exactly as declared above and as recorded in the Part-0b protocol block. It is
+**not** `min(5, sims)`. For every extended point the clamp binds trivially:
+
+```
+sims = 1  →  m = 1        sims = 3  →  m = 3
+sims = 2  →  m = 2        sims = 4  →  m = 4
+```
+
+The values coincide with what a `min(5, sims)` clamp would give over this domain,
+but the rule carried forward is the frozen one. No new clamp is introduced, which
+is what a domain-only amendment requires.
+
+## 2. The branch table, frozen before the extension runs
+
+The rule must not meet its next result unarmed. Over the union of the five swept
+and four extended points:
+
+**(a) Any extended point lands in `[0.4, 0.7]`.** `s* =` the in-window point
+nearest 0.55; ties toward smaller `sims`.
+
+**(b) The window is straddled with a gap** — points above and below, none
+within. `s* =` the point nearest 0.55 overall, and **the out-of-window fact is
+stated on the row**, not silently carried.
+
+**(c) `sims = 1` still exceeds 0.70.** The suite-economy primary is saturated
+too, and **succession fires at iteration 0**: P1 becomes the scripted `{7, 8, 10}`
+paired beat-par trajectory — the instrument Part-0d certified live on
+2026-08-16. The succession lesson would then have completed its arrival entirely
+pre-launch.
+
+## 3. Known at the time of writing: the reference implementation diverges
+
+Stated here because the policy asks what was already known when the amendment
+changed, and because a rule that its own code contradicts is not armed:
+
+`scripts/chunk11_part0b.py::select()` as committed at `46e1fdc` implements
+**different behaviour on two of the three branches above**.
+
+- On a straddle it returns `s_star: None` with `needs: bisection` (bisecting at
+  the bracket midpoint), or `needs: ruling` when the bracket is adjacent
+  integers. It does **not** return the nearest-0.55 point that **(b)** specifies.
+- On all-above it re-fires `all_above_window` and asks for the same downward
+  extension again — degenerate at `sims = 1`, which is the floor of the domain.
+  It does not implement the succession of **(c)**.
+
+**The table above governs; the code must be reconciled to it before any
+selection is computed.** Only branch **(a)** is presently implemented as
+frozen.
+
+Two further mechanical facts about that script, recorded so the extension does
+not damage the record:
+
+- `main()` applies `select()` to **only the points named in `--sims`**, not to
+  the union of both invocations. Branches **(b)** and **(c)** are union
+  predicates and cannot be evaluated from a four-point invocation.
+- `main()` writes unconditionally to `runs/chunk11_part0b_sweep.json`. A
+  `--sims 1 2 3 4` invocation would **overwrite the five-point record**. The
+  five-point record is preserved before the extension runs.
+
+## 4. Rider (b)'s due diligence on the four byte-identical counts
+
+Four points returned at-par `1189/1200` byte-identically (`sims` 6, 8, 12, 16),
+which is the house's own trigger for asking whether the knob is connected.
+
+**Item 1 — per-point cost. Answered from the record; the knob is live.**
+Wall-clock is strictly monotone increasing in `sims`:
+
+```
+sims= 6   m= 6    452.38s
+sims= 8   m= 8    550.76s     1.217x
+sims=12   m=12    684.81s     1.243x
+sims=16   m=16    776.47s     1.134x
+sims=48   m=16   1475.88s     1.901x
+
+sims=16 / sims=6 = 1.716x
+```
+
+`sims = 16` costs 1.716x `sims = 6`. The identical counts are therefore four
+distinct and increasingly expensive computations returning the same answer, not
+one computation reported four times. Cost is markedly **sublinear** in `sims`
+(2.67x the budget for 1.72x the wall-clock), consistent with episodes
+terminating sooner at higher budgets and with batch amortisation.
+
+**Item 2 — the failing sets. Not answerable from existing artifacts.**
+`IterationStats` accumulates the `steps_minus_par` histogram and episode
+counters only; `run_iteration`'s fourth positional argument is
+`ring: ReplayRing | None`, a replay sink, not a per-episode outcome recorder. No
+committed artifact carries the identity of the 11 missing problems at any point.
+Answering it requires a **separate diagnostic** that records per-episode
+`(problem, steps - par)` at `sims = 6` and `sims = 16`, leaving the frozen
+instrument untouched. Such a re-run is faithful rather than a fresh sample:
+seeding is a per-episode, per-step fan-out from `seed = 0` over a fixed problem
+order, so it reproduces the same episodes. Estimated cost `452 + 776 = 1229s`.
+
+**This item is open. The primary must not be built on this axis until it
+closes.**
