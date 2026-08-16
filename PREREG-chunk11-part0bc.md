@@ -363,3 +363,89 @@ order, so it reproduces the same episodes. Estimated cost `452 + 776 = 1229s`.
 
 **This item is open. The primary must not be built on this axis until it
 closes.**
+
+---
+
+# Amendment P11B-A4 — 2026-08-16, the reconciliation ruled: (b) withdrawn, (c) governs
+
+**Two disclosures in the first sentence, because both bear on custody.** The
+ruling below was formed *before* any extended rung had returned — it responds to
+P11B-A3 §3's recorded divergence between table and code, not to a number. This
+amendment is *transcribed* after `sims = 1` and `sims = 2` had both returned
+`1176/1200 = 0.9800`, which is disclosed because the reader cannot otherwise tell
+that the rule was armed blind. Nothing below was chosen with those two rungs in
+view.
+
+A3 recorded a contradiction between two authorities and explicitly declined to
+resolve it. This resolves it, and it does not resolve uniformly in the table's
+favour.
+
+## 1. Branch (a) stands
+
+Code and table already agreed. No change.
+
+## 2. Branch (b) is **withdrawn** — the committed criterion governs
+
+A3 §2(b) specified: on a straddle with a gap, `s* =` the point nearest 0.55
+overall with the out-of-window fact stated on the row. That was called a
+criterion that was untouched. **It was not.** Selecting a point outside the
+declared window while unmeasured in-window points still exist is precisely the
+fishing room the window was frozen to remove.
+
+The committed `select()` is the better design and is retained unchanged:
+
+- **Bisection into the gap is domain completion** — the same move as A3's
+  downward extension, pointed inward instead of down.
+- **`needs: ruling` at adjacent-integer exhaustion is the honest terminal**, because
+  a human ruling on an exhausted domain carries no selection freedom. If that node
+  ever fires, out-of-window-nearest becomes *one candidate decided then*, with the
+  full bracket in hand — not a rule pre-committed to it now.
+
+## 3. Branch (c) governs — and enters `select()` as code
+
+The code's all-above node was degenerate by its own behaviour: at the floor of the
+domain it requested a downward extension below `sims = 1`, which does not exist,
+and it carried no successor concept because it predates Part-0d. **Completing a
+rule at a node whose input did not yet exist is the amendment policy's exact
+allowance**, exercised as designed.
+
+Implemented at `scripts/chunk11_part0b.py`, both polarities, each with a test:
+
+| condition | verdict |
+|---|---|
+| all-above **and** `min(sims) <= DOMAIN_FLOOR` (= 1) | `needs: succession` — P1 becomes the scripted `{7, 8, 10}` paired beat-par trajectory |
+| all-above **and** `min(sims) > 1` | `needs: downward_extension`, as before |
+
+Both are asserted in `tests/test_sweep_selection.py`. The second exists so the
+succession clause cannot be a rule that always fires — which would make the
+extension unreachable and A3's own domain move a fiction.
+
+## 4. The union merge, hardened
+
+Branches (b) and (c) are predicates over the **whole measured domain**, so a
+selection computed from one invocation's points answers a different question than
+the rule asks. `main()` previously did exactly that, and wrote unconditionally to
+the canonical path.
+
+- `merge_points()` unions by **rung key**. A rung measured twice must agree on
+  every count; `seconds` is excluded, being wall-clock with no measurement
+  content. **Disagreement raises `RungCollision`** — two measurements of one rung
+  disagreeing is a finding demanding a diagnosis, never an overwrite deciding
+  silently which one history keeps.
+- `load_prior()` refuses a union across differing `config_fingerprint`, checked
+  *before* any measurement runs so a mixed-protocol union fails in seconds rather
+  than after the sweep is paid for.
+- The record now carries `invocations.measured_this_invocation` and
+  `carried_from_prior_record`, so a union is never mistaken for one sitting.
+
+## 5. Recorded in passing: the tie-break's actual reach
+
+The declared break — nearest 0.55, ties toward smaller `sims` — compares
+`abs(rate - TARGET)` as floats. Two rates that are equidistant *in decimal* are
+therefore not tied: `abs(0.50 - 0.55) = 0.05000000000000004` against
+`abs(0.60 - 0.55) = 0.049999999999999996`, and the nearer-in-float point wins
+outright. The break is **live for equal rates** — the tie this instrument
+actually produces, four rungs having returned a byte-identical 1189 — and
+**silent for decimal-symmetric ones**. Stated so the rule's reach is not
+overstated later. This is a characterisation, not a defect, and no threshold
+moves.

@@ -37,6 +37,16 @@ TARGET = 0.55
 WINDOW = (0.4, 0.7)
 DOWNWARD_EXTENSION = (1, 2, 3, 4)
 
+# The floor of the sims domain: a search with no simulations is not a search, so
+# there is nothing below sims=1 to extend into. Reaching it turns the all-above
+# node from "extend downward" into a terminal verdict — see P11B-A3 §2(c).
+DOMAIN_FLOOR = 1
+
+# Part-0d's ruling, 2026-08-16: scripted_in_9 is the sole saturated stratum
+# (beat-par 164/200 = 0.82, past the >=0.5 definition) and demotes to
+# informational; the successor set is the three strata that carry headroom.
+SUCCESSOR_STRATA = (7, 8, 10)
+
 
 def eval_config() -> Config:
     cfg = Config()
@@ -109,10 +119,31 @@ def select(points: list[dict]) -> dict:
     )
 
     if not below:
+        # Both polarities of the all-above node, per P11B-A3 §2(c). The node as
+        # first written could only ask for a downward extension, which at the
+        # domain floor requests points below sims=1 — an impossibility — and it
+        # predated Part-0d, so it had no successor to name. Completing it at a
+        # node whose input did not yet exist is the amendment policy's allowance.
+        if min(p["sims"] for p in ordered) <= DOMAIN_FLOOR:
+            branches.append(
+                {
+                    "branch": "all_above_window",
+                    "fired": True,
+                    "at_domain_floor": True,
+                    "action": "succession fires at iteration 0: the suite-economy "
+                    "primary is saturated at the floor of its own domain",
+                    "successor": "P1 becomes the scripted "
+                    f"{{{', '.join(str(k) for k in SUCCESSOR_STRATA)}}} paired "
+                    "beat-par trajectory (Part-0d certified live 2026-08-16)",
+                    "successor_strata": list(SUCCESSOR_STRATA),
+                }
+            )
+            return {"s_star": None, "needs": "succession", "branches": branches}
         branches.append(
             {
                 "branch": "all_above_window",
                 "fired": True,
+                "at_domain_floor": False,
                 "action": f"extend downward over {DOWNWARD_EXTENSION} and re-apply",
                 "extension": list(DOWNWARD_EXTENSION),
             }
@@ -151,6 +182,62 @@ def select(points: list[dict]) -> dict:
     }
 
 
+class RungCollision(ValueError):
+    """Two measurements of one rung disagree, or two protocols would be mixed.
+
+    Either is a finding that demands a diagnosis. Neither is an overwrite that
+    silently decides which measurement history keeps.
+    """
+
+
+def merge_points(prior: list[dict], fresh: list[dict]) -> list[dict]:
+    """Union two invocations by rung key, refusing disagreeing collisions.
+
+    Branches (b) and (c) are predicates over the **whole measured domain**, so a
+    selection computed from one invocation's points answers a different question
+    than the rule asks. Hence the union, keyed on ``sims``.
+
+    ``seconds`` is excluded from the agreement check: wall-clock legitimately
+    differs between invocations and carries no measurement content. Every count
+    that does carry content must agree exactly.
+    """
+    counts = ("episodes", "gumbel_m", "at_par", "beat_par", "over_par",
+              "solved", "capped", "stuck", "steps_minus_par")
+    by_sims: dict[int, dict] = {p["sims"]: p for p in prior}
+    for point in fresh:
+        seen = by_sims.get(point["sims"])
+        if seen is not None:
+            differing = sorted(k for k in counts if seen.get(k) != point.get(k))
+            if differing:
+                raise RungCollision(
+                    f"sims={point['sims']} is measured twice and the counts "
+                    f"disagree on {differing}. Two measurements of one rung "
+                    "disagreeing is a finding: diagnose it. It is not an "
+                    "overwrite deciding silently which one history keeps."
+                )
+        by_sims[point["sims"]] = point
+    return [by_sims[k] for k in sorted(by_sims)]
+
+
+def load_prior(path: Path, cfg: Config) -> list[dict]:
+    """Points already measured under *this* protocol, or none.
+
+    Checked before any measurement runs, so a mixed-protocol union fails in
+    seconds rather than after the sweep has been paid for.
+    """
+    if not path.exists():
+        return []
+    record = json.loads(path.read_text())
+    prior_fp = record.get("protocol", {}).get("config_fingerprint")
+    if prior_fp != config_fingerprint(cfg):
+        raise RungCollision(
+            f"the existing sweep record was measured under fingerprint "
+            f"{prior_fp}, this invocation runs {config_fingerprint(cfg)}; a "
+            "union across two protocols is refused"
+        )
+    return record.get("sweep", [])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sims", type=int, nargs="*", default=list(SWEEP))
@@ -165,6 +252,9 @@ def main() -> int:
         path.stem: [suite_problem(r) for r in read_suite(path)]
         for path in sorted(SUITES.glob("solve_in_*.jsonl"))
     }
+    record_path = REPO / "runs" / "chunk11_part0b_sweep.json"
+    prior = load_prior(record_path, cfg)
+
     started = time.perf_counter()
     points = []
     for sims in sorted(args.sims):
@@ -178,6 +268,8 @@ def main() -> int:
             flush=True,
         )
 
+    measured_here = sorted(p["sims"] for p in points)
+    points = merge_points(prior, points)
     selection = select(points)
     report = {
         "expectations_frozen_at": EXPECTATIONS_SHA,
@@ -194,11 +286,21 @@ def main() -> int:
         },
         "target": TARGET,
         "window": list(WINDOW),
+        # One rule, two invocations (P11B-A3). The record states which rungs this
+        # invocation measured and which it carried, so the union is never mistaken
+        # for a single sitting.
+        "invocations": {
+            "amendment": "P11B-A3",
+            "measured_this_invocation": measured_here,
+            "carried_from_prior_record": sorted(
+                p["sims"] for p in points if p["sims"] not in measured_here
+            ),
+        },
         "sweep": points,
         "selection": selection,
         "wall_clock_seconds": round(time.perf_counter() - started, 2),
     }
-    write_record(REPO / "runs" / "chunk11_part0b_sweep.json", report)
+    write_record(record_path, report)
     print("\n  SELECTION\n")
     print(json.dumps(selection, indent=2))
     print(f"\n  wall clock {report['wall_clock_seconds']}s")
