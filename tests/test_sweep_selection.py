@@ -45,6 +45,7 @@ def point(sims: int, at_par_rate: float, **over: object) -> dict:
 
 # --------------------------------------------------------------- branch (c)
 
+
 def test_all_above_at_the_domain_floor_fires_succession() -> None:
     """P11B-A3 §2(c). At sims=1 there is nothing below to extend into.
 
@@ -79,6 +80,7 @@ def test_all_above_off_the_floor_still_asks_for_the_extension() -> None:
 
 
 # --------------------------------------------------------------- branch (a)
+
 
 def test_in_window_selects_nearest_target() -> None:
     verdict = sweep.select([point(4, 0.45), point(8, 0.60), point(16, 0.99)])
@@ -131,6 +133,7 @@ def test_the_distance_key_carries_no_float_sensitivity() -> None:
 
 # ------------------------------------------------- branch (b), as withdrawn
 
+
 def test_a_straddle_bisects_rather_than_selecting_out_of_window() -> None:
     """P11B-A3's (b) was withdrawn: the committed criterion governs.
 
@@ -158,10 +161,9 @@ def test_an_adjacent_straddle_is_terminal_and_does_not_widen_the_window() -> Non
 
 # --------------------------------------------------------- the union merge
 
+
 def test_the_union_is_by_rung_key_and_sorted() -> None:
-    merged = sweep.merge_points(
-        [point(6, 0.99), point(48, 0.99)], [point(1, 0.98), point(4, 0.98)]
-    )
+    merged = sweep.merge_points([point(6, 0.99), point(48, 0.99)], [point(1, 0.98), point(4, 0.98)])
     assert [p["sims"] for p in merged] == [1, 4, 6, 48]
 
 

@@ -222,8 +222,17 @@ def merge_points(prior: list[dict], fresh: list[dict]) -> list[dict]:
     differs between invocations and carries no measurement content. Every count
     that does carry content must agree exactly.
     """
-    counts = ("episodes", "gumbel_m", "at_par", "beat_par", "over_par",
-              "solved", "capped", "stuck", "steps_minus_par")
+    counts = (
+        "episodes",
+        "gumbel_m",
+        "at_par",
+        "beat_par",
+        "over_par",
+        "solved",
+        "capped",
+        "stuck",
+        "steps_minus_par",
+    )
     by_sims: dict[int, dict] = {p["sims"]: p for p in prior}
     for point in fresh:
         seen = by_sims.get(point["sims"])

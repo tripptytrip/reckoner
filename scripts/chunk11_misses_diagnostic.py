@@ -89,6 +89,7 @@ class ReproductionFailure(RuntimeError):
 
 # ------------------------------------------------------- the anchor's misses
 
+
 @contextmanager
 def capture(sink: list[dict]):
     """Record every settled episode, then hand off to the committed scorer."""
@@ -135,6 +136,7 @@ def recorded_at_par(sims: int) -> int | None:
 
 # ---------------------------------------------- the scripted solver's misses
 
+
 def _scripted(row: dict) -> tuple[str, int, str, int | None]:
     problem = suite_problem(row)
     return (
@@ -174,10 +176,16 @@ def scripted_misses(rows: list[dict], workers: int) -> tuple[dict[str, int], dic
 
     recorded = json.loads(PAR_DELTA.read_text())
     for field in ("by_depth", "by_goal", "unsolved"):
-        want = {k: {str(d): n for d, n in v.items()} for k, v in recorded[field].items()} \
-            if field != "unsolved" else recorded[field]
-        got = {k: {str(d): n for d, n in v.items()} for k, v in rebuilt[field].items()} \
-            if field != "unsolved" else rebuilt[field]
+        want = (
+            {k: {str(d): n for d, n in v.items()} for k, v in recorded[field].items()}
+            if field != "unsolved"
+            else recorded[field]
+        )
+        got = (
+            {k: {str(d): n for d, n in v.items()} for k, v in rebuilt[field].items()}
+            if field != "unsolved"
+            else rebuilt[field]
+        )
         if want != got:
             raise ReproductionFailure(
                 f"the scripted recomputation does not reproduce par_delta.json "
@@ -190,6 +198,7 @@ def scripted_misses(rows: list[dict], workers: int) -> tuple[dict[str, int], dic
 
 
 # --------------------------------------------------------------------- main
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -283,7 +292,8 @@ def main() -> int:
         ),
         "obs_2_largest_budget_tail_pars": sorted(tail),
         "obs_3_counts_equal": cross["counts_equal"],
-        "answer_sets_coincide_by_key": bool(shared) and cross["only_sims_1"] == []
+        "answer_sets_coincide_by_key": bool(shared)
+        and cross["only_sims_1"] == []
         and cross["only_scripted"] == [],
         "answer_overlap_jaccard": cross["jaccard"],
     }

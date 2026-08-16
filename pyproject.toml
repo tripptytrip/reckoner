@@ -8,12 +8,10 @@ version = "0.1.0"
 description = "Math in base-625, trained by search against a checker (experiment two, Stage A)"
 requires-python = ">=3.12"
 dependencies = [
-    "torch>=2.2.0",
-    # ROCm's torch depends on triton-rocm, which lives only on the pytorch ROCm
-    # index. `tool.uv.sources` is honoured for DIRECT dependencies only, so a
-    # transitive triton-rocm is looked up on PyPI, where it does not exist. Naming
-    # it here is what makes the source mapping below apply to it.
-    "triton-rocm>=3.7.1; sys_platform == 'linux'",
+    # torch is NOT here: it lives in the accelerator extras below, because uv
+    # requires an extra-scoped source to name its package in that extra. The
+    # consequence is deliberate — a bare `uv sync` yields no torch and fails
+    # loudly, instead of resolving one host's wheels onto the other host.
     "numpy>=1.26.0",
     "pyyaml>=6.0",
 ]
@@ -26,37 +24,86 @@ dev = [
     "py-spy>=0.3",
 ]
 
+# --- the accelerator extras: exactly one, chosen per host -------------------
+# Both hosts are linux-x86_64, so a platform marker cannot tell them apart.
+# Conflicting extras can: one lockfile carries every graph, and the host picks
+# with a sync flag rather than by editing this file.
+rocm = [
+    "torch>=2.2.0",
+    # ROCm's torch depends on triton-rocm, which lives only on the pytorch ROCm
+    # index. `tool.uv.sources` is honoured for DIRECT dependencies only, so a
+    # transitive triton-rocm is looked up on PyPI, where it does not exist. Naming
+    # it here is what makes the source mapping below apply to it.
+    "triton-rocm>=3.7.1; sys_platform == 'linux'",
+]
+cpu = ["torch>=2.2.0"]
+# REGISTERED AND DEFERRED. CUDA is present on the campaign host and unused by
+# M1: `evaluate.py` selects no device, so the model never leaves the CPU. The
+# equivalence battery that would license CUDA as a measurement device therefore
+# licenses nothing M1 executes, and it runs in the round that first wants the
+# GPU — one sync flag away, rather than a pyproject edit away.
+cuda = ["torch>=2.2.0"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/reckoner"]
 
 # ---------------------------------------------------------------------------
-# Torch: CPU-first, and the index is PINNED.
+# Torch: the index is PINNED, per host, by extra.
 #
-# A bare `pip install torch` pulls CUDA wheels from PyPI. On this box that is
-# ~2.5GB of nvidia-* libraries for hardware that does not exist, and they import
-# fine and then run CPU-only forever — the single most expensive recurring
-# failure in the chess project (AGENTS.md §2). Pinning the index here means
-# resolution cannot drift back to CUDA no matter who runs `uv sync`.
+# A bare `pip install torch` pulls CUDA wheels from PyPI. On the local box that
+# is ~2.5GB of nvidia-* libraries for hardware that does not exist, and they
+# import fine and then run CPU-only forever — the single most expensive
+# recurring failure in the chess project (AGENTS.md §2). Pinning the index means
+# resolution cannot drift no matter who runs `uv sync`.
 #
-# CPU is the correct default through chunk 6: this domain is CPU-heavy
-# (pattern-matching movegen) and GPU-light, tests must pass CPU-only, and the
-# model is 2–7M parameters. Chunk 7 is the first chunk with a reason to care.
+# TWO HOSTS, ONE LOCKFILE. The local box is gfx1151/ROCm; the campaign host is
+# an EPYC with an RTX 5090. Both are linux-x86_64, so `sys_platform` cannot
+# separate them — a marker-based split silently resolves one host's wheels onto
+# the other. Conflicting extras can separate them, and they keep ONE
+# lockfile-of-record containing every graph:
 #
-# ROCm variant (optional until chunk 7) — swap the URL below to
-#   https://download.pytorch.org/whl/rocm7.2
-# and rebuild the venv from scratch (`rm -rf .venv && make install`); do not
-# perform surgery on an existing one. gfx1151 needs the rocm7.1 index or newer.
-# Verify with `python scripts/check_env.py`: a `+cu` suffix on this machine is
+#     local box    uv sync --extra rocm --extra dev    torch 2.13.0+rocm7.2
+#     campaign pod uv sync --extra cpu  --extra dev    torch 2.13.0+cpu
+#
+# Version parity across hosts is deliberate: 2.13.0 either side. The pod's
+# system torch is 2.8.0+cu128 and is REFUSED — running a campaign on a different
+# major torch to save one download is a protocol divergence wearing convenience.
+#
+# `cuda` is registered and deferred; see the extra's own comment above.
+# Verify with `python scripts/check_env.py`: a `+cu` suffix on the LOCAL box is
 # always wrong. See AGENTS.md §2 for the full rule.
 # ---------------------------------------------------------------------------
+[tool.uv]
+conflicts = [[{ extra = "rocm" }, { extra = "cpu" }, { extra = "cuda" }]]
+
 [tool.uv.sources]
-torch = { index = "pytorch-rocm" }
-triton-rocm = { index = "pytorch-rocm" }
+torch = [
+    { index = "pytorch-rocm", extra = "rocm" },
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cuda", extra = "cuda" },
+]
+triton-rocm = { index = "pytorch-rocm", extra = "rocm" }
+# Left UNSCOPED deliberately. uv refuses an extra-scoped source for a package
+# absent from that extra's dependencies — and by uv's own rule (sources apply to
+# direct dependencies only) this mapping was already inert, since
+# pytorch-triton-rocm was never a declared dependency. Kept as the defensive
+# mapping it always was, against the wheel being renamed back on some future
+# ROCm index.
 pytorch-triton-rocm = { index = "pytorch-rocm" }
 
 [[tool.uv.index]]
 name = "pytorch-rocm"
 url = "https://download.pytorch.org/whl/rocm7.2"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
 [tool.ruff]

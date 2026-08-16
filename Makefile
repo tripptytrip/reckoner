@@ -16,16 +16,37 @@ RUFF := $(if $(wildcard $(VENV)/bin/ruff),$(VENV)/bin/ruff,ruff)
 PYTEST := $(if $(wildcard $(VENV)/bin/pytest),$(VENV)/bin/pytest,pytest)
 PYTHON := $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python3)
 
+# ACCEL selects the accelerator extra, and has NO DEFAULT ON PURPOSE. One
+# lockfile serves two hosts that are both linux-x86_64 — the local gfx1151/ROCm
+# box and the EPYC campaign pod — so nothing about the machine distinguishes
+# them at resolve time. A default here would install one host's wheels on the
+# other silently, which is the exact failure this split exists to prevent, so
+# the choice is made out loud or not at all.
+#
+#   local box     make install ACCEL=rocm
+#   campaign pod  make install ACCEL=cpu
+#
+# ACCEL=cuda is registered and deferred; see pyproject.toml.
+ACCEL_VALID := rocm cpu cuda
+ifneq ($(filter $(MAKECMDGOALS),install relock),)
+  ifeq ($(ACCEL),)
+    $(error ACCEL is unset. Choose the accelerator extra explicitly: make $(MAKECMDGOALS) ACCEL=rocm (local box) or ACCEL=cpu (campaign pod))
+  endif
+  ifeq ($(filter $(ACCEL),$(ACCEL_VALID)),)
+    $(error ACCEL=$(ACCEL) is not one of: $(ACCEL_VALID))
+  endif
+endif
+
 # --frozen: install exactly what uv.lock pins, never re-resolve. An unfrozen
 # install makes "green in a clean clone" mean "green against whatever versions
 # existed this morning", which is not the claim the gate is supposed to make.
 # Use `make relock` to change dependencies on purpose.
 install:
-	$(UV) sync --frozen --extra dev
+	$(UV) sync --frozen --extra $(ACCEL) --extra dev
 
 relock:
 	$(UV) lock
-	$(UV) sync --frozen --extra dev
+	$(UV) sync --frozen --extra $(ACCEL) --extra dev
 
 lint:
 	$(UV) lock --check
