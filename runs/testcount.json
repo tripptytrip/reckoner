@@ -1,15 +1,14 @@
 {
-  "collected": 80,
+  "collected": 852,
   "error": 0,
   "exitstatus": 0,
   "failed": 0,
-  "passed": 80,
+  "passed": 852,
   "selected": [
-    "tests/test_gitignore_musttrack.py",
-    "tests/test_sweep_selection.py"
+    "tests/"
   ],
   "skipped": 0,
-  "whole_suite": false,
+  "whole_suite": true,
   "xfailed": 0,
   "xpassed": 0
 }
