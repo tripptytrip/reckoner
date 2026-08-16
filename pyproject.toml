@@ -44,6 +44,11 @@ cpu = ["torch>=2.2.0"]
 # GPU — one sync flag away, rather than a pyproject edit away.
 cuda = ["torch>=2.2.0"]
 
+[project.scripts]
+# The lawful command must be the shortest one available at the point of
+# temptation, or the law loses to ergonomics — five times in one session, so far.
+reckoner-marker = "reckoner.marker:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/reckoner"]
 

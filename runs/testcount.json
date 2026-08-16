@@ -1,9 +1,9 @@
 {
-  "collected": 862,
+  "collected": 870,
   "error": 0,
   "exitstatus": 0,
   "failed": 0,
-  "passed": 862,
+  "passed": 870,
   "selected": [
     "tests/"
   ],
