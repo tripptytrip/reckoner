@@ -55,8 +55,9 @@ import torch
 
 from reckoner import runner
 from reckoner.config import Config
-from reckoner.dataset import git_sha, problem_key, read_suite, suite_problem, write_record
+from reckoner.dataset import git_sha, read_suite, suite_problem, write_record
 from reckoner.evaluate import model_evaluator
+from reckoner.ladder import problem_key_of
 from reckoner.model import load_checkpoint
 from reckoner.runner import run_iteration
 from reckoner.solver import scripted_par_delta
@@ -97,7 +98,7 @@ def capture(sink: list[dict]):
         par = e.problem.par or 0
         sink.append(
             {
-                "key": problem_key(e.problem),
+                "key": problem_key_of(e.problem),
                 "par": par,
                 "steps": e.steps,
                 "delta": (e.steps - par) if solved else None,
@@ -136,7 +137,12 @@ def recorded_at_par(sims: int) -> int | None:
 
 def _scripted(row: dict) -> tuple[str, int, str, int | None]:
     problem = suite_problem(row)
-    return problem_key(problem), row["depth"], NAMES[row["goal"]], scripted_par_delta(problem, CFG)
+    return (
+        problem_key_of(problem),
+        row["depth"],
+        NAMES[row["goal"]],
+        scripted_par_delta(problem, CFG),
+    )
 
 
 def scripted_misses(rows: list[dict], workers: int) -> tuple[dict[str, int], dict]:
@@ -199,7 +205,8 @@ def main() -> int:
     paths = sorted(SUITES.glob("solve_in_*.jsonl"))
     problems_by_suite = {p.stem: [suite_problem(r) for r in read_suite(p)] for p in paths}
     rows = [r for p in paths for r in read_suite(p)]
-    depth_of = {problem_key(suite_problem(r)): r["depth"] for r in rows}
+    depth_of = {problem_key_of(suite_problem(r)): r["depth"] for r in rows}
+    goal_of = {problem_key_of(suite_problem(r)): NAMES[r["goal"]] for r in rows}
 
     print("  scripted solver, recomputed for identity")
     scripted, rebuilt = scripted_misses(rows, args.workers)
@@ -261,6 +268,7 @@ def main() -> int:
         if (one | scripted_keys)
         else None,
         "shared_by_par": dict(sorted(Counter(depth_of[k] for k in shared).items())),
+        "shared_by_goal": dict(sorted(Counter(goal_of[k] for k in shared).items())),
     }
 
     scripted_by_depth = {
