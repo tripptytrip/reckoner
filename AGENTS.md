@@ -90,8 +90,8 @@ From the plan's §8 block and amendment v1.1. Several are enforced by
 | Box | GMKtec NucBox EVO-X2 (mini PC) | — |
 | APU | AMD Ryzen AI Max+ 395 "Strix Halo", 16C/32T | `lscpu` |
 | GPU | Integrated Radeon 8060S — **gfx1151**, RDNA 3.5 | `rocm-smi` |
-| VRAM | **96 GiB** dedicated (BIOS UMA carveout) | `rocm-smi --showmeminfo vram` → 103079215104 B |
-| Host RAM | **~30 GiB** visible to the OS; 8 GiB swap | `free -h` |
+| VRAM | **64 GiB** dedicated (BIOS UMA carveout) | `mem_info_vram_total` → 68719476736 B, 2026-08-16 |
+| Host RAM | **~62 GiB** visible to the OS; 8 GiB swap | `free -h`, 2026-08-16 |
 | OS | Ubuntu 24.04.4 LTS, ROCm 7.1.0 userspace | `/opt/rocm/.info/version` |
 | GPU stack | **ROCm — there is no NVIDIA hardware here. CUDA wheels will never work.** | — |
 
@@ -102,19 +102,63 @@ Implications you must internalize:
   Do not write ROCm-specific device strings.
 - `nvidia-smi` does not exist. Use `rocminfo | grep gfx` (expect `gfx1151`) and
   `rocm-smi` for utilization.
-- **The two memory pools have opposite pressure profiles.** GPU-side: 96 GiB —
-  enormous for this class of hardware, though a running local-LLM server can be
-  holding most of it; check `rocm-smi` before assuming it is free. Host-side:
-  ~30 GiB, of which the OS, browser and file cache routinely consume half —
-  **host RAM is the scarce resource on this box.** Size replay buffers, dataset
-  loads and worker pools against ~15 GiB of realistically free host memory, not
-  against "128GB". Prefer streaming/memmap over loading datasets into host RAM;
-  swap is small, so an OOM-adjacent allocation thrashes or dies rather than
-  degrading gracefully.
+- **The two memory pools have opposite pressure profiles, and the split was
+  rebalanced on 2026-08-16.** GPU-side: 64 GiB, still enormous for this class of
+  hardware, and a running local-LLM server can be holding most of it — check
+  `rocm-smi` before assuming it is free. Host-side: ~62 GiB. Size replay buffers,
+  dataset loads and worker pools against ~45 GiB of realistically free host
+  memory, not against "128GB". Prefer streaming/memmap over loading datasets into
+  host RAM; swap is 8 GiB, so an OOM-adjacent allocation still thrashes or dies
+  rather than degrading gracefully.
+
+  **Why it moved, because the reason outranks the number.** The carveout was
+  96 GiB, leaving ~30 GiB host. On 2026-08-15 a CPU-only sweep drove host memory
+  to 30.7 GiB with all 8 GiB of swap consumed; the reclaim thrash pushed package
+  power from a 62 W baseline to **88 W** and Tctl from 96 °C to **101.2 °C**, and
+  the box hard powered off — rails cut, no panic, no OOM in the log, nothing.
+  The OOM killer had taken the editor and a browser process minutes earlier. The
+  same sweep at 64/62 peaked at 14.8 GiB with **swap never touched**, ran
+  143 minutes continuously, and recorded **zero** samples above 80 W. The steady
+  97 °C clamp was survivable throughout; what was not survivable was the power
+  excursion that swap thrash produced. **On this box a host-memory shortfall is a
+  hardware-stability problem, not just an allocation problem** — it arrives as a
+  power transient through the shared LPDDR5X controller. Size against host RAM
+  accordingly, and do not raise the carveout back without a reason that outweighs
+  that.
 - gfx1151 support is recent (ROCm 7.1+). If GPU code misbehaves, suspect the
   wheel/stack version before the code. History on this box: the `amdgpu` driver
   was once blacklisted and silently forced CPU-only operation — if the GPU
   vanishes, check `lsmod | grep amdgpu` and `/etc/modprobe.d/` first.
+
+### 3.1 Telemetry is standing equipment for campaign runs
+
+**Any run expected to exceed ~30 minutes runs with the flight recorder on.** Not
+optional, and not something to switch on after a failure — after a failure is
+exactly when it cannot be switched on.
+
+`pcwatch` (`~/.local/bin/pcwatch`, systemd user service `pcwatch.service`) samples
+package power, Tctl, every temperature sensor, clocks, load, host memory, swap and
+page-churn at **1 Hz**, and **fsyncs every row before taking the next sample**.
+That last property is the whole point: on 2026-08-15 the box hard powered off and
+journald lost its final minute to the page cache, leaving a crash with no
+evidence. The recorder's log was intact to the second — 8,620 samples turned an
+unexplained power-off into a one-line diagnosis, and the sizing rule in §3 above
+is downstream of it.
+
+`pcwatch-serve.service` publishes a read-only dashboard on `:18795`, reachable
+over LAN or Tailscale, for watching a long run from elsewhere.
+
+Both survive reboot. After any unexplained restart the **crashed** run is index 1,
+because the recorder starts a fresh log on boot:
+
+```
+pcwatch --summary 1
+```
+
+Read it as: pinned near the clamp at the cut ⇒ thermal; moderate temperature with
+a power spike in the final samples ⇒ delivery side. A campaign run that ends
+without telemetry is a run whose failure mode cannot be diagnosed, and on this box
+that has already cost a measurement.
 
 ## 4. PyTorch installation — the #1 recurring failure
 
@@ -379,8 +423,12 @@ make lint test        # the chunk 0 gate (lint includes `uv lock --check`)
 make env              # torch build / device / matmul TFLOPS; non-zero on a CUDA wheel
 
 rocminfo | grep gfx   # expect gfx1151
-rocm-smi              # GPU util / 96 GiB VRAM pool
-free -h               # host RAM (~30 GiB — the scarce one)
+rocm-smi              # GPU util / 64 GiB VRAM pool
+free -h               # host RAM (~62 GiB — still the scarce one)
+
+pcwatch --summary     # thermal/power flight recorder: peaks + the final samples
+pcwatch --summary 1   # after an unexplained reboot, the run that DIED is [1]
+pcwatch --list        # recorded runs, newest first
 
 git log --branches --tags --not --remotes   # MUST be empty: nothing unpushed
 ```
