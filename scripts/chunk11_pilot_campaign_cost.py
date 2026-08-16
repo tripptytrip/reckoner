@@ -172,7 +172,9 @@ def main() -> int:
         [GreedyHeuristic(cfg)],
         ladder_problems,
         cfg,
-        roles={"greedy": "rule_denominated"},
+        # "rung" per LADDER_ROLES and RULING-chunk11-primary: greedy is an
+        # informational rung, never the subject and never a baseline.
+        roles={"greedy": "rung"},
         calibration_note="pilot cost probe, not a ladder result",
         seed=0,
     )
