@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from contextlib import contextmanager
@@ -68,7 +69,13 @@ SUITES = REPO / "runs" / "suites"
 RECORD = REPO / "runs" / "chunk11_part0b_sweep.json"
 PAR_DELTA = REPO / "runs" / "par_delta.json"
 
-BUDGETS = (1, 6, 16, 48)
+# 48 FIRST, DELIBERATELY. sims=48 is the licence question — the host must
+# reproduce 1193/1200 — and the reproduction check raises on divergence, so
+# running it first answers the licence in the first pass and halts before the
+# remaining budgets spend anything. Counts before identity before keys, enforced
+# by execution order rather than by a separate counts-only invocation, which
+# would only have paid for itself in the failing case.
+BUDGETS = (48, 1, 6, 16)
 CFG = Config()
 NAMES = {GOAL_SOLVE: "SOLVE", GOAL_EVALUATE: "EVALUATE", GOAL_SIMPLIFY: "SIMPLIFY"}
 
@@ -197,6 +204,47 @@ def scripted_misses(rows: list[dict], workers: int) -> tuple[dict[str, int], dic
     return misses, rebuilt
 
 
+# ----------------------------------------------------------------- pre-flight
+
+
+def preflight(model, cfg, problems_by_suite: dict) -> None:
+    """Two problems through the FULL path, including the report writer.
+
+    D-A1 §3, the pilot law extended to output paths. This script has raised
+    twice at the report — once on an attribute that did not exist, once on a
+    tuple used as a JSON key — each time after the expensive middle had already
+    run. Both would have raised here, in seconds.
+
+    It exercises the three things that have actually broken: the sweep-record
+    read, the episode path, and ``write_record``'s serialisation. It does NOT
+    exercise the scripted admissibility check, which cannot pass on two rows by
+    construction.
+    """
+    started = time.perf_counter()
+    if recorded_at_par(48) is None:
+        raise ReproductionFailure(
+            f"{RECORD} carries no sims=48 rung; the reproduction check would "
+            "silently skip, which is the check that licenses this host"
+        )
+    tiny = {k: v[:2] for k, v in list(problems_by_suite.items())[:1]}
+    episodes = episodes_at(model, cfg, 1, tiny)
+    probe = {
+        "preflight": True,
+        "per_budget": {"1": {"misses": sorted(e["key"] for e in episodes)}},
+        "misses_by_par": dict(Counter(e["par"] for e in episodes)),
+        "scripted": {"misses_by_key": {e["key"]: 1 for e in episodes}},
+    }
+    # Same .gitignore negation glob as the real output, so the probe exercises
+    # write_record's tracked-record guard instead of dodging it.
+    scratch = REPO / "runs" / "chunk11_preflight_probe.json"
+    write_record(scratch, probe)
+    scratch.unlink()
+    print(
+        f"  pre-flight OK ({len(episodes)} episodes, writer exercised, "
+        f"{time.perf_counter() - started:.1f}s)\n"
+    )
+
+
 # --------------------------------------------------------------------- main
 
 
@@ -217,13 +265,15 @@ def main() -> int:
     depth_of = {problem_key_of(suite_problem(r)): r["depth"] for r in rows}
     goal_of = {problem_key_of(suite_problem(r)): NAMES[r["goal"]] for r in rows}
 
+    preflight(model, cfg, problems_by_suite)
+
     print("  scripted solver, recomputed for identity")
     scripted, rebuilt = scripted_misses(rows, args.workers)
     print(f"    reproduces par_delta.json exactly; {len(scripted)} misses by key\n")
 
     print("  anchor, replayed per budget")
     per_budget: dict[int, dict] = {}
-    for sims in sorted(args.budgets):
+    for sims in args.budgets:
         episodes = episodes_at(model, cfg, sims, problems_by_suite)
         at_par = sum(1 for e in episodes if e["delta"] == 0)
         expected = recorded_at_par(sims)
