@@ -55,6 +55,21 @@ suite depths 1–3, whose local slope at `t = 0.9699` is 1.9206 — gives a band
 The direction is unambiguous whichever model is used: **§8 permits essentially no
 forgetting at all.**
 
+## 3.1 The band SCREENS; the cadence DECIDES
+
+Stated here so a passing arm cannot be over-read later. The sweep measures **one
+training iteration on ring-0** — the right probe, because F-27 established the
+damage is one-shot at iteration 0 — but the actual gate is `at-par ≥ 1188`
+measured at **iteration 4**, which only rehearsal attempt 2 can produce.
+
+So a passing arm is a **candidate**, and M1-A4's value stays **provisional** until
+the rehearsal's cadence unit confirms it.
+
+Conservative banding is right here for an asymmetric reason, not a general one:
+§8 is a BLOCKED branch. A band too tight costs one rejected arm and perhaps a
+second round; a band too loose costs a 110-minute cadence unit, a breached floor,
+and a halted campaign.
+
 ## 4. Arms
 
 `f ∈ {0.00, 0.10, 0.15, 0.25, 0.35, 0.50}`, each trained from the anchor on the
@@ -63,6 +78,21 @@ gate 10b, top-1 depth ≤ 3, F-09 unseen subset.
 
 `f = 0.00` is the control and must reproduce `ckpt-0`'s **0.8942**. If it does
 not, the ring-0 replay is not the same measurement and the sweep is void.
+
+### The table M1-A4 will carry
+
+Three columns, so the amendment shows preservation, mechanism and cost together
+rather than asserting the trade-off in prose:
+
+| column | meaning |
+|---|---|
+| **gate-10b top-1** | preservation — does the warm start survive |
+| **ring-epochs** | the mechanism variable, `(1 − f) × 39.2` at iteration 0 |
+| **value-head examples/step** | the cost the head pays, `(1 − f) × 128` |
+
+The third column is why this is a trade rather than a free win: Phase-1 rows
+carry no `z`, so every point of `f` is a point off the head whose criterion
+accrual is already the binding constraint.
 
 ## 5. Both branches, registered now
 
