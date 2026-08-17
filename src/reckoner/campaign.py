@@ -296,9 +296,22 @@ def run_campaign(run_dir: Path, cfg: Config, *, anchor: Path | None = None) -> d
     return run(run_dir, cfg, run_name="m1", anchor=anchor)
 
 
-def run(run_dir: Path, cfg: Config, *, run_name: str = "m1", anchor: Path | None = None) -> dict:
+def run(
+    run_dir: Path,
+    cfg: Config,
+    *,
+    run_name: str = "m1",
+    anchor: Path | None = None,
+    on_commit=None,
+) -> dict:
     """**The** loop. `golden` is this at golden config; the campaign is
     :func:`run_campaign`, which asserts the registered fingerprint first.
+
+    ``on_commit(iteration, phase)`` is called at ``"before_row"`` and
+    ``"before_latest"`` — the two kill points the resume gate uses, and the only
+    reason it exists. Same shape and same justification as
+    :func:`ladderpass.run_pass`'s ``on_unit``: a real SIGKILL needs a real
+    process, and a process cannot be killed at a boundary it does not announce.
 
     The iteration's artifacts commit through :func:`resume.commit_iteration` in
     the four-step order that module specifies — ring, state, row, then ``LATEST``
@@ -420,12 +433,15 @@ def run(run_dir: Path, cfg: Config, *, run_name: str = "m1", anchor: Path | None
             row["pool_par_fraction"] = round(from_pool / max(1, stats.episodes), 6)
 
         state = RunState(iteration=n, value_head=head, seed=state.seed)
-        commit_iteration(
-            run_dir,
-            ring,
-            state,
-            lambda row=row: append_row(run_dir / "iterations.jsonl", row, ITERATION_FIELDS),
-        )
+
+        def write_row(row=row, n=n):
+            if on_commit is not None:
+                on_commit(n, "before_row")
+            append_row(run_dir / "iterations.jsonl", row, ITERATION_FIELDS)
+            if on_commit is not None:
+                on_commit(n, "before_latest")
+
+        commit_iteration(run_dir, ring, state, write_row)
         evaluator_source = checkpoint
         summary["iterations"].append(
             {
