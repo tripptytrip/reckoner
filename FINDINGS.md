@@ -2084,3 +2084,71 @@ would testify to a config that did not shape the data.
 Low priority, and **not** wire-by-default: these are unbacked keys, so the
 disposition is delete-or-amend per the census rule. Recorded because a provenance
 claim that is true by coincidence is one nobody will re-check.
+
+---
+
+## F-34 — The rung pass has no viable population, and both candidates are measured-saturated
+
+**Found:** 2026-08-17, pricing the two dispositions for the cadence's missing
+third part.
+
+M1-A2 §2 prices the cadence unit in three terms. Two are implemented:
+no-regress (1200) and the primary (600). The third — **model rung (200 @48) 5.0
+min, greedy rung (200) 0.0 min** — corresponds to no code at all (F-33).
+
+Building it needs a population and a budget, and **both referents have
+evaporated**:
+
+* PREREG calls the rungs *informational at matched `s*`* — and `s*` resolved to
+  **null** when branch (c) fired. The budget clause survives its own referent.
+* `ladder.problems_per_pass = 200` names a size and nothing else. It is also
+  one of the census's dead keys.
+
+### Both candidate populations are saturated, by measurement already on the record
+
+**`runs/paired/smoke_v1.jsonl`** — 389 problems, depths 1–6, all-BFS par, born
+clean of F-09, ANCHORS-registered at `f0b10fd1…`, purpose-built for the ladder.
+Everything a rung population should be, except able to move. M-B:
+
+| | |
+|---|---|
+| model z histogram | +1: **0**, 0: 387, −1: 2 |
+| ceiling | **0.0** — par is BFS-exact, so `+1` is impossible by construction |
+| max possible movement | 0.005141 |
+| CI half-width (model − greedy) | 0.042417 |
+| **movement / CI half-width** | **0.1212** |
+
+Greedy is deterministic, so the paired difference moves only as the model's z
+moves — and its entire remaining headroom is **12% of one CI half-width.**
+
+**The suites** (`solve_in_1..6`) are saturated too: F-20, anchor 1193/1200 at
+`sims = 48`.
+
+**The scripted strata** `{7, 8, 10}` are the only unsaturated population — and
+they are already the primary. A rung pass there would **duplicate the primary
+rather than inform it.**
+
+So there is no population on which a rung pass would read anything: two are at
+their ceilings, and the third is the measurement the rung would be reporting
+alongside.
+
+### Disposition — (b), and the priced comparison
+
+**(a) `smoke_v1` entire** — no subsample rule to invent, provenance impeccable,
+cost affordable (389 problems unbatched ≈ 10–17 min against §2's 5.0 min for
+200). **Rejected: the instrument cannot move.** A rung whose reading is pinned at
+its ceiling by construction reports the ceiling, not the loop.
+
+**(b) Drop the rungs from M1, reason stated, carry to M2.** **Taken.**
+
+Nothing gates on their absence — PREREG calls them *informational* — so M1 loses
+no analysis, and the alternative is minting an instrument mid-campaign on a
+population measured unable to answer.
+
+M2 is where a rung population gets minted deliberately, with headroom
+demonstrated *before* it is frozen rather than discovered saturated afterwards —
+which is the same lesson the succession to the scripted strata already taught
+once.
+
+**Not stubbed.** The rung path is left absent with this reason filed, because a
+stub is a thing someone later mistakes for a specification.
