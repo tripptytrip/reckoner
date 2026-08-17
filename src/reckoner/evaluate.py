@@ -32,6 +32,29 @@ class EvaluatorModeError(RuntimeError):
     """A search evaluator was built from a model that is still in train mode."""
 
 
+def assert_eval_mode(model: Reckoner, cfg: Config) -> None:
+    """Refuse a model in train mode. **Named so it is findable** (F-22).
+
+    This began as the body of `model_evaluator`'s guard, and then as a bare
+    `model_evaluator(...)` call at the campaign's instrument seam whose only
+    purpose was raising. Ruff correctly flagged that as an unused expression, and
+    a guard that looks like dead code is eventually deleted as dead code — by a
+    reader with less context, or by a stricter lint configuration.
+
+    Same reasoning as the seam pin: the protection must be findable by someone
+    who does not already know it exists.
+    """
+    if model.training:
+        raise EvaluatorModeError(
+            "the search evaluator was built from a model in TRAIN mode, so dropout "
+            f"(p={cfg.model.dropout}) is live inside every search. That is three "
+            "defects at once: the priors become nondeterministic, the policy plays "
+            "worse than its own weights, and entropy_prior_* — the column the "
+            "funnel signature's thresholds are a fraction OF — measures dropout "
+            "rather than the policy. Call model.eval() before building an evaluator."
+        )
+
+
 def model_evaluator(model: Reckoner, cfg: Config, value_scale: float):
     """The declaration applied: value contributes ``value_scale``, priors always.
 
@@ -49,15 +72,7 @@ def model_evaluator(model: Reckoner, cfg: Config, value_scale: float):
     # network to drop out; the moment D-A1 §1.1 put the real model in the loop,
     # the mode became load-bearing and the first gate to compare two runs caught
     # it.
-    if model.training:
-        raise EvaluatorModeError(
-            "the search evaluator was built from a model in TRAIN mode, so dropout "
-            f"(p={cfg.model.dropout}) is live inside every search. That is three "
-            "defects at once: the priors become nondeterministic, the policy plays "
-            "worse than its own weights, and entropy_prior_* — the column the "
-            "funnel signature's thresholds are a fraction OF — measures dropout "
-            "rather than the policy. Call model.eval() before building an evaluator."
-        )
+    assert_eval_mode(model, cfg)
     width = 7 * cfg.model.max_sites
 
     def evaluate(leaves):

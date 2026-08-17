@@ -46,7 +46,7 @@ from reckoner.dataset import (
     training_problems,
 )
 from reckoner.episode import Problem
-from reckoner.evaluate import ModelArm, model_evaluator
+from reckoner.evaluate import ModelArm, assert_eval_mode, model_evaluator
 from reckoner.gates import no_regress_floor
 from reckoner.ladder import problem_key_of
 from reckoner.ladderpass import PassPaths, is_complete, read_pair_scores, run_pass
@@ -188,9 +188,22 @@ def assert_threads(cfg: Config) -> dict:
             f"{present}. Unset is a value; setting it is a gated configuration "
             "change whose reproduction gate re-runs, not a tidy-up."
         )
+    # THE OBSERVED PIN, VERIFIED (F-32, related). M1-A2 §4 classes interop as
+    # OBSERVED rather than exercised — it "licenses only 'this is what ran'" — so
+    # it is deliberately NOT set here. But the record's claim was never checked
+    # against the runtime, which made it an unverified assertion in a document
+    # whose whole purpose is that its numbers were true. One line verifies it.
+    observed_interop = torch.get_num_interop_threads()
+    if observed_interop != cfg.campaign.interop_threads:
+        raise CampaignRefusal(
+            f"interop threads are {observed_interop}, but the licence recorded "
+            f"{cfg.campaign.interop_threads} and every measurement on the record ran "
+            "under that value. Unset is a value and OBSERVED is a claim: a host that "
+            "differs stands outside this evidence, not inside it."
+        )
     return {
         "intra_op": torch.get_num_threads(),
-        "interop": torch.get_num_interop_threads(),
+        "interop": observed_interop,
         "omp_family": "unset",
     }
 
@@ -244,11 +257,10 @@ def run_instruments(
     """
     ev = eval_profile(cfg)
     fingerprint = assert_eval_profile(ev)
-    # Both legs now build their own evaluators inside `ModelArm`, so this call
-    # exists ONLY for its refusal: F-22's guard rejects a model in train mode, and
-    # dropping it because the return value became unused would remove the mode
-    # check from the seam that every cadence measurement passes through.
-    model_evaluator(model, ev, 0.0)
+    # F-22 at the seam every cadence measurement passes through. Named rather
+    # than a bare `model_evaluator(...)` call kept for its side effect, because a
+    # guard that reads as dead code is eventually deleted as dead code.
+    assert_eval_mode(model, ev)
     out: dict = {"iteration": iteration, "config_fingerprint": fingerprint, "profile": "eval"}
 
     rng_entry = (random.getstate(), torch.get_rng_state().clone())

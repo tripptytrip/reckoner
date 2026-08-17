@@ -120,3 +120,30 @@ on the amendment's page rather than in a footnote discovered later.
 ---
 
 **Three failed attempts at any gate → BLOCKED, never a weakened gate.**
+
+---
+
+# Registered prediction — the watchlist's first reading
+
+**Written 2026-08-17, before the equivalence gate runs.**
+
+Fix 2 gives the `ckpt-4` equivalence gate a second job it was not built for: it
+is also the **first watchlist measurement**, and it retroactively attributes the
+rehearsal's misses — the exact question PREREG §5 was written for and could not
+answer when it mattered (F-35).
+
+At `sims = 48`, `ckpt-4` missed **290** of 1200 (at-par 910). The frozen family
+is 24, certified at `sims = 1`.
+
+| quantity | registered call |
+|---|---|
+| `family_remaining` | **24** — the anchor's entire hard family still missed by a degraded model |
+| `novel_misses` | **≈ 266** — the complement |
+
+**The informative branch is the low one.** `family_remaining < 24` would mean the
+degraded model *solved* some of the anchor's hardest problems while losing 283
+easier ones — genuinely strange, and worth its own look rather than a shrug.
+
+Registered because a prediction written after the number arrives is a
+description, and because this is the first reading of an instrument that has
+never produced one.
