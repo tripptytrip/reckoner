@@ -103,6 +103,10 @@ def test_the_row_it_produces_validates_against_the_schema() -> None:
         schema_era=SCHEMA_ERA,
         evaluator_checkpoint_sha256="d" * 64,
         pool_composition={"size": 0, "steps": [], "order": [], "value_head_live": []},
+        absent={
+            "pool_par_fraction": "no pool in this fixture",
+            "ladder_pass": "not a ladder iteration",
+        },
     )
     assert validate_row(row) == [], "a clean iteration must raise no alarms"
 
@@ -271,3 +275,62 @@ def test_a_conceded_episode_is_not_counted_as_capped() -> None:
     cfg.par.concede_k = 0
     stats = run_iteration(problems(2, 12), uniform_stub(cfg), cfg, sims=16, m=5, seed=1)
     assert stats.episodes_capped == 0, "conceding must not be filed as exhaustion"
+
+
+# ------------------------------------------- absence is the caller's claim (F-29)
+
+
+def _row(**kwargs) -> dict:
+    stats = run_iteration(problems(2, 12), uniform_stub(CFG), CFG, sims=16, m=5, seed=1)
+    return iteration_row(
+        stats,
+        iteration=0,
+        run_name="test",
+        git_sha=git_sha(REPO),
+        config_fingerprint=config_fingerprint(CFG),
+        cfg=CFG,
+        ruleset_version=RULESET_VERSION,
+        vocab_version=VOCAB_VERSION,
+        schema_era=SCHEMA_ERA,
+        evaluator_checkpoint_sha256="d" * 64,
+        pool_composition={"size": 0, "steps": [], "order": [], "value_head_live": []},
+        **kwargs,
+    )
+
+
+@needs_suites
+def test_an_empty_absent_means_nothing_is_absent() -> None:
+    """F-29, the polarity that cost a cadence unit.
+
+    `iteration_row` defaulted `absent` to a fabricated mapping naming
+    ``pool_par_fraction`` and ``ladder_pass``, via ``absent or {...}`` — which
+    cannot distinguish "unspecified" from "specified as empty". The campaign
+    reached the first iteration where nothing WAS absent (a cadence iteration
+    with a live pool: the ladder fires, pool par is drawn) and the row was
+    refused for naming two columns it had just written.
+
+    An empty mapping means every column has a value.
+    """
+    row = _row(absent={})
+    assert row["absent"] == {}, "an empty absent must not be replaced by an invented one"
+
+    row["pool_par_fraction"] = 0.2
+    row["ladder_pass"] = 0
+    assert validate_row(row) == [], "a row with nothing absent must validate"
+
+
+@needs_suites
+def test_a_stated_absence_is_carried_through_verbatim() -> None:
+    """The other polarity: a caller that DOES declare an absence keeps its own
+    reason, rather than the library's idea of one."""
+    reason = "league.par_from_pool_frac is 0, or no snapshot has been taken yet"
+    row = _row(absent={"pool_par_fraction": reason, "ladder_pass": "not a ladder iteration"})
+    assert row["absent"]["pool_par_fraction"] == reason
+    assert validate_row(row) == []
+
+
+@needs_suites
+def test_omitting_absent_entirely_does_not_invent_absences() -> None:
+    """A caller who passes nothing gets nothing — not two fabricated claims about
+    a run the library has never seen."""
+    assert _row()["absent"] == {}

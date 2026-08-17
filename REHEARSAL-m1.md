@@ -151,3 +151,87 @@ gains a results section, `RUNLOG-chunk11-driver-part0.md` gains the run, and the
 record before the directory is removed.
 
 **Three failed attempts at any gate → BLOCKED, never a weakened gate.**
+
+---
+
+# RESULTS — attempt 1, **FAILED**
+
+**Run:** 2026-08-17 09:54–15:55 UTC, pod `jshsnmwop6pgn`, git `102eef7`, config
+`ce41af96…`. Artifacts recovered to `runs/m1_rehearsal_recovered/`.
+
+## Verdict
+
+**FAILED — attempt 1 of 3.** §7 requires the run to reach `LATEST = 4` without
+raising. It reached `LATEST = 3` and raised at iteration 4's row write, *after*
+the cadence unit completed. The cause is **F-29**, now fixed with both polarities
+tested.
+
+`iterations.jsonl` carries 4 rows; `value_switch.jsonl` carries 5 (the criterion
+runs before the commit); `instruments.jsonl` carries iteration 4's row, which is
+provisional against `LATEST = 3` and would be correctly truncated by resume —
+**recovered off the pod before anything touched it.**
+
+## What passed, at four iterations
+
+`schema_era == 3` throughout · `config_fingerprint == ce41af96…` throughout ·
+`pool_composition.size == n + 1` (1, 2, 3, 4) · `ladder_pass` absent with its
+reason for 0–3 · all four funnel columns present · iteration 0's evaluator digest
+`45333caa` and moving thereafter · **alarms 0** · every switch row written,
+abstentions included.
+
+## Predictions that failed
+
+**§4.6 — `pool_par_fraction ≤ 0.2`.** Observed 0.2475, 0.185, 0.1925, 0.205.
+**The prediction was wrong, not the code.** `par_from_pool_frac = 0.2` is the
+Bernoulli parameter of the draw, so the realised fraction is Binomial(400, 0.2)/400
+— mean 0.2, sd 0.02 — and exceeds 0.2 about half the time. The page reasoned that
+fallbacks can only reduce it and treated a one-sided effect as a ceiling.
+
+Not amended. It is committed at `0d31989`, it failed, and it is recorded as
+failed — amending a prediction at the moment it fails is the move D-A2 §1 named.
+What it exposes is a drafting error: **a distributional claim was placed in a
+structural checklist and thereby given gating status.** §4.6's gating content was
+"the column is present", which passed. The numeric claim belonged in §7.
+
+## RECORDED, NOT GATING — the cadence unit
+
+| instrument | measured | floor | anchor | held |
+|---|---:|---:|---:|:--:|
+| no-regress @48 | **910 / 1200** | 1188 | 1193 | **NO** |
+| no-regress @1 | **722 / 1200** | 1167 | 1176 | **NO** |
+| primary {7,8,10} | **108 / 600** | — | 101 / 600 | **+1.17 pp** |
+
+Per stratum: `scripted_in_7` 22/200 (anchor 43), `scripted_in_8` 50/200
+(anchor 26), `scripted_in_10` 36/200 (anchor 32).
+
+**Both indistinguishability floors are breached, and by margins that are not
+marginal** — 278 and 445 problems below floors set at the anchor's own one-sided
+95% band. At-par on the suites fell from 99.4% to 75.8% at `sims = 48`.
+
+**And the primary rose.** The model is worse on the easy suites where the anchor
+was saturated, better on the hard scripted strata — losing 21 at stratum 7 while
+gaining 24 at 8 and 4 at 10.
+
+**Disposition, pre-stated in §7 and applied without amendment:** a breach is a
+finding plus PREREG's decision rules, never an adjustment. PREREG-m1 §8 makes a
+gate-10b/11 regression a **BLOCKED** condition for the campaign. This is four
+iterations of a twenty-iteration run and is *not* the campaign's result — but it
+is exactly the observation §7 says is carried to a ruling **before M1 launches**,
+and it is carried, not filed as a pass.
+
+The floors did the job they were frozen for.
+
+## Also recorded
+
+- **F-27** — the cost model is flat where the curve is not; total 6 h 01 m
+  against a 3.5 h prediction, the cadence unit at 2.07× its model.
+- **F-28** — `pool_par_unavailable` reaches no artifact; iteration 0's exact
+  draw count is recoverable by offline replay.
+- **The switch criterion cleared its threshold at every iteration and abstained
+  every time.** Measured balanced accuracy 0.600, 0.553, 0.579, 0.550, 0.560
+  against a threshold of 0.483 — margin 0.07–0.12 throughout, never the
+  discriminating quantity. `clears` is False solely because `evaluable` is False.
+  `k_classes_with_support` counts classes **present** (`k = len(census)`), not
+  classes clearing `MIN_CLASS_SUPPORT = 100`; the phrase and the behaviour
+  disagree. The rarest class runs 1, 6, 7, 12, 17 against a floor of 100, so on
+  this trajectory the head never goes live inside 20 iterations.

@@ -1674,3 +1674,155 @@ by position**: it carries one row per cadence, so a positional prefix of
 `committed + 1` lines would keep a row for an iteration that never committed.
 That distinction has its own test, with the positional answer named as the wrong
 one it must not give.
+
+---
+
+## F-27 — The campaign's cost model is flat where the measured curve is not
+
+**Measured:** 2026-08-17, the M1 dress rehearsal, `runs/m1_rehearsal` (recovered
+to `runs/m1_rehearsal_recovered`). M1-A2 §2 prices self-play at **10.1 min per
+iteration, flat, for all 20 iterations**, and the cadence unit at 109.5 min.
+
+| iteration | self-play | train | capped | measured / modelled |
+|---|---:|---:|---:|---:|
+| 0 | 9.8 m | 8.8 m | 2 | 0.97× |
+| 1 | 12.3 m | 9.4 m | 3 | 1.22× |
+| 2 | 13.7 m | 9.6 m | 3 | 1.36× |
+| 3 | **29.2 m** | 9.5 m | **43** | **2.89×** |
+| 4 | *not measured — the row never committed (F-29)* | | | |
+| **cadence unit** | **227 m** | | | **2.07×** |
+
+**The mechanism is capped episodes.** A capped episode runs a search at every
+step to the cap; a solved one stops early. Caps went 2 → 43 and self-play tripled
+in the same iteration. Caps rise because par escalation works: pool par comes
+from snapshots that are themselves improving, so the bar rises each iteration and
+episodes that cannot clear it run to the cap. `z_by_par_source` shows the model
+beating its own snapshots — `pool/+1` at 1, 7, 5, 12 — while `bfs/−1` climbs 4 →
+76.
+
+**What is NOT claimed.** Iteration 4's self-play was never recorded, and the
+window between iteration 3's commit and `ckpt-4.pt` is 25.3 min covering
+self-play *and* training — so iteration 4's self-play was plausibly ~16 min,
+**below** iteration 3's 29.2. Four measured points with one spike, and a fifth
+that is inferred and lower, do not establish a monotone curve. The honest
+statement is that the flat 10.1 is wrong and the shape is not yet known.
+
+The cadence factor is firmer: 227 minutes against 109.5, on fixed problem sets,
+**measured end to end**. Four cadence units across 20 iterations is 7.3 h rather
+than 3.7 h on that factor alone.
+
+**Ruled: nothing changes.** M1-A2 §2's table is descriptive and no gate rests on
+it. The analysis point stays hard at 20; no config moves, because config is
+fingerprint. If wall-clock forces a stop, that is the prereg's existing
+early-termination branch — reported as **resource, not results**, with the
+primary evaluated at the last completed ladder pass.
+
+**Registered watch item — `escalation-outruns-learner`:** pool par rising faster
+than the model improves, driving caps toward dominance and starving the ring of
+successes. Watch column: cap rate per iteration. No action mid-campaign.
+
+---
+
+## F-28 — The pool's two unavailability counters are separated, documented, and logged by nobody
+
+**Found:** 2026-08-17, trying to answer whether iteration 0's
+`pool_par_fraction = 0.2475` against a configured `par_from_pool_frac = 0.20`
+was sampling or structure.
+
+`PoolStats` counts `pool_par_unavailable_empty` and
+`pool_par_unavailable_capped` **separately**, with the capped/stuck lesson
+written into its docstring — *"they are different diseases … the fixes differ
+(wait for snapshots vs raise the budget)"* — and exposes both through
+`as_dict()`. `shakedown.py` logs that dict. **The campaign driver logs
+`pool.stats.refusals` and nothing else.**
+
+So the counter that answers the question never reaches an artifact, and the
+in-memory value died with the run. Sixth instance of the species, and the second
+of the *nothing compares it* variant — here sharpened to **nothing records it**:
+the capability is built, the consumer interface is written, and one of two
+callers is wired.
+
+**Bounded in the meantime.** The pool was anchor-seeded at iteration 0, so
+`_empty = 0` and any fallback there was `_capped`. Since a fallback can only move
+par_source from `pool` to `bfs`, draws = 99 + fallbacks **≥ 99** — the fallback
+can only push the fraction *down*, so the observation is bounded in the direction
+that makes it more extreme, not less. Under Binomial(400, 0.2), 99 is +2.38σ,
+P(X ≥ 99) = 0.0118.
+
+**Fix:** both counters become iteration-row columns at era 4, batched with
+anything else pending. **Approved and separate:** iteration 0's draw sequence is
+fully determined — `training_problems(…, 400, seed=0)` against a pool of exactly
+one member, `Random(13)` — so replaying `campaign_problems` offline answers the
+0.2475 question *exactly* rather than by bound.
+
+---
+
+## F-29 — The first iteration in which nothing was absent, the row was refused
+
+**Found:** 2026-08-17, by the dress rehearsal, at iteration 4, **after the
+cadence unit had been paid for in full** — 3 h 47 m of measurement, then:
+
+```
+SchemaError: pool_par_fraction: named in 'absent' but present in the row
+```
+
+### The mechanism
+
+`iteration_row` carried a default:
+
+```python
+"absent": absent or {
+    "pool_par_fraction": "league.par_from_pool_frac not yet wired (chunk 9 part 2)",
+    "ladder_pass": "not a ladder iteration",
+},
+```
+
+`or` cannot distinguish *unspecified* from *specified as empty* — and here **the
+empty case is the meaningful one**: it says every column has a value. The driver
+computes absences into a dict and passed `absent=absent or None`, so an empty
+dict became `None`, which the default then replaced with two fabricated claims
+about columns the driver had just written.
+
+The condition for an empty `absent` is precise: **the ladder must fire and the
+pool must be non-empty** — a cadence iteration with live par escalation. That is
+iteration 4, 9, 14, 19 of the campaign, and *no earlier iteration and no golden
+run ever*: `golden_config` sets `ladder_every = 99`, which guarantees
+`ladder_pass` is always absent and the default therefore always plausible.
+
+**This was campaign-blocking, not merely a bug.** M1 would have run 4 iterations,
+paid the first cadence unit, and died — and every resume would have re-run that
+cadence and died again at the same place. The campaign could not have passed
+iteration 4 by any number of retries.
+
+### Two things are vindicated by it
+
+**D-A2 §1.** The DONE-WHEN asked for a *three*-iteration rehearsal; D-A2 amended
+it to five, on the arithmetic that three could never exercise a cadence unit. A
+three-iteration rehearsal would have passed clean and M1 would have hit this at
+hour four. **The amendment was written to fix an unsatisfiable gate and it caught
+a campaign-blocking defect instead.**
+
+**F-26.** The cadence unit's measurements survived the crash *only because*
+`instruments.jsonl` had been made durable that morning. Under the previous code
+the 3 h 47 m result lived in a dict inside the process that raised, and would
+have been lost entirely.
+
+### The fix
+
+`iteration_row` no longer invents an absence. **Absence is a claim about the
+caller's run, and the library cannot make it** — the fabricated text ("not yet
+wired (chunk 9 part 2)") described a world that stopped existing two chunks
+before it fired. An empty mapping now means what it says.
+
+Three callers relied on the default and now declare their own: `shakedown.py`,
+the driver's `preflight`, and `tests/test_runner.py`. That count is itself the
+finding restated — the default was load-bearing for everyone and correct for
+no one.
+
+Both polarities are tested at the unit the defect lived in.
+
+**Registered, not taken:** there is still **no end-to-end test of a cadence
+iteration**, because `run_instruments` costs ~110 min at real scale and
+`golden_config` deliberately switches the cadence off. That is the gap F-29 came
+through, it is named here rather than left silent, and closing it needs a cheap
+instrument population — a design change, not a fix.

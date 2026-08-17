@@ -338,7 +338,24 @@ def iteration_row(
     seconds_train: float = 0.0,
     absent: dict[str, str] | None = None,
 ) -> dict:
-    """Assemble a `logschema` row. The schema validates it; this only fills it."""
+    """Assemble a `logschema` row. The schema validates it; this only fills it.
+
+    **`absent` is the caller's claim about the caller's run, and this function
+    does not invent one** (F-29). It used to: an `absent or {...}` default filed
+    ``pool_par_fraction`` and ``ladder_pass`` as absent whenever a caller passed
+    nothing — including when the caller passed an empty mapping *meaning* nothing
+    is absent. `or` cannot tell "unspecified" from "specified as empty", and here
+    the empty case is the meaningful one: it says every column has a value.
+
+    The campaign hit it at the first iteration where that was true — a cadence
+    iteration with a live pool, where the ladder fires and pool par is drawn, so
+    neither column is absent. The default then named both while the driver had
+    just written both, and the row was refused after the cadence had been paid
+    for. Two chunks of golden runs never reached it, because golden's
+    ``ladder_every = 99`` guarantees ``ladder_pass`` is always absent.
+
+    An empty mapping now means what it says.
+    """
     return {
         "evaluator_checkpoint_sha256": evaluator_checkpoint_sha256,
         "pool_composition": pool_composition,
@@ -368,11 +385,7 @@ def iteration_row(
         "seconds_self_play": stats.seconds,
         "seconds_train": seconds_train,
         "seconds_total": round(stats.seconds + seconds_train, 3),
-        "absent": absent
-        or {
-            "pool_par_fraction": "league.par_from_pool_frac not yet wired (chunk 9 part 2)",
-            "ladder_pass": "not a ladder iteration",
-        },
+        "absent": dict(absent) if absent is not None else {},
         **stats.entropies(),
     }
 

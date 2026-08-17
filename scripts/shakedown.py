@@ -162,6 +162,16 @@ def main() -> int:
             # never does.
             evaluator_checkpoint_sha256=sha256_file(anchor),
             pool_composition=pool.composition(),
+            # DECLARED, not inherited (F-29). `iteration_row` used to fabricate
+            # these two absences for any caller who passed none, which is how the
+            # campaign's first no-absences iteration was refused. Absence is a
+            # claim about THIS run, so this run states it.
+            absent={
+                "pool_par_fraction": (
+                    "the shakedown probes the pool directly (E4) and draws no par from it"
+                ),
+                "ladder_pass": "the shakedown runs no ladder pass",
+            },
         )
         solve_by_depth.append({"iteration": n, "rates": row["solve_rate_by_depth"]})
 

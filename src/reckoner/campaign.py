@@ -268,6 +268,13 @@ def preflight(cfg: Config, model, scratch: Path) -> None:
         schema_era=SCHEMA_ERA,
         evaluator_checkpoint_sha256="0" * 64,
         pool_composition=pool.composition(),
+        # Declared, not inherited (F-29). The pre-flight's pool is empty by
+        # construction and it runs no cadence, so both columns are genuinely
+        # absent — and it says so itself rather than taking the library's word.
+        absent={
+            "pool_par_fraction": "the pre-flight's pool is empty by construction",
+            "ladder_pass": "the pre-flight runs no ladder pass",
+        },
     )
     append_row(scratch / "iterations.jsonl", row, ITERATION_FIELDS)
 
@@ -545,7 +552,7 @@ def run(
             evaluator_checkpoint_sha256=digest,
             pool_composition=composition,
             seconds_train=seconds_train,
-            absent=absent or None,
+            absent=absent,
         )
         row["seconds_self_play"] = round(seconds_self_play, 3)
         row["seconds_total"] = round(time.perf_counter() - began, 3)
