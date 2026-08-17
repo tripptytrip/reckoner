@@ -26,6 +26,7 @@ can be set at invocation is one that can silently diverge from its prereg.
 
 from __future__ import annotations
 
+import json
 import os
 import random
 import shutil
@@ -492,9 +493,24 @@ def run(
         ladder_index = None
         if (n + 1) % cfg.ladder.ladder_every == 0:
             ladder_index = n // cfg.ladder.ladder_every
-            summary.setdefault("instruments", []).append(
-                run_instruments(model, cfg, iteration=n, anchor_beat=ANCHOR_BEAT)
-            )
+            measured = run_instruments(model, cfg, iteration=n, anchor_beat=ANCHOR_BEAT)
+            summary.setdefault("instruments", []).append(measured)
+            # PERSISTED, NOT MERELY RETURNED (F-26). The cadence unit is the most
+            # expensive measurement the loop makes — 1,200 problems at two
+            # budgets, then 600 more for the primary — and it lived only in the
+            # returned dict. A pod that vanished at iteration 12 lost iterations
+            # 4 and 9's instrument passes with nothing on disk to resume from,
+            # against a standing rule that volume + git + artifacts must always
+            # suffice to continue elsewhere.
+            #
+            # It also makes M1-A2 §1 satisfiable from artifacts: the funnel
+            # trigger's row must carry the contemporaneous beat-par delta, and
+            # the delta was in memory while the entropy columns were on disk.
+            # Provisional like the row, and truncated with it on resume.
+            with (run_dir / "instruments.jsonl").open("a") as handle:
+                handle.write(json.dumps(measured, sort_keys=True) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
         else:
             absent["ladder_pass"] = (
                 "not a ladder iteration (ladder runs on ladder.ladder_every cadence)"

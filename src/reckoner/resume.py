@@ -188,8 +188,34 @@ def resume(run: Path, cfg: Config) -> tuple[int, ReplayRing | None, RunState | N
         if len(lines) != len(keep):
             rows_path.write_text("".join(line + "\n" for line in keep))
 
+    # THE OTHER APPEND-ONLY LOGS (F-26). `iterations.jsonl` was truncated here
+    # and the rest were not, so a killed-and-resumed run wrote its switch row
+    # TWICE for the redone iteration — F-13's duplication signature, in the row
+    # class the resume gate did not compare. The gate named what it ignored
+    # field by field within one file and ignored two whole files in silence.
+    #
+    # These truncate by the row's own `iteration` rather than by position:
+    # `instruments.jsonl` carries one row per CADENCE, not per iteration, so a
+    # positional prefix would be meaningless for it.
+    for name in ("value_switch.jsonl", "instruments.jsonl"):
+        _truncate_by_iteration(run / name, committed)
+
     _drop_provisional(run, keep=committed)
     return committed + 1, ring, state
+
+
+def _truncate_by_iteration(path: Path, committed: int) -> None:
+    """Drop rows for iterations beyond the commit, by the field, not the offset.
+
+    Idempotent for the same reason the positional truncation is: keeping a
+    predicate-selected prefix converges on re-run rather than compounding.
+    """
+    if not path.exists():
+        return
+    lines = [line for line in path.read_text().splitlines() if line.strip()]
+    keep = [line for line in lines if json.loads(line).get("iteration", -1) <= committed]
+    if len(lines) != len(keep):
+        path.write_text("".join(line + "\n" for line in keep))
 
 
 def _drop_provisional(run: Path, *, keep: int | None) -> None:

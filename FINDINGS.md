@@ -1618,3 +1618,59 @@ sentence about a check that happened somewhere else.
 
 Golden gains both polarities: its rows must record golden config's fingerprint,
 and that value must **not** be the campaign's.
+
+---
+
+## F-26 — The resume contract covered one log of three, and the gate that checks it compared the same one
+
+**Found:** 2026-08-17, reading `run` to establish where the five-iteration
+rehearsal's cadence fires — the same read that found F-25.
+
+`resume` truncates `iterations.jsonl` to the committed prefix, and nothing else.
+The switch row is written **before** `commit_iteration`, so it is provisional in
+exactly the way the row is, and it was never truncated:
+
+| run | `value_switch.jsonl` iterations |
+|---|---|
+| uninterrupted | `[0, 1, 2]` |
+| killed at iteration 1, resumed | `[0, 1, 1, 2]` |
+
+**F-13's duplication signature**, in a row class nothing compared. The value-head
+switch log is how the criterion is audited after the fact; a duplicated
+evaluation there is a second opinion the criterion never gave.
+
+### The part that is about the gate, not the driver
+
+`test_campaign_resume.py` opens by declaring that *the comparator names what it
+ignores, per field* — and it did, exhaustively, for three wall-clock columns of
+one file. It then ignored two entire files without mentioning them. Precision
+about the wrong boundary reads as rigour, which is what made it survive: the
+docstring's care is evidence of attention, and the attention stopped at the file
+it had chosen.
+
+The gate now iterates a named `LOGS` tuple, so adding a log without adding it
+here is a visible omission. And because `instruments.jsonl` cannot exist at
+golden config — `ladder_every = 99`, the cadence never fires — the gate asserts
+**which** of those comparisons was real, rather than passing on two empty lists
+and looking identical to one that compared something.
+
+### Second defect, same read: the cadence unit was never durable
+
+`run_instruments` returns the most expensive measurement the loop makes — 1,200
+problems at two budgets, then 600 more for the primary — and it went into the
+returned summary dict and nowhere else. **No artifact carried it.**
+
+- A pod vanishing at iteration 12 lost iterations 4 and 9's instrument passes
+  with nothing on disk to resume from, against the standing rule that volume +
+  git + rsync'd artifacts must always suffice to continue elsewhere.
+- M1-A2 §1 requires the funnel trigger's row to carry *the contemporaneous pooled
+  beat-par delta*. The delta was in memory; the entropy columns were on disk. The
+  requirement was **unsatisfiable from artifacts** — not violated, but
+  unmeetable, which is the shape M1-A2 §1 and D-A2 §1 were both written about.
+
+`instruments.jsonl` is now written with `fsync` at each cadence, provisional like
+the row and truncated with it. Its truncation is **by the row's `iteration`, not
+by position**: it carries one row per cadence, so a positional prefix of
+`committed + 1` lines would keep a row for an iteration that never committed.
+That distinction has its own test, with the positional answer named as the wrong
+one it must not give.

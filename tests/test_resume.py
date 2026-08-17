@@ -9,6 +9,7 @@ iterations later and is attributed to everything except the crash.
 from __future__ import annotations
 
 import json
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -319,3 +320,70 @@ def test_repair_on_an_already_clean_run_changes_nothing(tmp_path: Path) -> None:
     before = final_state(run)
     resume(run, CFG)
     assert final_state(run) == before
+
+
+# ------------------------------------------------- every append-only log (F-26)
+
+
+def test_resume_truncates_the_switch_log_not_only_the_iteration_log() -> None:
+    """F-26. `iterations.jsonl` was truncated here and the other logs were not, so
+    a killed-and-resumed run wrote its switch row twice for the redone iteration —
+    F-13's duplication signature, in the row class nothing compared."""
+    with tempfile.TemporaryDirectory() as tmp:
+        run = Path(tmp)
+        Harness(run).play(iterations=2)  # commits 0 and 1
+        (run / "value_switch.jsonl").write_text(
+            "".join(json.dumps({"iteration": n}) + "\n" for n in (0, 1))
+        )
+        (run / "LATEST").write_text("0\n")  # as if iteration 1 never committed
+
+        resume(run, CFG)
+
+        kept = [json.loads(x) for x in (run / "value_switch.jsonl").read_text().splitlines() if x]
+        assert [r["iteration"] for r in kept] == [0], "the uncommitted switch row survived"
+
+
+def test_resume_truncates_the_instrument_log_by_iteration_not_by_position() -> None:
+    """`instruments.jsonl` carries one row per CADENCE, not per iteration, so a
+    positional prefix would be meaningless for it — iteration 4's instrument row
+    is the FIRST line of the file, and dropping "everything after line 0" would
+    keep a row for an iteration that never committed.
+
+    This is the door-level cover for a case the campaign resume gate cannot
+    reach: golden config sets `ladder_every = 99`, so its cadence never fires and
+    no instrument row is ever written there.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        run = Path(tmp)
+        Harness(run).play(iterations=2)
+        # Cadence rows for iterations 1 and 9, with the run committed only to 1.
+        # A POSITIONAL prefix of `committed + 1 = 2` lines would keep BOTH — which
+        # is precisely the wrong answer this truncation must not give.
+        (run / "instruments.jsonl").write_text(
+            "".join(json.dumps({"iteration": n, "primary": {}}) + "\n" for n in (1, 9))
+        )
+        (run / "LATEST").write_text("1\n")
+
+        resume(run, CFG)
+
+        kept = [json.loads(x) for x in (run / "instruments.jsonl").read_text().splitlines() if x]
+        assert [r["iteration"] for r in kept] == [1], (
+            "iteration 9's instrument row survived a commit that stopped at 1"
+        )
+
+
+def test_truncating_the_logs_is_idempotent() -> None:
+    """The repair path only ever runs after something has already gone wrong, so a
+    crash during the repair must converge rather than compound."""
+    with tempfile.TemporaryDirectory() as tmp:
+        run = Path(tmp)
+        Harness(run).play(iterations=2)
+        (run / "value_switch.jsonl").write_text(
+            "".join(json.dumps({"iteration": n}) + "\n" for n in (0, 1, 2))
+        )
+        (run / "LATEST").write_text("0\n")
+
+        resume(run, CFG)
+        once = (run / "value_switch.jsonl").read_text()
+        resume(run, CFG)
+        assert (run / "value_switch.jsonl").read_text() == once

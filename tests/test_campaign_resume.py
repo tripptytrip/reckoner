@@ -23,6 +23,12 @@ Four claims at each kill point:
    than ring content would have seen it
 3. no orphan ring survives for an iteration that never committed
 4. ``LATEST`` names the last iteration that actually completed
+
+**Every append-only log is compared, not just `iterations.jsonl`.** F-26 lived in
+`value_switch.jsonl` for exactly as long as this gate compared one file while
+describing itself as comparing the run: a comparator that names its exclusions
+field-by-field within one artifact, and omits a whole artifact in silence, is
+precise about the wrong boundary.
 """
 
 from __future__ import annotations
@@ -66,8 +72,13 @@ def drive_probe(run_dir: Path, kill_at: tuple[int, str] | None = None) -> int:
     return completed.returncode
 
 
-def rows_of(run_dir: Path) -> list[dict]:
-    path = run_dir / "iterations.jsonl"
+#: Every append-only log the driver writes. Named as a set so that adding a log
+#: without adding it here is a visible omission rather than a silent one.
+LOGS = ("iterations.jsonl", "value_switch.jsonl", "instruments.jsonl")
+
+
+def rows_of(run_dir: Path, name: str = "iterations.jsonl") -> list[dict]:
+    path = run_dir / name
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
@@ -136,8 +147,24 @@ def test_killed_and_resumed_is_indistinguishable_from_uninterrupted(
 
     assert drive_probe(run_dir) == 0, "the resumed run did not complete"
 
-    # 1. rows, excluding only wall-clock
+    # 1. rows, excluding only wall-clock — and EVERY log, not just this one
     assert comparable(rows_of(run_dir)) == comparable(rows_of(uninterrupted))
+    for name in LOGS:
+        got, want = rows_of(run_dir, name), rows_of(uninterrupted, name)
+        assert [r.get("iteration") for r in got] == [r.get("iteration") for r in want], (
+            f"{name}: a resumed run must not duplicate or drop a row (F-26)"
+        )
+    # AND SAY WHICH OF THOSE COMPARISONS WAS REAL. `instruments.jsonl` does not
+    # exist at golden config — `ladder_every = 99`, so the cadence never fires —
+    # so its comparison above passes on two empty lists. An assertion that cannot
+    # fail must not be left looking like one that did: the door-level cover is
+    # `test_resume.py::test_resume_truncates_the_instrument_log_by_iteration...`,
+    # and this line is what would break if golden ever gained a cadence and this
+    # comment silently stopped being true.
+    exercised = [name for name in LOGS if (uninterrupted / name).exists()]
+    assert exercised == ["iterations.jsonl", "value_switch.jsonl"], (
+        f"the set of logs this gate actually compares has changed: {exercised}"
+    )
 
     # 2. ring content identity — F-13's duplication signature disproved
     assert ring_signature(run_dir) == ring_signature(uninterrupted)
