@@ -653,3 +653,70 @@ changes; `valuegate` already anticipates the two-class start.
 
 **The first `pool`/`+1` row in the ring is not an anomaly. It is the escalation
 mechanism working, and a campaign milestone** — greeted, not investigated.
+
+---
+
+# M1-A3 — Pool composition becomes a logged column (schema era 3)
+
+**Ratified 2026-08-17, on F-23's argument.**
+
+## 1. What changes
+
+`ITERATION_FIELDS` gains **`pool_composition`** (`dict`, role `diagnostic`,
+`since=3`), and `SCHEMA_ERA` becomes **3**. The column carries the pool *as the
+iteration drew from it* — captured before that iteration's own enrolment, since
+reading it after `enroll` would log a pool one rung deeper than the one that
+actually supplied par.
+
+```
+{"size": int, "steps": [int], "order": [int], "value_head_live": [int]}
+```
+
+`size` 0 is a **value**, not an absence: it says the pool is empty and par has
+nothing to escalate from. That is why the column is required rather than
+optional — the alternative reintroduces exactly the ambiguity between *empty* and
+*unrecorded* that the absence-with-reason discipline exists to remove.
+
+## 2. Why a frozen page is amended for it
+
+`CheckpointPool.composition()` has existed since chunk 9 and was logged by
+nothing. F-23 is the demonstration of what that costs: resume rebuilt the pool
+with the anchor alone, and **every column in the iteration row agreed with an
+uninterrupted run while the ring the model trains on differed.** Par escalation —
+the mechanism §6 is denominated in — silently reset, and no row comparison at any
+strictness could have reported it, because the divergent state was not in the
+schema.
+
+§6 is analytically dependent on this. A pool/bfs ratio is uninterpretable without
+knowing how many rungs the pool held: the same 80/20 split means one thing
+against a pool of eight snapshots and another against a pool of one, and the
+transition of `K` from 2 to 3 — the milestone §6 registers — is a claim about the
+pool's contents that the artifacts could not previously substantiate.
+
+This is rider (b) standing on a state variable rather than an artifact: the
+capability existed, the consumer was never written.
+
+## 3. `order` is not redundant with `steps`
+
+`steps` is sorted — the pool's identity, stable under how it was assembled.
+`order` is the members list as `sample` sees it, and `sample` is `rng.choice`
+over that list, so **the same membership in a different sequence draws a
+different snapshot.** F-23 turned on precisely that: the fix replays the original
+enrolment sequence rather than restoring a set. A composition column carrying
+only the sorted view would have been structurally unable to see the defect it was
+added for.
+
+The two agree once eviction has run, since eviction re-sorts by step. They differ
+while the pool is under capacity — the campaign's opening iterations.
+
+## 4. Cost
+
+Era machinery: zero lines. A row written under era 1 or 2 may omit the column,
+and that absence is computed from (row era, `field.since`) rather than asserted
+by the row — a run that predates a column cannot have explained the absence of
+something nobody had named. The one-line consequence at each of the three
+`iteration_row` call sites is a required keyword argument, which is the point:
+the column cannot be forgotten by a new caller.
+
+**No gate contact.** No threshold, floor or primary is denominated in this
+column. It is the evidence that §6's denominator was what it claims.

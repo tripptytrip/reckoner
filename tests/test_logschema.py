@@ -35,6 +35,13 @@ def good_row(**overrides) -> dict:
         "schema_era": SCHEMA_ERA,
         # D-A1 §1.1: the digest of the checkpoint the evaluator was built from.
         "evaluator_checkpoint_sha256": "d" * 64,
+        # M1-A3 (era 3): the par-escalation pool as this iteration drew from it.
+        "pool_composition": {
+            "size": 2,
+            "steps": [0, 5000],
+            "order": [5000, 0],
+            "value_head_live": [],
+        },
         "run_name": "shakedown",
         "git_sha": "0" * 40,
         "config_fingerprint": "a" * 64,

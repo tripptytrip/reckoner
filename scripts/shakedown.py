@@ -18,11 +18,17 @@ import shutil
 import time
 from pathlib import Path
 
-import numpy as np
 import torch
 
 from reckoner.config import Config, config_fingerprint, save_config, validate
-from reckoner.dataset import anchored_data, git_sha, training_problems, write_record
+from reckoner.dataset import (
+    anchored_data,
+    git_sha,
+    sha256_file,
+    training_problems,
+    write_record,
+)
+from reckoner.evaluate import model_evaluator
 from reckoner.logschema import (
     ITERATION_FIELDS,
     SCHEMA_ERA,
@@ -33,7 +39,7 @@ from reckoner.logschema import (
     read_rows,
     switch_event_row,
 )
-from reckoner.model import Reckoner, StateTooLarge, encode, load_checkpoint, save_checkpoint
+from reckoner.model import load_checkpoint, save_checkpoint
 from reckoner.pool import CheckpointPool, PoolError
 from reckoner.replay import ReplayRing
 from reckoner.resume import KEEP_RINGS, RunState, commit_iteration, latest_committed
@@ -44,38 +50,6 @@ from reckoner.vocab import VOCAB_VERSION
 
 REPO = Path(__file__).resolve().parents[1]
 EXPECTATIONS_SHA = "93868dd"
-
-
-def model_evaluator(model: Reckoner, cfg: Config, value_scale: float):
-    """The declaration applied: value contributes `value_scale`, priors always."""
-    width = 7 * cfg.model.max_sites
-
-    def evaluate(leaves):
-        encoded, keep = [], []
-        for i, (problem, expr) in enumerate(leaves):
-            try:
-                encoded.append(encode(problem, expr, cfg))
-                keep.append(i)
-            except StateTooLarge:
-                continue
-        out = [(np.zeros(width, dtype=np.float32), 0.0) for _ in leaves]
-        if not encoded:
-            return out
-        with torch.no_grad():
-            policy, value_logits, _ = model(
-                torch.stack([e.tokens for e in encoded]),
-                torch.stack([e.site_positions for e in encoded]),
-            )
-            probs = torch.softmax(value_logits, dim=1)
-            expected = (probs[:, 0] - probs[:, 2]).tolist()
-        for slot, i in enumerate(keep):
-            out[i] = (
-                policy[slot].numpy().astype(np.float32),
-                value_scale * float(expected[slot]),
-            )
-        return out
-
-    return evaluate
 
 
 def main() -> int:
@@ -180,6 +154,14 @@ def main() -> int:
             ruleset_version=RULESET_VERSION,
             vocab_version=VOCAB_VERSION,
             schema_era=SCHEMA_ERA,
+            # Constant BY CONSTRUCTION here, and honestly so: the shakedown has
+            # no optimiser, so the evaluator plays the anchor's weights in every
+            # iteration. In the campaign this column MOVES, and golden asserts
+            # that it does — a digest that never changes is the stub defect
+            # wearing a provenance field. Here it never changes because the model
+            # never does.
+            evaluator_checkpoint_sha256=sha256_file(anchor),
+            pool_composition=pool.composition(),
         )
         solve_by_depth.append({"iteration": n, "rates": row["solve_rate_by_depth"]})
 

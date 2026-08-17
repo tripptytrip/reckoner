@@ -254,6 +254,7 @@ def preflight(cfg: Config, model, scratch: Path) -> None:
     stats = run_iteration(
         problems, model_evaluator(model, cfg, 0.0), cfg, ring, sims=1, m=1, seed=0
     )
+    pool = CheckpointPool(cfg)
     row = iteration_row(
         stats,
         iteration=0,
@@ -264,10 +265,29 @@ def preflight(cfg: Config, model, scratch: Path) -> None:
         ruleset_version=RULESET_VERSION,
         vocab_version=VOCAB_VERSION,
         schema_era=SCHEMA_ERA,
+        evaluator_checkpoint_sha256="0" * 64,
+        pool_composition=pool.composition(),
     )
     append_row(scratch / "iterations.jsonl", row, ITERATION_FIELDS)
-    head_state = RunState(iteration=0, value_head=None, seed=0)
-    del head_state
+
+    # THE SWITCH ROW IS A ROW CLASS, so "every row class" has to mean it (F-24).
+    # This previously built a `RunState` and `del`'d it, which exercised a
+    # constructor and called it coverage of an output path.
+    #
+    # Through the REAL criterion on the REAL micro ring, not a synthesised event:
+    # a pre-flight that hand-built the row it then wrote would prove the writer
+    # works and nothing about the path that feeds it. An abstention here is a
+    # pass, not a failure — the switch row's whole registration is that
+    # abstentions write too.
+    slots = sorted(ring.holdout(cfg.train.ring_holdout_frac, seed=0))
+    labels, predictions = evaluate_head(model, ring, cfg, slots)
+    _, event = consider_switch(ValueHeadState(), labels, predictions, iteration=0)
+    append_row(
+        scratch / "value_switch.jsonl",
+        switch_event_row(event, schema_era=SCHEMA_ERA),
+        VALUE_SWITCH_FIELDS,
+    )
+
     shutil.rmtree(scratch, ignore_errors=True)
     print(f"  pre-flight OK ({time.perf_counter() - started:.1f}s)")
 
@@ -406,6 +426,17 @@ def run(
             )
         pool.add(snapshot)
 
+    # THE PRE-FLIGHT, ACTUALLY CALLED (F-24). D-A1 §3 registered it, it was
+    # built, and no caller ever ran it — so it had been broken by an unrelated
+    # signature change and nothing noticed, which is the precise failure a
+    # pre-flight exists to catch happening to the pre-flight itself.
+    #
+    # Only when starting fresh: on resume the output path has already written
+    # rows this run, and re-proving it would spend the anchor's time on a
+    # question the artifacts already answer.
+    if start == 0:
+        preflight(cfg, model, run_dir / "_preflight")
+
     summary: dict = {"run_name": run_name, "threads": threads, "iterations": []}
 
     for n in range(start, cfg.campaign.iterations):
@@ -414,6 +445,11 @@ def run(
 
         # --- self-play, MODEL-IN-SEARCH ------------------------------------
         scale = value_contribution(state.value_head)
+        # M1-A3: the pool AS THIS ITERATION DREW FROM IT, captured before this
+        # iteration's own enrolment. Reading it after `enroll` would log a pool
+        # one rung deeper than the one that actually supplied par, which is an
+        # off-by-one nobody could detect from the artifacts.
+        composition = pool.composition()
         problems, from_pool = campaign_problems(
             cfg, pool, model, cfg.campaign.episodes_per_iteration, seed=n
         )
@@ -480,6 +516,7 @@ def run(
             vocab_version=VOCAB_VERSION,
             schema_era=SCHEMA_ERA,
             evaluator_checkpoint_sha256=digest,
+            pool_composition=composition,
             seconds_train=seconds_train,
             absent=absent or None,
         )

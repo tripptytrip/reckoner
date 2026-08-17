@@ -231,7 +231,26 @@ def test_composition_is_loggable_and_names_the_live_members(tmp_path: Path) -> N
     pool = CheckpointPool(CFG)
     pool.add(a_snapshot(tmp_path, "a", step=1, live=False))
     pool.add(a_snapshot(tmp_path, "b", step=2, live=True))
-    assert pool.composition() == {"size": 2, "steps": [1, 2], "value_head_live": [2]}
+    assert pool.composition() == {
+        "size": 2,
+        "steps": [1, 2],
+        "order": [1, 2],
+        "value_head_live": [2],
+    }
+
+
+def test_composition_order_is_the_list_sample_sees_not_the_sorted_view(tmp_path: Path) -> None:
+    """F-23's subtle half, asserted. `sample` is ``rng.choice`` over `members`, so
+    membership and SEQUENCE are both load-bearing: the same pool assembled in a
+    different order draws a different snapshot. A composition column carrying only
+    the sorted view could not see the defect it was added for."""
+    pool = CheckpointPool(CFG)
+    for step in (50, 10, 30):  # anchor-like member first, as the driver enrols
+        pool.add(a_snapshot(tmp_path, f"m{step}", step=step))
+    composition = pool.composition()
+    assert composition["order"] == [50, 10, 30], "order must be insertion order"
+    assert composition["steps"] == [10, 30, 50], "steps must remain the sorted identity"
+    assert composition["order"] != composition["steps"], "the two views must be distinguishable"
 
 
 def test_sampling_an_empty_pool_returns_nothing_rather_than_raising() -> None:

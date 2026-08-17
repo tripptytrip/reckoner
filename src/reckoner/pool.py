@@ -190,10 +190,25 @@ class CheckpointPool:
         return len(self.members)
 
     def composition(self) -> dict:
-        """Logged per iteration: who is in the pool, by step."""
+        """Logged per iteration: who is in the pool, by step.
+
+        ``steps`` is sorted — the pool's identity, stable under how it was
+        assembled. ``order`` is the members list as `sample` sees it, and the two
+        are different questions: `sample` is ``rng.choice`` over the list, so the
+        same membership in a different sequence draws a different snapshot.
+        F-23 turned on exactly that distinction, and a composition column that
+        logged only the sorted view would have been unable to see the defect it
+        was added for.
+
+        The two agree once eviction has run, since eviction re-sorts by step.
+        They differ while the pool is under capacity — which is the campaign's
+        opening iterations, where the anchor sits at rung zero with a step number
+        that need not be the smallest.
+        """
         return {
             "size": len(self.members),
             "steps": sorted(m.step for m in self.members),
+            "order": [m.step for m in self.members],
             "value_head_live": sorted(m.step for m in self.members if m.value_head.live),
         }
 

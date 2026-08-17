@@ -102,6 +102,7 @@ def test_the_row_it_produces_validates_against_the_schema() -> None:
         vocab_version=VOCAB_VERSION,
         schema_era=SCHEMA_ERA,
         evaluator_checkpoint_sha256="d" * 64,
+        pool_composition={"size": 0, "steps": [], "order": [], "value_head_live": []},
     )
     assert validate_row(row) == [], "a clean iteration must raise no alarms"
 

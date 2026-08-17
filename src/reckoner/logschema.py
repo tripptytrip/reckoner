@@ -55,7 +55,7 @@ ROLES = frozenset(
 #: Current schema era. Bumped whenever a field is ADDED or a pinned binning
 #: CHANGES. A row records the era it was written under, which is what lets a
 #: reader distinguish "this run predates the column" from "this run dropped it".
-SCHEMA_ERA = 2
+SCHEMA_ERA = 3
 
 #: Bins for ``steps_minus_par_histogram``, **pinned here and versioned with the
 #: schema — never in config.** A histogram whose bins moved is two instruments
@@ -335,6 +335,25 @@ ITERATION_FIELDS: tuple[Field, ...] = (
         "This column is the assertion that the trained weights are the weights "
         "playing.",
         since=2,
+    ),
+    Field(
+        "pool_composition",
+        dict,
+        "diagnostic",
+        "The par-escalation pool as it stood when this iteration drew from it: "
+        "``size``, ``steps`` (sorted — the pool's identity), ``order`` (the "
+        "members list as ``sample`` sees it) and ``value_head_live``. "
+        "**Registered by M1-A3, on F-23's argument.** `composition()` existed "
+        "from chunk 9 and was logged by nothing, so when resume rebuilt the pool "
+        "with the anchor alone, every column in this row agreed with an "
+        "uninterrupted run while the ring the model trains on differed — the "
+        "campaign's own escalation mechanism silently reset, invisible at any "
+        "strictness a row comparison can reach. M1-A2 §6's two-population split "
+        "is analytically dependent on this: a pool/bfs ratio is uninterpretable "
+        "without knowing how many rungs the pool held. ``size`` 0 is a VALUE "
+        "(the pool is empty, and par has nothing to escalate from); it is not "
+        "absence, which is why this column is required rather than optional.",
+        since=3,
     ),
 )
 

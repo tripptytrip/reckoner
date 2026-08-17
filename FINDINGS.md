@@ -1487,3 +1487,80 @@ defect arriving by the path meant to prevent it.
 load-bearing for M1-A2 §6's two-population split, and this finding is the
 demonstration that its absence hides a real defect. That is a schema-era change
 against a frozen page, so it is recorded here for ruling rather than taken.
+
+---
+
+## F-24 — The pre-flight was never called, and had been broken by an unrelated change nobody noticed
+
+**Found:** 2026-08-17, while threading `pool_composition` through `iteration_row`
+for M1-A3. `campaign.preflight` did not supply the new keyword — and did not
+supply `evaluator_checkpoint_sha256` either, which became required at era 2, in
+the previous session.
+
+`grep` for callers returns three hits, and **all three are different functions
+with the same name** in `chunk11_pilot_campaign_cost.py`, `generate.py` and
+`chunk11_misses_diagnostic.py`. Nothing called this one:
+
+```
+TypeError: iteration_row() missing 2 required keyword-only arguments:
+'evaluator_checkpoint_sha256' and 'pool_composition'
+```
+
+### Why it matters more than a missing call
+
+D-A1 §3 registers the pre-flight as *every row class, at micro scale, before
+iteration 0 spends anything* — a gate whose entire purpose is to catch a broken
+output path before the campaign pays for it. It was broken by a signature change
+made two sessions ago, and **that is the exact event it exists to catch, having
+happened to the gate itself.** M1 would have run twenty iterations without it and
+nobody would have learned that until reading this line.
+
+Same species as F-23 (`composition()` logged by nothing) and the
+`seed_pool_with_anchor` defect (honoured in one script and no driver): the
+capability is built, documented and registered — and no consumer was ever wired.
+The tell is identical in all three: *nothing referenced it*, and no test noticed,
+because a test for an uncalled function is an uncalled test.
+
+### Second instance, in the same commit
+
+`scripts/shakedown.py` calls `iteration_row` too, and had the same missing
+argument — so **shakedown has also been unrunnable since era 2**. It was
+discovered only because the M1-A3 ruling required repointing it. Two of the three
+`iteration_row` call sites in the repository were dead.
+
+### The fix
+
+`preflight` supplies both columns and is **called from `run` when `start == 0`**
+— not on resume, where the output path has already written rows this run and
+re-proving it would spend the anchor's time on a question the artifacts answer.
+It costs 0.3s.
+
+It now also writes a **switch row through the real criterion on the real micro
+ring**, because "every row class" has to include the row class it was skipping:
+the previous body constructed a `RunState` and `del`'d it, which exercises a
+constructor and calls it coverage of an output path. An abstention there is a
+pass — the switch row's whole registration is that abstentions write too.
+
+### Registered, not taken: the pool's ordering key carries two denominations
+
+Surfaced by M1-A3's new `order` view. `CheckpointPool` evicts by `Member.step`,
+keeping the largest. The anchor's step is its **training-step count, 5000**;
+campaign snapshots enrol with `step=n`, the **iteration index, 0–19**. Simulated
+over the campaign's twenty iterations:
+
+| | result |
+|---|---|
+| final pool | `[13, 14, 15, 16, 17, 18, 19, 5000]` |
+| anchor retained as rung zero | yes |
+| snapshot slots actually available | **7 of 8** |
+| if the anchor's step were 3 instead | `[12 … 19]` — **anchor evicted at iteration 4** |
+
+The behaviour is correct: rung zero is retained. But it is correct *because*
+5000 > 20, not because anything decided it — and the anchor permanently occupies
+one of the eight slots, so the effective snapshot depth is seven. `shakedown.py`
+enrols at `5000 + n + 1`, which keeps its ordering sane by a constant chosen to
+sit above the anchor's.
+
+Correct by coincidence rather than by construction, which is the state this
+project does not leave standing — but changing the eviction key changes par
+escalation, and therefore M1's subject. **Recorded for ruling rather than taken.**
