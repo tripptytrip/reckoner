@@ -1941,3 +1941,64 @@ Wiring the rehearsal path is a **defect fix**, not an amendment: the spec alread
 specifies rehearsal and the implementation lacked it, so building it restores
 specified behaviour. **Setting `f > 0` is the amendment** — that is the treatment
 decision, and it lands as M1-A4 after the sweep, carrying measured numbers.
+
+---
+
+## F-32 — The campaign never evaluates the two gates whose regression §8 makes BLOCKED
+
+**Found:** 2026-08-17, by the config census — `ladder.problems_per_pass` came back
+with no consumer, which is only possible if no ladder pass runs.
+
+PREREG-m1 §4.5 declares two gates on the ruled wiring:
+
+| gate | threshold | anchor measured |
+|---|---:|---:|
+| **10b** top-1 rule-site, depth ≤ 3, F-09 unseen subset | 0.9000 | 0.9699 |
+| **11** depth ≤ 2 solve rate, 16-sim, value-silent | 0.9500 | 1.0000 |
+
+§8 declares: *"**Gate 10b or gate 11 regresses** on the ruled wiring. BLOCKED."*
+
+`run_instruments` — the sole instrument seam, which every cadence measurement
+goes through — computes **no-regress at both budgets and the primary. Nothing
+else.** No gate 10b, no gate 11, no ladder pass. `ladderpass.run_pass` occurs in
+`campaign.py` exactly once, inside a docstring.
+
+**So two of §8's five BLOCKED branches cannot fire.** They are not failing to
+trip; they are never evaluated.
+
+### What that cost, measured
+
+Today's manual diagnostic ran gate 10b across the rehearsal's checkpoints:
+
+| checkpoint | top-1 | vs threshold 0.9000 |
+|---|---:|---|
+| `phase1.pt` | 0.9699 | +0.0699 |
+| **`ckpt-0`** | **0.8942** | **−0.0058 — BREACHED** |
+| `ckpt-4` | 0.8845 | −0.0155 |
+
+**Gate 10b breaches at iteration 0**, after the first training step, ~20 minutes
+into a run. The no-regress floors — which *are* evaluated — first fire at
+iteration 4, after the 110-minute cadence unit, ~4 hours in. The campaign's
+earliest and cheapest stop-branch is the one that is not wired, and the
+expensive one is.
+
+This also explains why the rehearsal's diagnosis needed a hand-written script:
+the number that identifies the failure mode is one the campaign was specified to
+compute and does not.
+
+### Related, and cheaper to fix
+
+* **`campaign.interop_threads`** is read by nothing. M1-A2 §4 classes it as
+  **OBSERVED** — "licenses only 'this is what ran'" — so it is a legitimate
+  provenance field rather than a pin. But `assert_threads` reports
+  `torch.get_num_interop_threads()` and never compares it against the declared
+  32, so the record's claim is unverified where one line would verify it.
+* **`search.perspective`** is exempt on different grounds and the distinction
+  matters for the registry: its legal range is exactly one value, enforced by
+  `validate`, so varying it *within legal values* is impossible. A pinned
+  invariant, vacuously behavioural. `rehearsal_frac` fails precisely where this
+  passes — its legal range is `[0, 1)`, every value passes validation, and none
+  of them changes anything.
+
+That contrast is the two-tier rule's sharp edge: **the question is not whether a
+field is read, but whether varying it across its legal range changes what runs.**
