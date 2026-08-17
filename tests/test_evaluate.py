@@ -11,7 +11,7 @@ import torch
 from reckoner.arms import ArmError
 from reckoner.config import Config
 from reckoner.dataset import read_suite, suite_problem
-from reckoner.evaluate import ModelArm, model_evaluator
+from reckoner.evaluate import EvaluatorModeError, ModelArm, model_evaluator
 from reckoner.model import Reckoner
 from reckoner.valuegate import ValueHeadState, value_contribution
 
@@ -119,3 +119,52 @@ def test_a_self_play_arm_keeps_the_profile_it_declares() -> None:
     a hard-coded False."""
     arm = ModelArm(a_model(), root_noise=True)
     assert arm.profile_config(CFG).search.root_noise is True
+
+
+# ------------------------------------------------- the evaluator's mode (F-22)
+
+
+def test_the_evaluator_refuses_a_model_in_train_mode() -> None:
+    """F-22, first polarity. **The mode is a property of the evaluator**, so it
+    is checked where the evaluator is built rather than trusted to an
+    ``.eval()`` somewhere up the call chain — "we call eval somewhere" is
+    exactly the claim that rots, and it rotted: `train_on_ring` set train mode
+    and never restored it, so every subsequent search ran with dropout live.
+    """
+    model = Reckoner(CFG)
+    model.train()
+    with pytest.raises(EvaluatorModeError, match="TRAIN mode"):
+        model_evaluator(model, CFG, 0.0)
+
+
+def test_the_evaluator_accepts_a_model_in_eval_mode() -> None:
+    """Second polarity — without it the guard could be an unconditional raise."""
+    model = Reckoner(CFG)
+    model.eval()
+    assert model_evaluator(model, CFG, 0.0) is not None
+
+
+def test_dropout_is_live_in_train_mode_so_the_guard_has_something_to_guard() -> None:
+    """The guard is only worth its line if the two modes actually differ.
+
+    With ``dropout > 0`` a train-mode forward pass is stochastic, which is what
+    made the driver's headline measurement swing in the third decimal place
+    across identical processes. Asserted rather than assumed, because a config
+    that drifted to ``dropout=0`` would leave the two tests above passing while
+    guarding nothing.
+    """
+    cfg = replace(CFG, model=replace(CFG.model, dropout=0.1))
+    assert cfg.model.dropout > 0.0
+    model = Reckoner(cfg)
+    tokens = torch.ones((1, cfg.model.seq_len), dtype=torch.long)
+    sites = torch.zeros((1, cfg.model.max_sites), dtype=torch.long)
+
+    model.train()
+    with torch.no_grad():
+        a, b = model(tokens, sites)[0], model(tokens, sites)[0]
+    assert not torch.equal(a, b), "dropout is not live in train mode; the guard guards nothing"
+
+    model.eval()
+    with torch.no_grad():
+        c, d = model(tokens, sites)[0], model(tokens, sites)[0]
+    assert torch.equal(c, d), "eval mode is not deterministic"

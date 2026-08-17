@@ -28,6 +28,10 @@ from reckoner.rules import apply, legal_actions
 from reckoner.search import search
 
 
+class EvaluatorModeError(RuntimeError):
+    """A search evaluator was built from a model that is still in train mode."""
+
+
 def model_evaluator(model: Reckoner, cfg: Config, value_scale: float):
     """The declaration applied: value contributes ``value_scale``, priors always.
 
@@ -36,6 +40,24 @@ def model_evaluator(model: Reckoner, cfg: Config, value_scale: float):
     not earned (F-14's noise-as-signal closure). The policy prior is unaffected:
     it is trained on real improved-policy targets from the first iteration.
     """
+    # F-22. THE MODE IS A PROPERTY OF THE EVALUATOR, so it is checked here rather
+    # than trusted to a `.eval()` somewhere up the call chain. The campaign ran
+    # every episode with dropout live: `load_checkpoint` returns a model in train
+    # mode, `train_on_ring` re-asserts train mode, and nothing ever restored eval
+    # — so 10% of activations were randomly zeroed inside every search. It
+    # survived three chunks because `golden` played `uniform_stub`, which has no
+    # network to drop out; the moment D-A1 §1.1 put the real model in the loop,
+    # the mode became load-bearing and the first gate to compare two runs caught
+    # it.
+    if model.training:
+        raise EvaluatorModeError(
+            "the search evaluator was built from a model in TRAIN mode, so dropout "
+            f"(p={cfg.model.dropout}) is live inside every search. That is three "
+            "defects at once: the priors become nondeterministic, the policy plays "
+            "worse than its own weights, and entropy_prior_* — the column the "
+            "funnel signature's thresholds are a fraction OF — measures dropout "
+            "rather than the policy. Call model.eval() before building an evaluator."
+        )
     width = 7 * cfg.model.max_sites
 
     def evaluate(leaves):

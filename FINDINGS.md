@@ -1327,3 +1327,163 @@ outside that band is citing a number that has been measured false there.
 The mid-strata suites are unaffected as instruments — a bigger gap means a
 *more* beatable floor, which is what they were minted for. What changes is that
 nobody may assume the floor is nearly tight.
+
+---
+
+## F-22 — The driver never left train mode, so every search it ran had dropout live
+
+**Found:** 2026-08-17, from the resume gate. The gate compares a killed-and-resumed
+run against an uninterrupted one on every row column except three wall-clock
+fields, and it failed on columns that have nothing to do with resuming. The
+suspect was the comparator; the cause was that **the driver was not deterministic
+at all**, and two identical uninterrupted runs did not agree either.
+
+### The mechanism
+
+Three facts, each true on its own and harmless alone:
+
+1. `load_checkpoint` returns a model in **train** mode. `nn.Module` defaults to
+   `training=True` and nothing in the loader changes it.
+2. `train_on_ring` calls `model.to(device).train()` and returns without
+   restoring. It was written as a step, and it behaved as a mode switch.
+3. `campaign.run` built its search evaluator from that same object.
+
+So iteration 0 played the anchor in train mode because the loader left it there,
+and every iteration after that played it in train mode because training put it
+back. `cfg.model.dropout = 0.1`, and dropout in train mode is live: **the policy
+priors were sampled through a stochastic forward pass in every search the driver
+ever ran.**
+
+### Measured
+
+`entropy_prior_step1_*` from the driver at golden config, three fresh processes,
+identical seeds and identical config:
+
+| | `entropy_prior_step1_start` | `entropy_prior_step1_reached` |
+|---|---|---|
+| before, run 1 | 0.035472 | 0.034999 |
+| before, run 2 | 0.038375 | 0.023913 |
+| before, run 3 | 0.042216 | 0.034544 |
+| **spread** | **0.006744 (19% of the low value)** | **0.011086 (46%)** |
+| after, runs 1–3 | 0.035402 | 0.031519 |
+
+`solved=12` and `pool_par_fraction=0.166667` in all six runs. The integer
+counters were stable throughout, which is why this survived: **the columns that
+moved were the float-derived ones, and the ones a person checks first were the
+integers.**
+
+### The funnel-baseline consequence, in full
+
+`entropy_prior_step1_start` is not an incidental column. The funnel signature's
+thresholds are expressed as a *fraction of* it, so a defect in that column moves
+the measurement and the threshold together, in the same direction — which is the
+form of error that a threshold check cannot report, because the check is
+denominated in the thing that is wrong.
+
+Had M1 run as written: iteration 0's funnel columns would have carried one
+dropout sample, iteration 5's another, and the drift between them would have been
+read as *the policy's prior distribution sharpening as the model learns* — the
+exact phenomenon the funnel signature exists to detect. There is no column in
+which that misreading would have looked anomalous.
+
+**The registered baselines are not contaminated, and this was checked rather than
+assumed.** Every `load_checkpoint` call site in `src/`, `scripts/` and `tests/`
+was audited for the mode it measures in:
+
+| script | mode at measurement | trains before measuring? |
+|---|---|---|
+| `chunk11_part0.py` | `.eval()` | no |
+| `chunk11_part0b.py` | `.eval()` | no |
+| `chunk11_part0d.py` | `.eval()` | no |
+| `chunk11_misses_diagnostic.py` | `.eval()` | no |
+| `chunk11_pilot_campaign_cost.py` | `.eval()` | trains **throwaway** models only |
+| `shakedown.py` | `.eval()` | does not train |
+| `campaign.py` (the driver) | **train** | **yes, and never restored** |
+
+Every Part-0 number — the anchor's 1,200-problem baseline, `ANCHOR_BEAT = 101`,
+both `NO_REGRESS` floors, the funnel thresholds themselves — was measured in eval
+mode. The driver is the sole site that was wrong, and the driver is new in this
+chunk: **it has never produced a registered number.** The blast radius is exactly
+the driver's own development runs, all of which are superseded.
+
+### The fix
+
+The mode is asserted **where the evaluator is built**, not somewhere up the call
+chain. `model_evaluator` raises `EvaluatorModeError` on a model in train mode,
+because "we call `.eval()` somewhere" is precisely the claim that rots — it rots
+by someone adding a training step between the `.eval()` and the search, which is
+literally what happened here.
+
+Train mode is confined to `train_on_ring`, which now captures the incoming mode
+and restores it before returning. The driver calls `.eval()` at both checkpoint
+load sites and after each training step; those are belt-and-braces, and the
+evaluator's own guard is what makes them redundant rather than load-bearing.
+
+Both polarities are tested, and a third test asserts that `dropout > 0` makes the
+two modes actually differ — without it, a config that drifted to `dropout = 0`
+would leave the guard passing while guarding nothing.
+
+---
+
+## F-23 — Resume rebuilt the pool with the anchor alone, restarting par escalation from rung zero
+
+**Found:** 2026-08-17, by the resume gate's ring-content assertion — and only
+*after* F-22 was fixed. While the driver was nondeterministic the gate failed on
+ring content for a reason that explained itself, and a second cause underneath it
+was indistinguishable from the first. Removing the nondeterminism is what made
+the residual difference attributable.
+
+### The mechanism
+
+`CheckpointPool` lives in memory; its snapshots live on disk. `run` constructed a
+fresh pool, seeded it with the anchor, and entered the loop — so a run resuming at
+iteration *n* held **one member** where the uninterrupted run held *n* + 1. The
+snapshots `snap-0.pt … snap-{n-1}.pt` were sitting in the run directory, written
+by `enroll` before each commit, and nothing read them back.
+
+Par escalation is the mechanism by which par rises with the model. A resumed
+campaign silently restarted it from the anchor while the ring, the weights, the
+value head and the row history all continued correctly — the run would have gone
+on measuring improvement against a par that had quietly fallen back to where it
+began.
+
+### Measured
+
+Killed at iteration 1, resumed, compared against uninterrupted. Three iterations,
+twelve episodes each:
+
+| | uninterrupted | killed and resumed |
+|---|---|---|
+| ring slots | 113 | 113 |
+| slots identical | — | 104 / 113 |
+| `par_source = bfs` | 95 | **96** |
+| `par_source = pool` | 18 | **17** |
+| rows, all columns ex-wall-clock | — | **identical** |
+
+That last row is the finding's point. Every logged column agreed — `episodes`,
+`episodes_solved`, `z_by_par_source`, `pool_par_fraction`, all seven provenance
+fields — while the ring the model actually trains on differed. **No row-level
+comparison at any strictness would have caught this**, because the pool's
+composition is not in the schema: the only pool columns are `pool_refusals` and
+`pool_par_fraction`. `CheckpointPool.composition()` exists, returns size and
+member steps, and is logged by nothing.
+
+At golden scale the divergence is one step in 113. At campaign scale — 20
+iterations, 400 episodes each — a resume at iteration 15 discards fifteen rungs.
+
+### The fix
+
+`run` replays the original enrolment sequence on resume: the anchor, then
+`snap-0` upward through `snap-{start-1}`. **Order, not just membership** —
+`sample` is `rng.choice` over the members list, so the same set in a different
+order draws a different snapshot.
+
+A missing snapshot is a refusal, not a repair. `enroll` precedes the row and
+`LATEST`, so every committed iteration has one; if it is gone the run's history
+is not reconstructible, and continuing with a thinner pool would be this same
+defect arriving by the path meant to prevent it.
+
+**Registered as open:** the pool's composition should be a logged column. It is
+load-bearing for M1-A2 §6's two-population split, and this finding is the
+demonstration that its absence hides a real defect. That is a schema-era change
+against a frozen page, so it is recorded here for ruling rather than taken.

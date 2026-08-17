@@ -57,7 +57,7 @@ from reckoner.logschema import (
     switch_event_row,
 )
 from reckoner.model import load_checkpoint, save_checkpoint
-from reckoner.pool import CheckpointPool
+from reckoner.pool import CheckpointPool, PoolError
 from reckoner.replay import ReplayRing
 from reckoner.resume import RunState, commit_iteration, latest_committed, resume
 from reckoner.rules import RULESET_VERSION
@@ -355,6 +355,7 @@ def run(
         ring = ReplayRing(cfg.train.replay_capacity, cfg)
         state = RunState(iteration=0, value_head=ValueHeadState(), seed=cfg.seed)
     model, _ = load_checkpoint(anchor, cfg)
+    model.eval()  # F-22: dropout must not be live inside a search
 
     # The evaluator's provenance: at iteration 0 the weights are the anchor's; on
     # resume they are the last committed checkpoint's. Either way the digest is
@@ -364,6 +365,7 @@ def run(
         resumed = run_dir / f"ckpt-{start - 1}.pt"
         if resumed.exists():
             model, _ = load_checkpoint(resumed, cfg)
+            model.eval()  # F-22
             evaluator_source = resumed
 
     # SEED THE POOL WITH THE ANCHOR. `league.seed_pool_with_anchor` was honoured
@@ -376,6 +378,34 @@ def run(
     pool = CheckpointPool(cfg)
     if cfg.league.seed_pool_with_anchor and anchor.exists():
         pool.add(anchor)
+
+    # AND REBUILD IT (F-23). The pool lives in memory; the snapshots live on
+    # disk. A resumed run that only re-seeded the anchor would restart par
+    # escalation from rung zero while the ring, the weights and the row history
+    # all continued — the campaign would go on measuring against a par that
+    # silently fell back to where it began, and nothing in the row would say so.
+    #
+    # Order is reconstructed, not just membership: `sample` is `rng.choice` over
+    # `members`, so the same set in a different order draws a different snapshot.
+    # Replaying the original add sequence — anchor, then snap-0 upward — makes
+    # the list identical rather than equivalent.
+    #
+    # A missing snapshot is a REFUSAL. `enroll` precedes the row and LATEST, so
+    # every committed iteration has one; if it is gone, this run's history is not
+    # reconstructible, and continuing with a thinner pool would be the defect
+    # arriving quietly by the path meant to repair it.
+    for prior in range(start):
+        snapshot = run_dir / f"snap-{prior}.pt"
+        if not snapshot.exists():
+            raise PoolError(
+                f"resuming at iteration {start} needs {snapshot.name} to rebuild the pool, "
+                "and it is absent. Iteration "
+                f"{prior} committed, so it was written and has since been lost: the pool "
+                "cannot be restored to what it was, and a resumed run with a thinner pool "
+                "is not the run that was interrupted."
+            )
+        pool.add(snapshot)
+
     summary: dict = {"run_name": run_name, "threads": threads, "iterations": []}
 
     for n in range(start, cfg.campaign.iterations):
@@ -403,6 +433,8 @@ def run(
             value_head=state.value_head,
         )
         seconds_train = time.perf_counter() - t0
+        model.eval()  # F-22: belt and braces — train_on_ring restores, and the
+        # evaluator's own guard would refuse if either of us were wrong.
 
         # --- checkpoint, then enrol: par escalates with the model ------------
         checkpoint = run_dir / f"ckpt-{n}.pt"

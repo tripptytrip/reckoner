@@ -293,6 +293,7 @@ def train_on_ring(
     """
     rng = random.Random(seed)
     torch.manual_seed(seed)
+    was_training = model.training
     model.to(device).train()
     optimiser = torch.optim.AdamW(
         model.parameters(), lr=cfg.train.lr, weight_decay=cfg.train.weight_decay
@@ -359,6 +360,10 @@ def train_on_ring(
                 raise RuntimeError(
                     f"non-finite gradients on {rate:.1%} of steps — a rate, not a transient"
                 )
+    # F-22: TRAIN MODE IS CONFINED HERE. Leaving it set is what put dropout
+    # inside every subsequent search — the caller asked for a training step, not
+    # for a permanently mutated model.
+    model.train(was_training)
     return stats
 
 
