@@ -90,6 +90,18 @@ NO_REGRESS = {48: 1188, 1: 1167}
 #: PREREG-m1 §2: the primary's population.
 SUCCESSOR_STRATA = (7, 8, 10)
 
+#: PREREG-m1 §5: the 24 problems certified as the shared miss set of the anchor at
+#: sims=1 and the scripted solver (intersection 24/24, Jaccard 1.0). FROZEN — the
+#: watchlist observes against it and never re-derives it.
+WATCHLIST = REPO / "runs" / "chunk11_misses_diagnostic.json"
+
+
+def frozen_watchlist() -> set[str]:
+    """The frozen 24, as `problem_key` strings."""
+    record = json.loads(WATCHLIST.read_text())
+    return set(record["cross_reference_sims_1_vs_scripted"]["shared"])
+
+
 #: The Phase-1 anchor: rung zero of the pool, and iteration 0's evaluator.
 ANCHOR = REPO / "runs" / "phase1" / "phase1.pt"
 
@@ -232,29 +244,83 @@ def run_instruments(
     """
     ev = eval_profile(cfg)
     fingerprint = assert_eval_profile(ev)
-    evaluator = model_evaluator(model, ev, 0.0)
+    # Both legs now build their own evaluators inside `ModelArm`, so this call
+    # exists ONLY for its refusal: F-22's guard rejects a model in train mode, and
+    # dropping it because the return value became unused would remove the mode
+    # check from the seam that every cadence measurement passes through.
+    model_evaluator(model, ev, 0.0)
     out: dict = {"iteration": iteration, "config_fingerprint": fingerprint, "profile": "eval"}
 
     rng_entry = (random.getstate(), torch.get_rng_state().clone())
 
     # --- no-regress, both budgets, against the declared floors ---------------
+    # THROUGH THE LADDER (F-35). This leg emitted {at_par, of} and nothing else,
+    # so the watchlist PREREG §5 specifies — family_remaining and novel_misses,
+    # "computed from data the pass already produces" — had no input: an aggregate
+    # has no miss set, and there is no intersection to take. The rehearsal proved
+    # the cost on the exact event §5 was written for: at-par 1193 -> 910, and no
+    # artifact could say whether those misses were the frozen family or a new one.
+    #
+    # Recording is required independent of execution mode. Routing rather than
+    # teaching `run_iteration` to emit rows keeps ONE implementation of
+    # per-problem recording — F-33's lesson applied to F-33's own remedy.
     suites = sorted(SUITES.glob("solve_in_*.jsonl"))
     instrument = [suite_problem(r) for p in suites for r in read_suite(p)]
-    for sims, floor in sorted(NO_REGRESS.items(), reverse=True):
-        stats = run_iteration(
-            instrument, evaluator, ev, None, sims=sims, m=min(ev.search.gumbel_m, sims), seed=0
+    budgets = sorted(NO_REGRESS, reverse=True)
+    arms = [
+        ModelArm(model, name=f"model@{sims}", sims=sims, m=min(ev.search.gumbel_m, sims))
+        for sims in budgets
+    ]
+    root = (run_dir or REPO / "runs") / "ladder"
+
+    # BOTH ARMS ARE SUBJECTS, and that is a refusal rather than a default. Each
+    # floor is a ONE-SIDED comparison against a frozen constant — 1188 and 1167 —
+    # not a paired comparison between budgets. Declaring one a baseline would
+    # invite a bootstrap CI between 48 and 1 sims: a number nobody asked for,
+    # wearing the ladder's authority.
+    if not is_complete(root, iteration):
+        run_pass(
+            root,
+            iteration,
+            arms,
+            instrument,
+            ev,
+            roles={a.name: "subject" for a in arms},
+            calibration_note=(
+                "exact-par suites; each budget is scored against its own frozen "
+                "indistinguishability floor and NOT against the other budget"
+            ),
+            seed=0,
         )
-        stats.check_descent_identity()
-        at_par = stats.steps_minus_par["0"]
+    scored = read_pair_scores(root, iteration)
+
+    misses: dict[int, set[str]] = {}
+    for sims, arm in zip(budgets, arms, strict=True):
+        rows = [r for r in scored if r["arm"] == arm.name]
+        at_par = sum(int(r["z"]) == 0 for r in rows)
+        misses[sims] = {r["problem_key"] for r in rows if int(r["z"]) != 0}
+        floor = NO_REGRESS[sims]
         out[f"no_regress_sims_{sims}"] = {
             "at_par": at_par,
-            "of": stats.episodes,
+            "of": len(rows),
             "floor": floor,
             "held": at_par >= floor,
             "floor_kind": "indistinguishability",
             "licensed_sentence": "not below the anchor's own one-sided 95% band",
             "floor_recomputed": no_regress_floor(1193 if sims == 48 else 1176, 1200),
         }
+
+    # THE WATCHLIST, at last computable (PREREG §5). Against the FROZEN reference,
+    # never re-derived: a family re-derived per pass conflates "the family shrank"
+    # with "the family's definition moved".
+    frozen = frozen_watchlist()
+    watch_at = min(budgets)  # the family was certified at sims = 1
+    out["watchlist"] = {
+        "family_remaining": len(misses[watch_at] & frozen),
+        "novel_misses": len(misses[watch_at] - frozen),
+        "frozen_family_size": len(frozen),
+        "budget": watch_at,
+    }
 
     # --- the primary: pooled beat-par on {7, 8, 10} --------------------------
     # THROUGH THE LADDER, not beside it (F-33). This used `run_iteration` and kept
@@ -350,6 +416,8 @@ def preflight(cfg: Config, model, scratch: Path) -> None:
         absent={
             "pool_par_fraction": "the pre-flight's pool is empty by construction",
             "ladder_pass": "the pre-flight runs no ladder pass",
+            "family_remaining": "not a ladder iteration, so no pass miss set exists",
+            "novel_misses": "not a ladder iteration, so no pass miss set exists",
         },
     )
     append_row(scratch / "iterations.jsonl", row, ITERATION_FIELDS)
@@ -600,6 +668,8 @@ def run(
             absent["ladder_pass"] = (
                 "not a ladder iteration (ladder runs on ladder.ladder_every cadence)"
             )
+            for column in ("family_remaining", "novel_misses"):
+                absent[column] = "not a ladder iteration, so no pass miss set exists"
         if from_pool == 0 and not pool.members:
             absent["pool_par_fraction"] = (
                 "league.par_from_pool_frac is 0, or no snapshot has been taken yet"
@@ -638,6 +708,11 @@ def run(
         row["pool_refusals"] = pool.stats.refusals
         if ladder_index is not None:
             row["ladder_pass"] = ladder_index
+            # PREREG §5's pair, emitted rather than derivable-in-principle —
+            # which is F-35's entire lesson.
+            watch = summary["instruments"][-1]["watchlist"]
+            row["family_remaining"] = watch["family_remaining"]
+            row["novel_misses"] = watch["novel_misses"]
         if "pool_par_fraction" not in absent:
             row["pool_par_fraction"] = round(from_pool / max(1, stats.episodes), 6)
 

@@ -55,7 +55,7 @@ ROLES = frozenset(
 #: Current schema era. Bumped whenever a field is ADDED or a pinned binning
 #: CHANGES. A row records the era it was written under, which is what lets a
 #: reader distinguish "this run predates the column" from "this run dropped it".
-SCHEMA_ERA = 3
+SCHEMA_ERA = 4
 
 #: Bins for ``steps_minus_par_histogram``, **pinned here and versioned with the
 #: schema — never in config.** A histogram whose bins moved is two instruments
@@ -354,6 +354,35 @@ ITERATION_FIELDS: tuple[Field, ...] = (
         "(the pool is empty, and par has nothing to escalate from); it is not "
         "absence, which is why this column is required rather than optional.",
         since=3,
+    ),
+    Field(
+        "family_remaining",
+        int,
+        "diagnostic",
+        "PREREG-m1 §5: |pass_miss_set ∩ frozen_24| — the certified trap family "
+        "shrinking. Observed against the FROZEN reference, never re-derived: a "
+        "family re-derived per pass conflates 'the family shrank' with 'the "
+        "family's definition moved'. **Registered at era 4 on F-35's argument** — "
+        "§5 called this pair free and 'computed from data the pass already "
+        "produces', and the pass produced an aggregate with no miss set, so "
+        "neither column existed when at-par fell 1193 → 910 and nobody could say "
+        "which family the misses belonged to.",
+        required=False,
+        absence="not a ladder iteration, so no pass miss set exists",
+        since=4,
+    ),
+    Field(
+        "novel_misses",
+        int,
+        "diagnostic",
+        "PREREG-m1 §5: |pass_miss_set \\ frozen_24| — a NEW family growing. The "
+        "other half of the attribution the aggregate floor cannot make: a floor "
+        "catches net regression and cannot say whose. Zero here with "
+        "family_remaining falling is the amortization thesis at its most "
+        "localized; nonzero is a family the watchlist did not know about.",
+        required=False,
+        absence="not a ladder iteration, so no pass miss set exists",
+        since=4,
     ),
 )
 
