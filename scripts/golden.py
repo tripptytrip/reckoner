@@ -1,16 +1,23 @@
 """`make golden` — the loop's fast liveness check. CPU always, under three minutes.
 
-Not a gate on performance and not a shakedown: a golden run answers *does the
-loop still turn*, in the time a person will actually wait. The plan requires it
-to run **on CPU regardless of training device**, because a check that needs the
-accelerator is a check that stops running the moment the accelerator is busy —
-and this box's GPU is shared with a project that assumes it owns it.
+**This is the driver at golden config.** Not a loop beside it:
+:func:`reckoner.campaign.run` is invoked here exactly as the campaign invokes it,
+and what follows are golden's own assertions about what it wrote. One
+composition, two doors — the campaign's door asserts the registered fingerprint,
+golden's door asserts these.
 
-What it exercises, end to end: episode running with batching across searches, the
-descent identity, the replay ring, the schema (rows validated at write), the
-value-head declaration reaching both consumers, pool enrollment and pool par, the
-commit point, and ring retention. What it does **not** do is judge any of them —
-that is the shakedown's job, against pre-registered expectations.
+That distinction is the whole point of the repoint. Golden used to *be* a second
+loop, and the cost was three chunks of a defect nobody could see: it ran
+``uniform_stub`` every iteration, so the model→search→ring path — the loop's
+entire subject — was never exercised by the check whose job was exercising the
+loop. A liveness check that certifies a composition the campaign never runs is a
+liveness check for the wrong program.
+
+A golden run answers *does the loop still turn*, in the time a person will
+actually wait. The plan requires it to run **on CPU regardless of training
+device**, because a check that needs the accelerator is a check that stops
+running the moment the accelerator is busy. It does not judge performance — that
+is the shakedown's job, against pre-registered expectations.
 """
 
 from __future__ import annotations
@@ -22,27 +29,9 @@ from pathlib import Path
 
 import torch
 
-from reckoner.config import Config, config_fingerprint, validate
-from reckoner.dataset import anchored_data, git_sha, training_problems
-from reckoner.logschema import (
-    ITERATION_FIELDS,
-    SCHEMA_ERA,
-    VALUE_SWITCH_FIELDS,
-    alarm_census,
-    append_row,
-    read_rows,
-    switch_event_row,
-)
-from reckoner.model import Reckoner
-from reckoner.pool import CheckpointPool
-from reckoner.replay import ReplayRing
-from reckoner.resume import RunState, commit_iteration, latest_committed, resume
-from reckoner.rules import RULESET_VERSION
-from reckoner.runner import iteration_row, run_iteration
-from reckoner.search import uniform_stub
-from reckoner.train import train_on_ring
-from reckoner.valuegate import ValueHeadState, consider_switch
-from reckoner.vocab import VOCAB_VERSION
+from reckoner.campaign import ANCHOR, golden_config, run
+from reckoner.dataset import sha256_file
+from reckoner.logschema import ITERATION_FIELDS, read_rows
 
 REPO = Path(__file__).resolve().parents[1]
 BUDGET_SECONDS = 180.0
@@ -50,142 +39,74 @@ BUDGET_SECONDS = 180.0
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--iterations", type=int, default=2)
-    parser.add_argument("--episodes", type=int, default=12)
-    args = parser.parse_args()
+    parser.parse_args()
 
     # CPU regardless of what is installed. A liveness check that competes for the
     # accelerator is one that stops being run.
     torch.set_num_threads(min(4, torch.get_num_threads()))
 
-    cfg = Config()
-    validate(cfg)
-    run = REPO / "runs" / "golden"
-    if run.exists():
-        shutil.rmtree(run)
-    run.mkdir(parents=True)
+    run_dir = REPO / "runs" / "golden"
+    if run_dir.exists():
+        shutil.rmtree(run_dir)
 
     started = time.perf_counter()
-    ring = ReplayRing(4096, cfg)
-    pool = CheckpointPool(cfg)
-    torch.manual_seed(0)
-    model = Reckoner(cfg)
-    weights_moved: list[int] = []
-    value_head_moved: list[bool] = []
-    head = ValueHeadState()
-    # A TRAINING source, through the guard. The chunk-9 shakedown drew from
-    # solve_in_2 — a frozen instrument — which did no harm because nothing
-    # trained, but demonstrated that the loop would happily consume its own
-    # measuring stick. training_problems() refuses instruments first thing.
-    source = anchored_data("train_100k")
-    checks: list[tuple[str, bool, str]] = []
-
-    for n in range(args.iterations):
-        problems = training_problems(source, args.episodes, seed=n)
-        stats = run_iteration(problems, uniform_stub(cfg), cfg, ring, sims=8, m=5, seed=n)
-        stats.check_descent_identity()
-
-        # THE TRAINING PHASE. A loop whose central job is improving the model had
-        # no assertion that the model moves — the both-riders heuristic applied
-        # prospectively (FINDINGS.md F-15).
-        before = {k: v.detach().clone() for k, v in model.state_dict().items()}
-        train_on_ring(model, ring, cfg, steps=2, seed=n)
-        moved = sum(1 for k, v in model.state_dict().items() if not torch.equal(v, before[k]))
-        weights_moved.append(moved)
-        value_head_moved.append(
-            any(
-                k.startswith("value_head") and not torch.equal(model.state_dict()[k], before[k])
-                for k in before
-            )
-        )
-
-        labels = [0] * stats.episodes_solved + [-1] * (stats.episodes - stats.episodes_solved)
-        head, event = consider_switch(head, labels, [0] * len(labels), iteration=n)
-        append_row(
-            run / "value_switch.jsonl",
-            switch_event_row(event, schema_era=SCHEMA_ERA),
-            VALUE_SWITCH_FIELDS,
-        )
-
-        row = iteration_row(
-            stats,
-            iteration=n,
-            run_name="golden",
-            git_sha=git_sha(REPO),
-            config_fingerprint=config_fingerprint(cfg),
-            cfg=cfg,
-            ruleset_version=RULESET_VERSION,
-            vocab_version=VOCAB_VERSION,
-            schema_era=SCHEMA_ERA,
-        )
-        state = RunState(iteration=n, value_head=head, seed=n)
-        commit_iteration(
-            run,
-            ring,
-            state,
-            lambda row=row: append_row(run / "iterations.jsonl", row, ITERATION_FIELDS),
-        )
-        print(f"  iteration {n}: {stats.episodes_solved}/{stats.episodes} solved, ring {len(ring)}")
-
-    rows = read_rows(run / "iterations.jsonl", ITERATION_FIELDS)
-    checks.append(("rows validate and match commits", len(rows) == latest_committed(run) + 1, ""))
-    checks.append(("no alarms", alarm_census(rows) == {}, str(alarm_census(rows))))
-    checks.append(("ring received steps", len(ring) > 0, f"{len(ring)} rows"))
-    first = ring.get(0)
-    checks.append(
-        (
-            "ring rows carry a usable STATE, not just an outcome",
-            len(first["tokens"]) > 0 and first["n_sites"] > 0,
-            f"{len(first['tokens'])} tokens, {first['n_sites']} sites",
-        )
-    )
-    checks.append(
-        (
-            "training moves the model",
-            all(m > 0 for m in weights_moved),
-            f"tensors moved per iteration: {weights_moved}",
-        )
-    )
-    checks.append(
-        (
-            "the W/D/L head trains even while the search distrusts it",
-            all(value_head_moved),
-            f"{value_head_moved} (F-15: gating both consumers deadlocks the ratchet)",
-        )
-    )
-
-    # Resume is part of liveness: a loop that cannot restart is not a loop.
-    nxt, restored, restored_state = resume(run, cfg)
-    checks.append(
-        (
-            "resume returns the committed state",
-            nxt == args.iterations and restored is not None and restored_state is not None,
-            f"next={nxt}",
-        )
-    )
-
-    # Enrollment: the mechanism par escalation depends on.
-    # ENROLLMENT REGRESSION joins the class of things a run cannot silently lack.
-    # The chunk-9 expectations gated mismatch refusal and provenance — the known
-    # hazards — while nothing asserted the pool POPULATES, so composition() sat in
-    # the report as a number nobody asserted on. Rider (a) and rider (b) in one
-    # miss; this is the fix at the liveness layer.
-    before = len(pool)
-    for step in (1, 2, 3):
-        pool.enroll(model, step, head, run / f"snap-{step}.pt")
-    grew = len(pool) == before + 3
-    checks.append(("pool composition GROWS with enrollment", grew, str(pool.composition())))
-
+    summary = run(run_dir, golden_config(), run_name="golden", anchor=ANCHOR)
     elapsed = time.perf_counter() - started
-    shutil.rmtree(run)
+
+    per_iteration = summary["iterations"]
+    written = read_rows(run_dir / "iterations.jsonl", ITERATION_FIELDS)
+    switch = (run_dir / "value_switch.jsonl").read_text().strip().splitlines()
+    digests = {r["evaluator_checkpoint_sha256"] for r in written}
+
+    checks: list[tuple[str, bool, str]] = [
+        ("rows validate and match commits", len(written) == summary["committed"] + 1, ""),
+        ("no alarms", not summary["alarms"], str(summary["alarms"])),
+        (
+            "every iteration wrote a switch row, abstentions included",
+            len(switch) == len(written),
+            f"{len(switch)} rows for {len(written)} iterations",
+        ),
+        (
+            "the ring received steps",
+            all(r["ring"] > 0 for r in per_iteration),
+            str([r["ring"] for r in per_iteration]),
+        ),
+        # D-A1 §1.1 — THE ASSERTION GOLDEN LACKED. It asserted the model moves;
+        # it never asserted the moved model is USED, and that gap is why the stub
+        # ran for three chunks unnoticed.
+        (
+            "the evaluator is the checkpoint, NOT the stub",
+            written[0]["evaluator_checkpoint_sha256"] == sha256_file(ANCHOR),
+            f"iteration 0 played {written[0]['evaluator_checkpoint_sha256'][:12]}",
+        ),
+        (
+            "and its provenance MOVES as the model trains",
+            len(digests) > 1,
+            "a digest that never changes is the stub defect wearing a provenance field",
+        ),
+        # D-A1 §1.2 — pool par DRAWN, not merely enrollable.
+        (
+            "pool par is drawn, so par escalation is live",
+            written[0].get("pool_par_fraction", 0.0) > 0.0,
+            f"pool_par_fraction={written[0].get('pool_par_fraction')}",
+        ),
+        (
+            "and both par populations appear in the draw-inflation watch",
+            bool(written[0]["z_by_par_source"].get("pool"))
+            and bool(written[0]["z_by_par_source"].get("bfs")),
+            str(written[0]["z_by_par_source"]),
+        ),
+    ]
 
     print("\n  GOLDEN\n")
     for name, ok, detail in checks:
         print(f"    {'ok  ' if ok else 'FAIL'} {name}{'  — ' + detail if detail else ''}")
     print(
-        f"\n  {elapsed:.1f}s of a {BUDGET_SECONDS:.0f}s budget, CPU, {torch.get_num_threads()} threads"
+        f"\n  {elapsed:.1f}s of a {BUDGET_SECONDS:.0f}s budget, CPU, "
+        f"{torch.get_num_threads()} threads"
     )
 
+    shutil.rmtree(run_dir, ignore_errors=True)
     if not all(ok for _, ok, _ in checks):
         return 1
     if elapsed > BUDGET_SECONDS:

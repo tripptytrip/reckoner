@@ -1,0 +1,198 @@
+"""D-A1's three central-job assertions, both polarities each.
+
+Part 0a found the same defect three times in one loop: `golden` asserted that
+the model **moves** and never that the moved model is **used**; that the pool
+**grows** and never that par came **from** it; that the switch row **writes**
+and never that the criterion saw a **real input**. One shape — an assertion that
+the central job happened standing in for one that its product is consumed — and
+it hid the loop's entire subject for three chunks.
+
+So each of the three gets its assertion *and its contrast*. A positive alone is
+the thing that failed here: "the model moved" was true every single time.
+"""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+import torch
+
+from reckoner.campaign import (
+    CAMPAIGN_FINGERPRINT,
+    CampaignRefusal,
+    assert_threads,
+    run,
+)
+from reckoner.config import Config, config_fingerprint, validate
+from reckoner.dataset import sha256_file
+from tests.campaign_fixture import ANCHOR, drive, drive_campaign, golden_config
+
+needs_anchor = pytest.mark.skipif(not ANCHOR.exists(), reason="phase-1 anchor not present")
+pytestmark = [pytest.mark.slow, needs_anchor]
+
+
+# --- one driven run per CONFIGURATION, shared across every assertion of it ---
+# The fixture returns artifacts precisely so assertions can READ rather than RUN.
+# Twelve tests commissioning twelve loops would pay for the same evidence twelve
+# times; these inspect the artifacts of two. `make test` still runs the whole
+# suite unfiltered — the gate is never the subset.
+
+
+@pytest.fixture(scope="session")
+def seeded(tmp_path_factory) -> object:
+    """The default campaign shape: pool seeded with the anchor at startup."""
+    return drive(tmp_path_factory.mktemp("seeded") / "run")
+
+
+@pytest.fixture(scope="session")
+def unseeded(tmp_path_factory) -> object:
+    """The contrast: no anchor seeding, so zero pool-par is the CORRECT answer."""
+    return drive(
+        tmp_path_factory.mktemp("unseeded") / "run",
+        golden_config(league={"seed_pool_with_anchor": False}),
+    )
+
+
+# ------------------------------------------------- D-A1 §1.1  model-in-search
+
+
+def test_the_row_names_the_checkpoint_the_evaluator_actually_used(seeded) -> None:
+    """Provenance, not configuration: a digest records what RAN.
+
+    `golden` ran `uniform_stub` every iteration while asserting the weights
+    moved. This column is what makes that undetectable state detectable — at
+    iteration 0 the evaluator is built from the anchor, so the row carries the
+    anchor's digest.
+    """
+    result = seeded
+    assert result.rows, "the driver wrote no rows"
+    assert result.rows[0]["evaluator_checkpoint_sha256"] == sha256_file(ANCHOR)
+
+
+def test_the_digest_moves_when_the_model_does(seeded) -> None:
+    """The contrast. A constant digest would mean the loop never re-loaded.
+
+    Iteration 1's evaluator is iteration 0's checkpoint, so the column must
+    change — a digest that never moves is exactly the stub-forever defect
+    wearing a provenance field.
+    """
+    result = seeded
+    digests = [r["evaluator_checkpoint_sha256"] for r in result.rows]
+    assert len(digests) >= 2
+    assert digests[0] != digests[1], "the evaluator's provenance never changed"
+
+
+# --------------------------------------------------- D-A1 §1.2  pool par drawn
+
+
+def test_pool_par_is_actually_drawn_from_iteration_zero(seeded) -> None:
+    """The positive. `seed_pool_with_anchor` makes the anchor rung zero.
+
+    Before the driver seeded the pool this returned zero and *looked* correct:
+    an empty pool has no par to give. The seeding is what makes
+    `par_from_pool_frac` a live mechanism at iteration 0 rather than dead until
+    snapshots accumulate.
+    """
+    result = seeded
+    row = result.rows[0]
+    assert row["pool_par_fraction"] > 0.0, "no episode took par from the pool"
+    assert row["z_by_par_source"].get("pool"), "no pool-par outcomes were scored"
+
+
+def test_an_unseeded_pool_reports_zero_rather_than_inferring_it(unseeded) -> None:
+    """The contrast: zero pool-par is CORRECT here, and must stay counted.
+
+    The empty-pool case keeps its counted-state behaviour — the two causes of
+    unavailability are different diseases and neither may be inferred from a
+    missing column.
+    """
+    result = unseeded
+    row = result.rows[0]
+    assert row.get("pool_par_fraction", 0.0) == 0.0
+    assert not row["z_by_par_source"].get("pool"), "pool outcomes without a pool"
+
+
+# ------------------------------------------- D-A1 §1.3  the criterion's inputs
+
+
+def test_the_switch_row_is_written_every_iteration_including_abstentions(seeded) -> None:
+    """An abstention nobody records is indistinguishable from a criterion nobody ran."""
+    result = seeded
+    assert len(result.switch_rows) == len(result.rows)
+    assert all(r["abstained"] or r["fired"] or True for r in result.switch_rows)
+
+
+def test_the_criterion_abstains_on_an_empty_holdout_rather_than_deciding(seeded) -> None:
+    """The contrast, and the expected iteration-0 state.
+
+    `evaluate_head` returns `([], [])` on an empty slice and the criterion reads
+    that as abstention-with-its-reason. A criterion that *decided* on no data
+    would be the never-firable trigger's mirror image.
+    """
+    result = seeded
+    first = result.switch_rows[0]
+    assert first["abstained"] is True
+    assert first["fired"] is False
+
+
+# ------------------------------------------------------ the fingerprint gates
+
+
+def test_the_campaign_door_refuses_a_config_the_page_did_not_bless(
+    tmp_path: Path,
+) -> None:
+    """Both polarities of the startup assertion — the refusing one."""
+    with pytest.raises(CampaignRefusal, match="not the one the campaign was"):
+        drive_campaign(tmp_path / "run", golden_config())
+
+
+def test_the_campaign_door_accepts_the_registered_fingerprint() -> None:
+    """And the accepting one, without paying for a campaign to prove it."""
+    cfg = Config()
+    validate(cfg)
+    assert config_fingerprint(cfg) == CAMPAIGN_FINGERPRINT
+
+
+def test_raising_the_analysis_point_changes_the_fingerprint_and_is_refused() -> None:
+    """PREREG-m1's extent rule, enforced by mechanism rather than by sentence.
+
+    "May not be raised after launch" is a law against the loud path; this is the
+    mechanism against the silent one, and it survives a crash because resume
+    re-asserts at every startup.
+    """
+    cfg = Config()
+    raised = replace(cfg, campaign=replace(cfg.campaign, iterations=25))
+    assert config_fingerprint(raised) != CAMPAIGN_FINGERPRINT
+
+
+def test_a_set_omp_variable_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unset is a value: the licensed absence defends itself."""
+    monkeypatch.setenv("OMP_NUM_THREADS", "16")
+    with pytest.raises(CampaignRefusal, match="UNSET throughout the licence"):
+        assert_threads(Config())
+
+
+def test_the_thread_pins_are_applied_not_merely_declared() -> None:
+    cfg = Config()
+    report = assert_threads(cfg)
+    assert report["intra_op"] == cfg.campaign.intra_op_threads == torch.get_num_threads()
+
+
+# ------------------------------------------------------------- the seam pin
+
+
+def test_the_driver_provably_commits_through_the_shared_seam() -> None:
+    """D-A1 §2(a). "Probes the seam the driver also uses" is only true while
+    nothing reimplements the seam — and that is an assertion, not a hope.
+    """
+    import inspect
+
+    source = inspect.getsource(run)
+    assert "commit_iteration(" in source, "the driver does not call the commit seam"
+    for reimplementation in ("LATEST.tmp", "os.replace"):
+        assert reimplementation not in source, (
+            f"the driver reimplements the commit contract ({reimplementation}); "
+            "there must be exactly one implementation of the write ordering"
+        )

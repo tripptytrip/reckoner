@@ -35,7 +35,7 @@ from pathlib import Path
 
 import torch
 
-from reckoner.config import Config, config_fingerprint
+from reckoner.config import Config, config_fingerprint, validate
 from reckoner.dataset import (
     anchored_data,
     git_sha,
@@ -87,6 +87,9 @@ NO_REGRESS = {48: 1188, 1: 1167}
 #: PREREG-m1 §2: the primary's population.
 SUCCESSOR_STRATA = (7, 8, 10)
 
+#: The Phase-1 anchor: rung zero of the pool, and iteration 0's evaluator.
+ANCHOR = REPO / "runs" / "phase1" / "phase1.pt"
+
 #: PREREG-m1 §2.1: the anchor's measured baseline on {7, 8, 10}, from Part-0d —
 #: 43 + 26 + 32 beats of 600. The primary is CI-separated improvement over this.
 ANCHOR_BEAT = 101
@@ -97,6 +100,31 @@ OMP_FAMILY = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUM
 
 class CampaignRefusal(RuntimeError):
     """The campaign will not start, or will not continue, and says why."""
+
+
+def golden_config(**overrides) -> Config:
+    """Golden scale: small enough to be a liveness check, **real otherwise**.
+
+    Lives in the package rather than in tests because it is a config, and
+    `golden` is a production script. Scale is declared here rather than passed as
+    flags — the no-behavioural-flags rule is about where a behaviour is declared,
+    not about who is running.
+
+    This is deliberately NOT the campaign's config: the campaign's door refuses
+    it, which is that check working rather than failing.
+    """
+    cfg = Config()
+    validate(cfg)
+    cfg = replace(
+        cfg,
+        campaign=replace(cfg.campaign, iterations=2, episodes_per_iteration=12),
+        train=replace(cfg.train, train_steps_per_iter=2),
+        search=replace(cfg.search, sims=4, gumbel_m=4),
+        ladder=replace(cfg.ladder, ladder_every=99),
+    )
+    for group, changes in overrides.items():
+        cfg = replace(cfg, **{group: replace(getattr(cfg, group), **changes)})
+    return cfg
 
 
 # --------------------------------------------------------------------- profiles

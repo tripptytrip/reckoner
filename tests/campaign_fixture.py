@@ -22,36 +22,16 @@ is what "golden = the driver at golden config" cashes out to.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 
-from reckoner.config import Config, validate
+from reckoner.campaign import ANCHOR, golden_config
+from reckoner.config import Config
 from reckoner.logschema import ITERATION_FIELDS, VALUE_SWITCH_FIELDS, alarm_census, read_rows
 
 REPO = Path(__file__).resolve().parents[1]
-ANCHOR = REPO / "runs" / "phase1" / "phase1.pt"
 
-
-def golden_config(**overrides) -> Config:
-    """Golden scale: small enough to be a test, **real in every other respect**.
-
-    Scale lives in config rather than in flags, because the no-behavioural-flags
-    rule is about where a behaviour is declared, not about who is running. This
-    is a different config from the campaign's and is *supposed* to be — the
-    campaign's door refuses it, which is the check working.
-    """
-    cfg = Config()
-    validate(cfg)
-    cfg = replace(
-        cfg,
-        campaign=replace(cfg.campaign, iterations=2, episodes_per_iteration=12),
-        train=replace(cfg.train, train_steps_per_iter=2),
-        search=replace(cfg.search, sims=4, gumbel_m=4),
-        ladder=replace(cfg.ladder, ladder_every=99),
-    )
-    for group, changes in overrides.items():
-        cfg = replace(cfg, **{group: replace(getattr(cfg, group), **changes)})
-    return cfg
+__all__ = ["ANCHOR", "DriverRun", "drive", "drive_campaign", "golden_config"]
 
 
 @dataclass
