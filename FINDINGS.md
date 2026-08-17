@@ -2002,3 +2002,85 @@ compute and does not.
 
 That contrast is the two-tier rule's sharp edge: **the question is not whether a
 field is read, but whether varying it across its legal range changes what runs.**
+
+---
+
+## F-33 — The cadence runs *beside* the ladder instead of *through* it, and that one fact is F-30, F-32 and the unread bootstrap
+
+**Found:** 2026-08-17, from a single question — does `run_instruments` call
+`ladderpass.run_pass`, or reimplement its job?
+
+**It reimplements.** `run_instruments` calls `run_iteration` directly and folds
+the outcome into `{"beat": n, "of": 200}`. `ladderpass.run_pass` is referenced in
+`campaign.py` exactly once, inside a docstring.
+
+### What the ladder already provides, and the driver rebuilt worse
+
+| capability | `ladderpass` / `ladder` | `run_instruments` |
+|---|---|---|
+| per-problem records | `pair_scores.jsonl`, one row per (arm, problem), **appended as it happens** | aggregates only |
+| paired-difference bootstrap | `ladder.py`, with `resamples`, `alpha`, CI | none |
+| rung passes (arms + roles) | declared roles, refuses an undeclared one | none |
+| resumability mid-pass | torn-tail repair, finished-unit skip | none |
+| declared skips | counted per arm, keeps the paired set one set | n/a |
+| currency safety | `ladder.pair` refuses across currencies | n/a |
+
+`ladderpass`'s own module docstring names the exact defect the driver then
+committed:
+
+> "Every arm-problem outcome is appended **as it happens**. The alternative —
+> accumulate in memory, write the aggregate at the end — loses two things that
+> cannot be recovered … **The paired-difference bootstrap consumes *pairs*; a run
+> that stored only means has thrown away the input to its own test of record.**"
+
+`run_instruments` stores only means. Chunk 10 built the machinery and wrote down
+why aggregates are insufficient; chunk 11's driver reimplemented the aggregate
+path beside it.
+
+### Three findings, one root cause
+
+* **F-30** — the primary's paired bootstrap is uncomputable. *Because* `run_pass`
+  is not called, so no per-problem rows exist.
+* **F-32** — gates 10b and 11 are never evaluated, so two of §8's five BLOCKED
+  branches cannot fire. *Because* no rung pass runs.
+* **`ladder.bootstrap_resamples` unread** (config census). *Because* the
+  bootstrap is never invoked.
+
+Not three gaps to fill. **One routing error**, in the mono-instance family with
+the second `SupervisionSet` and the second `model_evaluator` — and the same
+signature: the second implementation is thinner than the first and drops exactly
+the property the first was built to preserve.
+
+**So the fix is routing, not adding.** F-30's per-problem recording arrives for
+free, along with the rungs, the currency machinery, mid-pass resumability, and
+the bootstrap. That also retires the "add per-problem output to
+`run_instruments`" remedy F-30 proposed — which would have been a *third*
+implementation of a job the repo already does properly once.
+
+**Part-0d still needs its deterministic re-run**, since the baseline arm has no
+per-problem records either and no routing change can retro-fit them.
+
+### Related — two homes for one value, with a provenance edge
+
+The census flagged `generator.train_set_size`, `suite_problems_per_depth`,
+`suite_depths` and `max_bfs_depth` as unread. `scripts/generate.py` is why, and
+the tell is inside one file:
+
+```python
+parser.add_argument("--seed",       default=CFG.seed)      # reads config
+parser.add_argument("--train",      default=100_000)       # hardcoded literal
+parser.add_argument("--suite-size", default=200)           # hardcoded literal
+```
+
+Each dataset's `meta.json` records a `config_fingerprint` — a claim that *this
+config produced this data*. The generator fields in that config were never read.
+
+**The values agree** — 100,000 against `train_set_size = 100000`, 200 against
+`suite_problems_per_depth = 200` — so nothing on disk is false today. But the
+agreement is coincidental rather than causal, and the fingerprint attests to an
+authorship it does not have. Change either home and the recorded fingerprint
+would testify to a config that did not shape the data.
+
+Low priority, and **not** wire-by-default: these are unbacked keys, so the
+disposition is delete-or-amend per the census rule. Recorded because a provenance
+claim that is true by coincidence is one nobody will re-check.
