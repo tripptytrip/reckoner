@@ -333,11 +333,13 @@ def iteration_row(
     ruleset_version: int,
     vocab_version: int,
     schema_era: int,
+    evaluator_checkpoint_sha256: str,
     seconds_train: float = 0.0,
     absent: dict[str, str] | None = None,
 ) -> dict:
     """Assemble a `logschema` row. The schema validates it; this only fills it."""
     return {
+        "evaluator_checkpoint_sha256": evaluator_checkpoint_sha256,
         "iteration": iteration,
         "schema_era": schema_era,
         "run_name": run_name,

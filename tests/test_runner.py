@@ -101,6 +101,7 @@ def test_the_row_it_produces_validates_against_the_schema() -> None:
         ruleset_version=RULESET_VERSION,
         vocab_version=VOCAB_VERSION,
         schema_era=SCHEMA_ERA,
+        evaluator_checkpoint_sha256="d" * 64,
     )
     assert validate_row(row) == [], "a clean iteration must raise no alarms"
 

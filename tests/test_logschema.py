@@ -33,6 +33,8 @@ def good_row(**overrides) -> dict:
     row = {
         "iteration": 0,
         "schema_era": SCHEMA_ERA,
+        # D-A1 §1.1: the digest of the checkpoint the evaluator was built from.
+        "evaluator_checkpoint_sha256": "d" * 64,
         "run_name": "shakedown",
         "git_sha": "0" * 40,
         "config_fingerprint": "a" * 64,

@@ -27,6 +27,7 @@ can be set at invocation is one that can silently diverge from its prereg.
 from __future__ import annotations
 
 import os
+import random
 import shutil
 import time
 from dataclasses import replace
@@ -39,20 +40,35 @@ from reckoner.dataset import (
     anchored_data,
     git_sha,
     read_suite,
+    sha256_file,
     suite_problem,
     training_problems,
 )
+from reckoner.episode import Problem
 from reckoner.evaluate import model_evaluator
 from reckoner.gates import no_regress_floor
 from reckoner.logschema import (
     ITERATION_FIELDS,
     SCHEMA_ERA,
+    VALUE_SWITCH_FIELDS,
+    alarm_census,
     append_row,
+    read_rows,
+    switch_event_row,
 )
+from reckoner.model import load_checkpoint, save_checkpoint
+from reckoner.pool import CheckpointPool
 from reckoner.replay import ReplayRing
-from reckoner.resume import RunState
+from reckoner.resume import RunState, commit_iteration, latest_committed, resume
 from reckoner.rules import RULESET_VERSION
 from reckoner.runner import iteration_row, run_iteration
+from reckoner.train import train_on_ring
+from reckoner.valuegate import (
+    ValueHeadState,
+    consider_switch,
+    evaluate_head,
+    value_contribution,
+)
 from reckoner.vocab import VOCAB_VERSION
 
 REPO = Path(__file__).resolve().parents[2]
@@ -70,6 +86,10 @@ NO_REGRESS = {48: 1188, 1: 1167}
 
 #: PREREG-m1 §2: the primary's population.
 SUCCESSOR_STRATA = (7, 8, 10)
+
+#: PREREG-m1 §2.1: the anchor's measured baseline on {7, 8, 10}, from Part-0d —
+#: 43 + 26 + 32 beats of 600. The primary is CI-separated improvement over this.
+ANCHOR_BEAT = 101
 
 #: The OMP family was UNSET throughout the licence. Unset is a value (M1-A2 §4).
 OMP_FAMILY = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS")
@@ -222,3 +242,210 @@ def preflight(cfg: Config, model, scratch: Path) -> None:
     del head_state
     shutil.rmtree(scratch, ignore_errors=True)
     print(f"  pre-flight OK ({time.perf_counter() - started:.1f}s)")
+
+
+# ------------------------------------------------------------------ episodes
+
+
+def campaign_problems(
+    cfg: Config, pool: CheckpointPool, model, k: int, seed: int
+) -> tuple[list[Problem], int]:
+    """Episode sources, with **pool par actually drawn** (D-A1 §1.2).
+
+    `golden` enrolled snapshots and asserted the pool grows, and never once drew
+    a par from it — so `par_from_pool_frac` had no exercise in any composition.
+    Here it does: `league.par_from_pool_frac` of episodes take their par from a
+    snapshot, which is the mechanism par escalation *is*.
+
+    `training_problems` refuses a frozen instrument first thing, so the runtime
+    boundary the contamination censuses could not reach is held here too.
+    """
+    problems = training_problems(anchored_data("train_100k"), k, seed=seed)
+    rng = random.Random(seed * 7919 + 13)
+
+    def factory(snapshot_model, value_scale):
+        return model_evaluator(snapshot_model, cfg, value_scale)
+
+    out, from_pool = [], 0
+    for problem in problems:
+        if rng.random() >= cfg.league.par_from_pool_frac:
+            out.append(problem)
+            continue
+        drawn = pool.par_for_episode(problem, factory, rng)
+        out.append(replace(problem, par=drawn.par, par_source=drawn.par_source))
+        from_pool += drawn.par_source == "pool"
+    return out, from_pool
+
+
+# ----------------------------------------------------------------------- run
+
+
+def run_campaign(run_dir: Path, cfg: Config, *, anchor: Path | None = None) -> dict:
+    """The campaign's door. **This** is where the registered config is enforced.
+
+    The assertion lives here rather than inside :func:`run` because `run` is the
+    shared loop and `golden` invokes it at golden config *deliberately* — one
+    composition, two callers. Putting the check inside the loop would force
+    `golden` to either fail or route around it, and a routed-around check is the
+    two-loops outcome arriving by the back door.
+
+    So: the loop is shared, and the campaign's *entrypoint* is what refuses a
+    config the frozen page did not bless.
+    """
+    assert_campaign_profile(cfg)
+    return run(run_dir, cfg, run_name="m1", anchor=anchor)
+
+
+def run(run_dir: Path, cfg: Config, *, run_name: str = "m1", anchor: Path | None = None) -> dict:
+    """**The** loop. `golden` is this at golden config; the campaign is
+    :func:`run_campaign`, which asserts the registered fingerprint first.
+
+    The iteration's artifacts commit through :func:`resume.commit_iteration` in
+    the four-step order that module specifies — ring, state, row, then ``LATEST``
+    by atomic rename. Only the rename commits; steps 1–3 are provisional, and a
+    process killed anywhere in them leaves artifacts resume discards.
+    """
+    threads = assert_threads(cfg)
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    anchor = anchor or (REPO / "runs" / "phase1" / "phase1.pt")
+    start, ring, state = resume(run_dir, cfg)
+    if ring is None:
+        ring = ReplayRing(cfg.train.replay_capacity, cfg)
+        state = RunState(iteration=0, value_head=ValueHeadState(), seed=cfg.seed)
+    model, _ = load_checkpoint(anchor, cfg)
+
+    # The evaluator's provenance: at iteration 0 the weights are the anchor's; on
+    # resume they are the last committed checkpoint's. Either way the digest is
+    # of the FILE the search evaluator was built from (D-A1 §1.1).
+    evaluator_source = anchor
+    if start > 0:
+        resumed = run_dir / f"ckpt-{start - 1}.pt"
+        if resumed.exists():
+            model, _ = load_checkpoint(resumed, cfg)
+            evaluator_source = resumed
+
+    # SEED THE POOL WITH THE ANCHOR. `league.seed_pool_with_anchor` was honoured
+    # in exactly one script and by no driver, so `par_from_pool_frac` would have
+    # been dead through iteration 0 and thin after — the enrolment pattern one
+    # level down: the class supports seeding, the config declares it, the
+    # consumer never called it. The anchor is rung zero; without it there is
+    # nothing to escalate FROM, and M1-A2 §6's two-population split would have
+    # been 100/0 rather than 80/20 for the campaign's opening iterations.
+    pool = CheckpointPool(cfg)
+    if cfg.league.seed_pool_with_anchor and anchor.exists():
+        pool.add(anchor)
+    summary: dict = {"run_name": run_name, "threads": threads, "iterations": []}
+
+    for n in range(start, cfg.campaign.iterations):
+        began = time.perf_counter()
+        digest = sha256_file(evaluator_source)
+
+        # --- self-play, MODEL-IN-SEARCH ------------------------------------
+        scale = value_contribution(state.value_head)
+        problems, from_pool = campaign_problems(
+            cfg, pool, model, cfg.campaign.episodes_per_iteration, seed=n
+        )
+        t0 = time.perf_counter()
+        stats = run_iteration(problems, model_evaluator(model, cfg, scale), cfg, ring, seed=n)
+        seconds_self_play = time.perf_counter() - t0
+        stats.check_descent_identity()
+
+        # --- training -------------------------------------------------------
+        t0 = time.perf_counter()
+        train_stats = train_on_ring(
+            model,
+            ring,
+            cfg,
+            steps=cfg.train.train_steps_per_iter,
+            seed=n,
+            value_head=state.value_head,
+        )
+        seconds_train = time.perf_counter() - t0
+
+        # --- checkpoint, then enrol: par escalates with the model ------------
+        checkpoint = run_dir / f"ckpt-{n}.pt"
+        save_checkpoint(checkpoint, model, cfg, n, value_head=state.value_head.as_dict())
+        pool.enroll(model, n, state.value_head, run_dir / f"snap-{n}.pt")
+
+        # --- the criterion, on REAL accrued holdout (D-A1 §1.3) -------------
+        slots = sorted(ring.holdout(cfg.train.ring_holdout_frac, seed=0))
+        labels, predictions = evaluate_head(model, ring, cfg, slots)
+        head, event = consider_switch(state.value_head, labels, predictions, iteration=n)
+        append_row(
+            run_dir / "value_switch.jsonl",
+            switch_event_row(event, schema_era=SCHEMA_ERA),
+            VALUE_SWITCH_FIELDS,
+        )
+
+        # --- the cadence unit ------------------------------------------------
+        absent: dict[str, str] = {}
+        ladder_index = None
+        if (n + 1) % cfg.ladder.ladder_every == 0:
+            ladder_index = n // cfg.ladder.ladder_every
+            summary.setdefault("instruments", []).append(
+                run_instruments(model, cfg, iteration=n, anchor_beat=ANCHOR_BEAT)
+            )
+        else:
+            absent["ladder_pass"] = (
+                "not a ladder iteration (ladder runs on ladder.ladder_every cadence)"
+            )
+        if from_pool == 0 and not pool.members:
+            absent["pool_par_fraction"] = (
+                "league.par_from_pool_frac is 0, or no snapshot has been taken yet"
+            )
+
+        # --- the row, then the four-step commit ------------------------------
+        row = iteration_row(
+            stats,
+            iteration=n,
+            run_name=run_name,
+            git_sha=git_sha(REPO),
+            config_fingerprint=CAMPAIGN_FINGERPRINT,
+            cfg=cfg,
+            ruleset_version=RULESET_VERSION,
+            vocab_version=VOCAB_VERSION,
+            schema_era=SCHEMA_ERA,
+            evaluator_checkpoint_sha256=digest,
+            seconds_train=seconds_train,
+            absent=absent or None,
+        )
+        row["seconds_self_play"] = round(seconds_self_play, 3)
+        row["seconds_total"] = round(time.perf_counter() - began, 3)
+        row["nan_skips"] = train_stats.nan_skips
+        row["pool_refusals"] = pool.stats.refusals
+        if ladder_index is not None:
+            row["ladder_pass"] = ladder_index
+        if "pool_par_fraction" not in absent:
+            row["pool_par_fraction"] = round(from_pool / max(1, stats.episodes), 6)
+
+        state = RunState(iteration=n, value_head=head, seed=state.seed)
+        commit_iteration(
+            run_dir,
+            ring,
+            state,
+            lambda row=row: append_row(run_dir / "iterations.jsonl", row, ITERATION_FIELDS),
+        )
+        evaluator_source = checkpoint
+        summary["iterations"].append(
+            {
+                "iteration": n,
+                "solved": f"{stats.episodes_solved}/{stats.episodes}",
+                "pool_par": from_pool,
+                "ring": len(ring),
+                "switch": "fired"
+                if event.get("fired")
+                else ("abstained" if event.get("abstained") else "refused"),
+                "seconds": round(time.perf_counter() - began, 1),
+            }
+        )
+        print(
+            f"  iter {n:>2}: {stats.episodes_solved}/{stats.episodes} solved, "
+            f"pool-par {from_pool}, ring {len(ring)}, "
+            f"{time.perf_counter() - began:.1f}s"
+        )
+
+    rows = read_rows(run_dir / "iterations.jsonl", ITERATION_FIELDS)
+    summary["alarms"] = alarm_census(rows)
+    summary["committed"] = latest_committed(run_dir)
+    return summary
