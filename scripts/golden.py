@@ -29,7 +29,8 @@ from pathlib import Path
 
 import torch
 
-from reckoner.campaign import ANCHOR, golden_config, run
+from reckoner.campaign import ANCHOR, CAMPAIGN_FINGERPRINT, golden_config, run
+from reckoner.config import config_fingerprint
 from reckoner.dataset import sha256_file
 from reckoner.logschema import ITERATION_FIELDS, read_rows
 
@@ -89,6 +90,19 @@ def main() -> int:
             "pool par is drawn, so par escalation is live",
             written[0].get("pool_par_fraction", 0.0) > 0.0,
             f"pool_par_fraction={written[0].get('pool_par_fraction')}",
+        ),
+        # F-25 — the provenance column must name the config that RAN. `run` is
+        # shared with the campaign, and this row previously carried the
+        # campaign's fingerprint while golden config executed.
+        (
+            "rows record the config that produced them, not the campaign's",
+            {r["config_fingerprint"] for r in written} == {config_fingerprint(golden_config())},
+            f"rows claim {written[0]['config_fingerprint'][:12]}",
+        ),
+        (
+            "and that is NOT the campaign fingerprint",
+            written[0]["config_fingerprint"] != CAMPAIGN_FINGERPRINT,
+            "a golden row wearing the campaign's fingerprint is the defect F-25 names",
         ),
         (
             "and both par populations appear in the draw-inflation watch",

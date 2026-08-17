@@ -1564,3 +1564,57 @@ sit above the anchor's.
 Correct by coincidence rather than by construction, which is the state this
 project does not leave standing — but changing the eviction key changes par
 escalation, and therefore M1's subject. **Recorded for ruling rather than taken.**
+
+**Consequence for M2.** Rung-zero permanence should be a property of the pool's
+design, not of `5000 > 20` — a pinned flag on the anchor member, or a two-key
+sort that separates *is this the anchor* from *how recent is this snapshot*. The
+present single key conflates them by conflating their denominations.
+
+And the arithmetic that follows from it: because the anchor permanently occupies
+one slot, **`pool_size: 8` buys the campaign an effective snapshot depth of
+seven**, not eight. Whatever M2 sets that number to, it is buying one less than
+it reads.
+
+
+---
+
+## F-25 — Every golden row recorded the campaign's fingerprint while running golden config
+
+**Found:** 2026-08-17, reading `run` to confirm where the five-iteration
+rehearsal's cadence fires. The row assembly passed `config_fingerprint=
+CAMPAIGN_FINGERPRINT` — a module constant — and `run` is the composition
+**shared by golden and the campaign**.
+
+| | value |
+|---|---|
+| golden config's actual fingerprint | `fc75760f52fc9efd9d45…` |
+| what golden's rows recorded | `ce41af96ee85f0a29c90…` |
+
+The column's registered job is that *a run's rows can always be read against the
+config that produced them*. Golden's rows named a config that had not produced
+them, and no artifact carried the one that had. Two runs at two different configs
+were indistinguishable by the field whose sole purpose is telling them apart.
+
+### The shape
+
+This is the stub-digest defect one level up, and the irony is exact: golden
+already asserts that `evaluator_checkpoint_sha256` **moves**, on the reasoning
+that *a config field records what was asked for and a digest records what ran*.
+The row directly above that assertion was recording a constant. Golden checked
+the model's provenance and never its own.
+
+D-A2 §2 had already stated the correct rule — "rows carry their producing
+profile's fingerprint" — so this is not a missing decision but an implementation
+that did not match a decision already written down.
+
+### The fix
+
+`config_fingerprint(cfg)`: the config that ran. The campaign's rows still carry
+the registered value, but they now carry it **because `run_campaign` asserted the
+config at the door and the row records what that assertion licensed** — rather
+than because the row quotes a constant back to itself. An assertion at the door
+plus an honest recording downstream is a chain; a constant in the row is a
+sentence about a check that happened somewhere else.
+
+Golden gains both polarities: its rows must record golden config's fingerprint,
+and that value must **not** be the campaign's.

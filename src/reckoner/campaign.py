@@ -510,7 +510,18 @@ def run(
             iteration=n,
             run_name=run_name,
             git_sha=git_sha(REPO),
-            config_fingerprint=CAMPAIGN_FINGERPRINT,
+            # F-25: THE CONFIG THAT RAN, not the constant we hoped ran. This was
+            # `CAMPAIGN_FINGERPRINT`, and `run` is shared with golden — so every
+            # golden row claimed the campaign's fingerprint while executing
+            # golden config, and the one column whose job is "read these rows
+            # against the config that produced them" named a config that had not
+            # produced them.
+            #
+            # The campaign's rows still carry the registered value, but they
+            # carry it BECAUSE `run_campaign` asserted the config at the door and
+            # this records what that assertion licensed — not because the row
+            # quotes a constant back to itself.
+            config_fingerprint=config_fingerprint(cfg),
             cfg=cfg,
             ruleset_version=RULESET_VERSION,
             vocab_version=VOCAB_VERSION,
