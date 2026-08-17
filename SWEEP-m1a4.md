@@ -1,0 +1,92 @@
+# The rehearsal-fraction sweep — selection rule, frozen before the sweep runs
+
+**Written 2026-08-17, before any arm has been run.** F-31 wired the rehearsal
+path and proved it inert at `f = 0.0`. Choosing `f > 0` is the treatment
+decision, and it lands as M1-A4 carrying this sweep's numbers.
+
+The rule below is registered **first** for a reason specific to this metric.
+
+---
+
+## 1. Why the rule cannot be chosen after the numbers
+
+**Top-1 is monotone in `f` by construction.** More supervised data per batch
+means a better supervised metric. So scoring arms by top-1 alone drives `f`
+toward 1: maximum preservation, zero learning, and a "winner" that has stopped
+doing the experiment.
+
+An objective that a knob trivially maximises is not an objective, and the moment
+to notice that is before the table exists — the same reason `s*` was frozen
+before its sweep rather than read off it.
+
+## 2. The selection rule
+
+> **The smallest `f` whose gate-10b top-1 holds the band.**
+
+Smallest, not best: the sweep is buying the *minimum* supervision that protects
+the warm start, because every supervised row is a self-play row not trained on,
+and the campaign's subject is what self-play teaches.
+
+## 3. The band, derived from §8 rather than chosen
+
+§8 makes a no-regress breach BLOCKED, so the tolerable top-1 loss is whatever
+keeps at-par above the floor — not a number anyone picks.
+
+**Measured sensitivity**, from the rehearsal's own checkpoints:
+
+| | anchor | `ckpt-4` | Δ |
+|---|---:|---:|---:|
+| gate-10b top-1 | 0.9699 | 0.8845 | −0.0854 |
+| at-par @48 | 1193/1200 = 0.99417 | 910/1200 = 0.75833 | −0.23583 |
+
+**2.7615** at-par points per top-1 point.
+
+The floor's slack is `1193 → 1188` = **5 problems** = 0.42 points, so the
+tolerated top-1 loss is `0.004167 / 2.7615` = **0.151 points**:
+
+> ### BAND: gate-10b top-1 ≥ **0.968**
+
+**Caveat, registered rather than buried:** this is a linear extrapolation across
+a wide interval. An independent multiplicative model — at-par ≈ mean of `tᵏ` over
+suite depths 1–3, whose local slope at `t = 0.9699` is 1.9206 — gives a band of
+0.9677. The chord is the steeper slope and therefore the tighter band, and
+**0.968 is the conservative of the two.**
+
+The direction is unambiguous whichever model is used: **§8 permits essentially no
+forgetting at all.**
+
+## 4. Arms
+
+`f ∈ {0.00, 0.10, 0.15, 0.25, 0.35, 0.50}`, each trained from the anchor on the
+**same fixed ring-0**, same seeds — so `f` is the only variable — and scored on
+gate 10b, top-1 depth ≤ 3, F-09 unseen subset.
+
+`f = 0.00` is the control and must reproduce `ckpt-0`'s **0.8942**. If it does
+not, the ring-0 replay is not the same measurement and the sweep is void.
+
+## 5. Both branches, registered now
+
+**Some `f` clears the band** → that `f` is M1-A4's value, with the sweep table as
+its evidence.
+
+**No `f` clears the band** → **a finding, not a failed round.** It says the
+frozen page admits no viable training configuration at 400 steps per iteration,
+and lever 2 — epoch scaling, steps proportional to ring size — becomes the *next*
+round's single lever. Never a simultaneous change: two levers at once is a
+confound, and the whole point of registering this branch is that discovering it
+must not become a licence to turn both.
+
+## 6. A consequence to carry onto M1-A4's page
+
+At `f > 0` the value head sees `(1 − f)` of its examples per step: Phase-1 rows
+carry no `z` by construction, so they contribute policy and steps loss only.
+That slows precisely the head whose criterion accrual is already the binding
+constraint — the rehearsal's switch criterion abstained at every iteration with
+the rarest class at 1, 6, 7, 12, 17 against a floor of 100.
+
+Not a blocker, and not an argument against rehearsal. It is a cost that belongs
+on the amendment's page rather than in a footnote discovered later.
+
+---
+
+**Three failed attempts at any gate → BLOCKED, never a weakened gate.**
