@@ -2152,3 +2152,56 @@ once.
 
 **Not stubbed.** The rung path is left absent with this reason filed, because a
 stub is a thing someone later mistakes for a specification.
+
+---
+
+## F-35 — The watchlist columns are specified "from data the pass already produces", and the pass produces no such data
+
+**Found:** 2026-08-17, asked directly after F-33 — if the no-regress leg is
+aggregate-only, what computes the watchlist?
+
+PREREG-m1 §5 (M1-A2) freezes the 24-problem shared miss set and specifies two
+columns:
+
+```
+family_remaining = |pass_miss_set ∩ frozen_24|      the family shrinking
+novel_misses     = |pass_miss_set \ frozen_24|      a new family growing
+```
+
+> "Two columns, computed per ladder pass **from data the pass already
+> produces**."
+
+**Neither column exists.** Not in `ITERATION_FIELDS`, not in any code path,
+repo-wide. And the quoted phrase is the defect in six words: the no-regress leg
+emits `{at_par: 910, of: 1200}`, which **has no miss set**. There is no `∩` to
+take.
+
+### Why this one is worse than a missing column
+
+§5 states the reason the pair exists:
+
+> "The aggregate no-regress floor catches net regression and **cannot attribute
+> it**. Together these two can, for free."
+
+The page diagnoses the aggregate's blindness, prescribes the cure, calls it free
+— and the implementation shipped the aggregate alone. **"For free" was the
+assumption that did the damage**: it reads as *no extra measurement*, which was
+true, and was taken to mean *no extra recording*, which was not.
+
+The rehearsal is the demonstration. At-par fell 1193 → 910 and no artifact could
+say whether the 283 new misses were the frozen family or a new one — which is
+precisely the attribution §5 exists to provide, on precisely the event it was
+written for. Diagnosing it needed hand-written scripts computing quantities the
+campaign was specified to emit.
+
+Sibling of **F-30**, same page, same shape: a specification meticulous about
+*which* comparison and silent about whether its input is recorded.
+
+### Fix
+
+Per-problem recording on the no-regress leg, **required independent of execution
+mode**: recording and batching are separate questions, and the batched/unbatched
+ratio decides only how the pass runs. The frozen 24 are already keyed as
+`problem_key` strings in `runs/chunk11_misses_diagnostic.json`
+(`cross_reference_sims_1_vs_scripted.shared`), the same format `problem_key_of`
+emits, so the intersection is computable the moment a miss set exists.
