@@ -33,7 +33,7 @@ import torch
 from torch import nn
 
 from reckoner.config import Config
-from reckoner.dataset import anchored_path, sample_indices
+from reckoner.dataset import anchored_data, anchored_path, sample_indices
 from reckoner.episode import Problem, decode_state
 from reckoner.model import N_RULES, Reckoner, StateTooLarge, encode, policy_loss, steps_loss
 from reckoner.valuegate import ValueHeadState, value_contribution
@@ -63,12 +63,17 @@ class TrainStats:
     examples: int = 0
     nan_skips: int = 0
     encode_skips: int = 0
+    #: Steps whose batch carried a supervised share (F-31). Zero at
+    #: ``rehearsal_frac = 0.0``, and that zero is the inertness claim made
+    #: countable rather than asserted.
+    rehearsal_batches: int = 0
     losses: list[float] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
             "steps": self.steps,
             "examples": self.examples,
+            "rehearsal_batches": self.rehearsal_batches,
             "nan_skips": self.nan_skips,
             "encode_skips": self.encode_skips,
             "final_loss": self.losses[-1] if self.losses else None,
@@ -305,12 +310,24 @@ def train_on_ring(
     reserved = ring.holdout(cfg.train.ring_holdout_frac, seed=0)
     trainable = [i for i in range(len(ring)) if i not in reserved]
 
+    # REHEARSAL (F-31). `rehearsal_split` has existed since chunk 9 and was called
+    # by nothing, so `rehearsal_frac` moved the fingerprint and changed no
+    # behaviour. This is the wire.
+    #
+    # EVERYTHING below is guarded on `n_sup` rather than folded into the common
+    # path, because at f = 0.0 this function must be *bit-identically* what it was
+    # before the wire existed: no supervision loaded, no extra draw from `rng`, no
+    # arithmetic added to the loss. That inertness is what makes wiring a defect
+    # fix rather than a treatment change, and it is proved by checkpoint digest
+    # rather than argued.
+    n_sup, n_ring = rehearsal_split(cfg.train.batch_size, cfg)
+    supervision = SupervisionSet(anchored_data("phase1_train")) if n_sup else None
+
     for step in range(steps):
         if not trainable:
             break
         indices = [
-            trainable[rng.randrange(len(trainable))]
-            for _ in range(min(cfg.train.batch_size, len(trainable)))
+            trainable[rng.randrange(len(trainable))] for _ in range(min(n_ring, len(trainable)))
         ]
         batch = ring_batch(ring, indices, cfg)
         if batch is None:
@@ -339,6 +356,33 @@ def train_on_ring(
         loss = loss + cfg.train.value_loss_weight * (
             value_ce + cfg.train.value_q_mse_weight * q_mse
         )
+
+        # The supervised share. Phase-1 rows carry a policy target and a steps
+        # target and NO z — `Batch.z_class` is documented absent for them, "where
+        # z is degenerate by construction" — so they contribute exactly the
+        # supervision they hold, and the value head goes on learning only from
+        # real episodes. Size-weighted so the pair reconstitutes one batch of
+        # `batch_size` rather than becoming two full-weight batches.
+        if n_sup and supervision is not None:
+            sup_idx = [rng.randrange(len(supervision)) for _ in range(n_sup)]
+            try:
+                sup = make_batch(supervision, sup_idx, cfg)
+            except ValueError:
+                sup = None
+            if sup is not None:
+                sup_policy, _sup_value, sup_steps_out = model(
+                    sup.tokens.to(device), sup.site_positions.to(device)
+                )
+                sup_loss = cfg.train.policy_loss_weight * policy_loss(
+                    sup_policy, sup.policy_target.to(device), sup.legal_mask.to(device)
+                )
+                assert sup_steps_out is not None
+                sup_loss = sup_loss + cfg.train.steps_loss_weight * steps_loss(
+                    sup_steps_out, sup.steps_target.to(device), sup.solved_mask.to(device)
+                )
+                total = n_ring + n_sup
+                loss = (n_ring * loss + n_sup * sup_loss) / total
+                stats.rehearsal_batches += 1
 
         optimiser.zero_grad(set_to_none=True)
         loss.backward()

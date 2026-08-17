@@ -9,6 +9,7 @@ which is F-06's shape exactly, one layer down.
 from __future__ import annotations
 
 import random
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -279,3 +280,80 @@ def test_an_empty_ring_trains_nothing_rather_than_crashing() -> None:
     cfg = Config()
     stats = train_on_ring(Reckoner(cfg), ReplayRing(16, cfg), cfg, steps=3, seed=0)
     assert stats.steps == 0
+
+
+# ------------------------------------ the supervised gradient ARRIVES (F-31)
+
+
+def _trained_weights(frac: float, steps: int = 4):
+    """Train a fresh model on a fixed tiny ring at ``rehearsal_frac = frac``.
+
+    Returns ``(weight_digest, stats)``. Same seeds throughout, so the ONLY thing
+    that varies between calls is the rehearsal fraction.
+    """
+    import hashlib
+
+    from reckoner.dataset import anchored_data, training_problems
+    from reckoner.evaluate import model_evaluator
+    from reckoner.replay import ReplayRing
+    from reckoner.runner import run_iteration
+
+    cfg = replace(CFG, train=replace(CFG.train, rehearsal_frac=frac))
+    torch.manual_seed(11)
+    scout = Reckoner(cfg)
+    scout.eval()
+    ring = ReplayRing(4096, cfg)
+    problems = training_problems(anchored_data("train_100k"), 6, seed=3)
+    run_iteration(problems, model_evaluator(scout, cfg, 0.0), cfg, ring, sims=4, m=4, seed=3)
+
+    torch.manual_seed(99)
+    model = Reckoner(cfg)
+    stats = train_on_ring(model, ring, cfg, steps=steps, seed=5)
+    digest = hashlib.sha256()
+    for name, tensor in sorted(model.state_dict().items()):
+        digest.update(name.encode())
+        digest.update(tensor.detach().cpu().numpy().tobytes())
+    return digest.hexdigest(), stats
+
+
+@needs_data
+def test_rehearsal_is_bit_identically_inert_at_zero() -> None:
+    """The governance condition (F-31). Wiring a dormant lever is a DEFECT FIX
+    only if it changes nothing at the current fingerprint — and `rehearsal_frac`
+    is 0.0 there. Proved by weight digest rather than argued.
+
+    Two runs at 0.0 must agree with each other, which is also this probe's own
+    reference-vector check: the first version of it hashed the checkpoint FILE,
+    which embeds varying metadata, and was non-deterministic across identical
+    code."""
+    first, stats = _trained_weights(0.0)
+    second, _ = _trained_weights(0.0)
+    assert first == second, "the probe is not deterministic; it cannot judge inertness"
+    assert stats.rehearsal_batches == 0, "a supervised batch was mixed at frac 0.0"
+
+
+@needs_data
+def test_the_supervised_gradient_actually_arrives() -> None:
+    """The polarity the four `rehearsal_split` tests structurally cannot reach.
+
+    They prove the split is COMPUTED. Nothing proved it is CONSUMED — which is
+    exactly how a fully tested function stayed disconnected from the optimiser
+    for two chunks (F-31). Passing unit tests on a function nobody calls read as
+    coverage.
+
+    So: same ring, same seeds, only the fraction differs. The weights must
+    differ, because a supervised batch that changes no parameter is a supervised
+    batch that was not trained on.
+    """
+    inert, inert_stats = _trained_weights(0.0)
+    armed, armed_stats = _trained_weights(0.25)
+
+    assert armed_stats.rehearsal_batches > 0, (
+        "no batch carried a supervised share at frac 0.25 — the split is computed "
+        "and discarded, which is the defect this test exists for"
+    )
+    assert inert_stats.rehearsal_batches == 0
+    assert armed != inert, (
+        "identical weights at frac 0.0 and 0.25: the supervised share reached no "
+        "gradient. The lever moves the fingerprint and nothing else."
+    )
