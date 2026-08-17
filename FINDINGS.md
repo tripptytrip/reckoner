@@ -1826,3 +1826,118 @@ iteration**, because `run_instruments` costs ~110 min at real scale and
 `golden_config` deliberately switches the cadence off. That is the gap F-29 came
 through, it is named here rather than left silent, and closing it needs a cheap
 instrument population — a design change, not a fix.
+
+---
+
+## F-30 — The primary's test of record has been unsatisfiable since the freeze
+
+**Found:** 2026-08-17, attempting to run it on the rehearsal's cadence unit.
+
+PREREG-m1 §2 specifies the primary in a table:
+
+| slot | value |
+|---|---|
+| pairing | **per problem**, against the anchor's Part-0d outcomes |
+| test of record | **paired-difference bootstrap**, criterion **CI excludes zero** |
+
+**Neither arm records per-problem outcomes.**
+
+| arm | artifact | what it stores |
+|---|---|---|
+| baseline | `runs/chunk11_part0d_scripted_strata.json` | **3,391 bytes** — `at_par_z_0`, `beat_par_z_plus_1`, `mean_z`, `steps_minus_par` bins, per stratum. No problem identifiers anywhere in the file. |
+| campaign | `instruments.jsonl` → `primary.per_stratum` | `{"beat": n, "of": 200}` |
+
+A paired-difference bootstrap resamples *problems*, and needs each problem's
+outcome under **both** arms. Two aggregate counts cannot be paired: 108 beats
+against 101 beats says nothing about which problems moved, and the per-stratum
+split — 7 losing 21 while 8 gains 24 — is exactly the pattern that pooling hides
+and pairing exists to expose.
+
+So the campaign's **primary** — the measurement M1 exists to make — cannot be
+computed by its registered test from its own artifacts, and could not have been
+since the page was frozen. This is a defect in the **analysis plan**, not the
+code: §3 is meticulous about the *protocol* being identical across arms ("a
+baseline measured under one protocol and a primary measured under another are not
+paired, whatever the pairing code does") and never asks whether either arm
+records what pairing consumes.
+
+Same species as the schema default: specified, never wired end to end. The tell
+here is that the specification is *more* careful than usual — the pairing row
+names the exact artifact it pairs against — and the care went into which
+comparison, never into whether the comparison is computable.
+
+### Fix
+
+Per-problem outcomes recorded on **both** arms:
+
+* `run_instruments` records each problem's `(key, steps, par, z)` beside the
+  aggregate, so the campaign arm carries pairing from its first cadence unit;
+* **Part-0d re-runs deterministically** to capture the same for the anchor. Its
+  protocol is printed verbatim in §3 and its inputs are frozen, so the re-run's
+  aggregates must reproduce `101/600` and every per-stratum count exactly —
+  **and that reproduction is the verification** that the per-problem capture is
+  the same measurement rather than a new one. A mismatch is itself a finding.
+
+---
+
+## F-31 — The lever built so it would not have to be written under pressure was never connected
+
+**Found:** 2026-08-17, designing the sweep that would have measured it.
+
+`train.rehearsal_frac` is a fingerprinted config field. `rehearsal_split` is its
+implementation. **`train_on_ring` never calls it.** Repo-wide, `rehearsal_split`
+appears in exactly two places: its own definition, and four unit tests.
+
+```
+src/reckoner/train.py:370:  def rehearsal_split(...)          # the definition
+tests/test_train.py:185     assert rehearsal_split(128, CFG) == (0, 128)
+tests/test_train.py:193     assert rehearsal_split(128, cfg) == (32, 96)
+tests/test_train.py:195     assert rehearsal_split(10, cfg) == (5, 5)
+tests/test_train.py:203     with pytest.raises(...)
+```
+
+`train_on_ring` takes no supervision set and has no path that mixes supervised
+batches. **Setting `rehearsal_frac = 0.25` would move the config fingerprint and
+change nothing whatsoever.**
+
+### Why this one escalates
+
+The machinery was written *in anticipation*, and its own docstring says why:
+
+> "Ported now and left inert, per the plan's 'the lever exists before it's
+> needed': a rehearsal mechanism added *after* catastrophic forgetting appears is
+> a mechanism written under pressure, against a run that is already degrading."
+
+The anticipation was correct — F-27's diagnosis is catastrophic forgetting, top-1
+0.9699 → 0.8942 in one iteration at 39 ring-epochs with no supervised anchor. The
+lever was built for exactly this, and it is not attached to anything.
+
+The docstring even names the adjacent trap — *"'dormant' means 'untested'"* — and
+the tests answer it. **The unit is verified; the integration does not exist.** No
+test asks whether the returned split reaches an optimiser, so four passing
+assertions on a function nobody calls read as coverage.
+
+**And the class was declared closed.** Chunk 8's commit: *"a dead config key is
+the `batch_leaves` hazard and is not repeated."* At that moment
+`value_q_mse_weight` was dead at the loop's core and `rehearsal_frac` was dead
+too. A named class, declared closed, recurring twice underneath the declaration.
+
+### The mechanism rung — ordered, not registered
+
+Seven instances and a false closure is the ladder's terminal signal, so the
+remedy is mechanical rather than another resolution:
+
+> **A live-config test: every fingerprinted field either names the test that
+> proves it changes observable behaviour, or fails.**
+
+The ANCHORS adoption-scan pattern pointed at config. Decidable, cheap, and it
+would have caught `batch_leaves`, `value_q_mse_weight` and `rehearsal_frac` at
+the moment each was introduced. It is what makes "not repeated" a true sentence
+rather than an intention.
+
+### Governance
+
+Wiring the rehearsal path is a **defect fix**, not an amendment: the spec already
+specifies rehearsal and the implementation lacked it, so building it restores
+specified behaviour. **Setting `f > 0` is the amendment** — that is the treatment
+decision, and it lands as M1-A4 after the sweep, carrying measured numbers.
