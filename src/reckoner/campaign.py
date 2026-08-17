@@ -46,8 +46,10 @@ from reckoner.dataset import (
     training_problems,
 )
 from reckoner.episode import Problem
-from reckoner.evaluate import model_evaluator
+from reckoner.evaluate import ModelArm, model_evaluator
 from reckoner.gates import no_regress_floor
+from reckoner.ladder import problem_key_of
+from reckoner.ladderpass import PassPaths, is_complete, read_pair_scores, run_pass
 from reckoner.logschema import (
     ITERATION_FIELDS,
     SCHEMA_ERA,
@@ -184,20 +186,56 @@ def assert_threads(cfg: Config) -> dict:
 # ------------------------------------------------------------ the instrument seam
 
 
-def run_instruments(model, cfg: Config, *, iteration: int, anchor_beat: int) -> dict:
+def _assert_rng_unmoved(entry: tuple) -> None:
+    """The instrument passes must leave every generator where they found it.
+
+    Measurement that advances a generator the loop later draws from couples the
+    two silently: self-play's episodes would depend on whether a cadence ran, and
+    the campaign's trajectory would differ between a run that measured and one
+    that did not. Nothing in the artifacts would say so.
+
+    This is the assertion that keeps "routing touches measurement only" true —
+    the RNG is the one channel through which a read-only pass can reach the loop.
+    """
+    py_before, torch_before = entry
+    if random.getstate() != py_before:
+        raise CampaignRefusal(
+            "an instrument pass advanced the global `random` generator. Measurement "
+            "that moves a generator self-play draws from makes the trajectory depend "
+            "on whether a cadence ran, which is a coupling no row would record."
+        )
+    if not torch.equal(torch.get_rng_state(), torch_before):
+        raise CampaignRefusal(
+            "an instrument pass advanced torch's global generator — same coupling, same silence."
+        )
+
+
+def run_instruments(
+    model, cfg: Config, *, iteration: int, anchor_beat: int, run_dir: Path | None = None
+) -> dict:
     """**The** instrument seam. Every cadence measurement goes through here.
 
     Mono-instance because the discipline requires it, and because Lever B —
     unit-parallel instrument passes — lands behind this signature later without
-    the driver noticing.
+    the driver noticing. The seam still *delegates*; it is never bypassed.
 
     Asserts the eval fingerprint on entry: this is the boundary where the eval
     profile acts.
+
+    **MEASUREMENT NEVER TOUCHES LOOP STATE** (F-33). The ring, the checkpoints and
+    the pool are untouched here, so the campaign's trajectory is identical whether
+    or not this runs — which is what makes routing the primary through the ladder
+    a restoration rather than a treatment change. The one way that could be false
+    is the RNG: a measurement that advanced a generator the loop later draws from
+    would couple the two silently. So the generators are captured on entry and
+    **verified unmoved on exit**, rather than assumed.
     """
     ev = eval_profile(cfg)
     fingerprint = assert_eval_profile(ev)
     evaluator = model_evaluator(model, ev, 0.0)
     out: dict = {"iteration": iteration, "config_fingerprint": fingerprint, "profile": "eval"}
+
+    rng_entry = (random.getstate(), torch.get_rng_state().clone())
 
     # --- no-regress, both budgets, against the declared floors ---------------
     suites = sorted(SUITES.glob("solve_in_*.jsonl"))
@@ -219,15 +257,53 @@ def run_instruments(model, cfg: Config, *, iteration: int, anchor_beat: int) -> 
         }
 
     # --- the primary: pooled beat-par on {7, 8, 10} --------------------------
-    per_stratum, pooled_beat, pooled_n = {}, 0, 0
+    # THROUGH THE LADDER, not beside it (F-33). This used `run_iteration` and kept
+    # `{beat, of}`, which cannot be paired — and PREREG §2 makes the test of record
+    # a paired-difference bootstrap against Part-0d's per-problem outcomes. The
+    # ladder already appends one row per (arm, problem) as it happens, precisely
+    # because "a run that stored only means has thrown away the input to its own
+    # test of record". Routing here rather than adding per-problem output to
+    # `run_instruments` keeps one implementation instead of minting a third.
+    arm = ModelArm(model, sims=48, m=16)
+    problems, stratum_of = [], {}
     for k in SUCCESSOR_STRATA:
-        problems = [suite_problem(r) for r in read_suite(SUITES / f"scripted_in_{k}.jsonl")]
-        stats = run_iteration(problems, evaluator, ev, None, sims=48, m=16, seed=0)
-        stats.check_descent_identity()
-        beat = stats.steps_minus_par["<0"]
-        per_stratum[f"scripted_in_{k}"] = {"beat": beat, "of": stats.episodes}
-        pooled_beat += beat
-        pooled_n += stats.episodes
+        for row in read_suite(SUITES / f"scripted_in_{k}.jsonl"):
+            problem = suite_problem(row)
+            problems.append(problem)
+            stratum_of[problem_key_of(problem)] = f"scripted_in_{k}"
+
+    root = (run_dir or REPO / "runs") / "ladder"
+    if not is_complete(root, iteration):
+        run_pass(
+            root,
+            iteration,
+            [arm],
+            problems,
+            ev,
+            roles={arm.name: "subject"},
+            calibration_note=(
+                "scripted par is a PROVISIONAL floor, not an exact minimum, so z = +1 "
+                "is legal on these strata — which is what the instrument was minted "
+                "to allow and what the exact-par suites cannot offer."
+            ),
+            seed=0,
+        )
+    # A completed pass is re-read rather than re-run: the measurement is
+    # deterministic, and a resumed iteration should not pay for it twice.
+    scores = [r for r in read_pair_scores(root, iteration) if r["arm"] == arm.name]
+
+    per_stratum: dict[str, dict] = {
+        f"scripted_in_{k}": {"beat": 0, "of": 0} for k in SUCCESSOR_STRATA
+    }
+    for row in scores:
+        cell = per_stratum[stratum_of[row["problem_key"]]]
+        cell["of"] += 1
+        cell["beat"] += int(row["z"]) == 1
+    pooled_beat = sum(c["beat"] for c in per_stratum.values())
+    pooled_n = sum(c["of"] for c in per_stratum.values())
+    out["pair_scores"] = str(PassPaths(root, iteration).scores)
+
+    _assert_rng_unmoved(rng_entry)
     out["primary"] = {
         "pooled_beat_par": f"{pooled_beat}/{pooled_n}",
         "pooled_rate": round(pooled_beat / pooled_n, 6),
@@ -500,7 +576,9 @@ def run(
         ladder_index = None
         if (n + 1) % cfg.ladder.ladder_every == 0:
             ladder_index = n // cfg.ladder.ladder_every
-            measured = run_instruments(model, cfg, iteration=n, anchor_beat=ANCHOR_BEAT)
+            measured = run_instruments(
+                model, cfg, iteration=n, anchor_beat=ANCHOR_BEAT, run_dir=run_dir
+            )
             summary.setdefault("instruments", []).append(measured)
             # PERSISTED, NOT MERELY RETURNED (F-26). The cadence unit is the most
             # expensive measurement the loop makes — 1,200 problems at two
