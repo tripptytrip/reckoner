@@ -96,6 +96,16 @@ SUCCESSOR_STRATA = (7, 8, 10)
 WATCHLIST = REPO / "runs" / "chunk11_misses_diagnostic.json"
 
 
+def _enrols_at(iteration: int, cfg: Config) -> bool:
+    """Whether iteration *n* takes a pool snapshot.
+
+    One predicate, used by BOTH the enrolment site and resume's pool rebuild —
+    because a rebuild that replayed a different cadence than the run would
+    reconstruct a pool the run never had, which is F-23 wearing F-36's clothes.
+    """
+    return (iteration + 1) % cfg.league.snapshot_every == 0
+
+
 def frozen_watchlist() -> set[str]:
     """The frozen 24, as `problem_key` strings."""
     record = json.loads(WATCHLIST.read_text())
@@ -588,6 +598,8 @@ def run(
     # reconstructible, and continuing with a thinner pool would be the defect
     # arriving quietly by the path meant to repair it.
     for prior in range(start):
+        if not _enrols_at(prior, cfg):
+            continue  # that iteration took no snapshot, so there is none to replay
         snapshot = run_dir / f"snap-{prior}.pt"
         if not snapshot.exists():
             raise PoolError(
@@ -648,7 +660,15 @@ def run(
         # --- checkpoint, then enrol: par escalates with the model ------------
         checkpoint = run_dir / f"ckpt-{n}.pt"
         save_checkpoint(checkpoint, model, cfg, n, value_head=state.value_head.as_dict())
-        pool.enroll(model, n, state.value_head, run_dir / f"snap-{n}.pt")
+        # F-36: the CADENCE IS HONOURED, not assumed. This enrolled every
+        # iteration while `shakedown.py` honoured `league.snapshot_every`, and the
+        # two agreed only because the default is 1 — a fingerprinted field
+        # steering one composition and not the other. At 5 the shakedown would
+        # enrol four fewer snapshots per five iterations than the campaign,
+        # changing pool growth and therefore par escalation, which is the
+        # mechanism the primary is denominated against.
+        if _enrols_at(n, cfg):
+            pool.enroll(model, n, state.value_head, run_dir / f"snap-{n}.pt")
 
         # --- the criterion, on REAL accrued holdout (D-A1 §1.3) -------------
         slots = sorted(ring.holdout(cfg.train.ring_holdout_frac, seed=0))

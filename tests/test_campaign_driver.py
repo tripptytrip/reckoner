@@ -196,3 +196,31 @@ def test_the_driver_provably_commits_through_the_shared_seam() -> None:
             f"the driver reimplements the commit contract ({reimplementation}); "
             "there must be exactly one implementation of the write ordering"
         )
+
+
+# ------------------------------------------- the snapshot cadence (F-36)
+
+
+@needs_anchor
+def test_the_driver_honours_the_snapshot_cadence(tmp_path: Path) -> None:
+    """F-36. The driver enrolled every iteration while `shakedown.py` honoured
+    `league.snapshot_every`; they agreed only because the default is 1.
+
+    Both polarities, because "agrees at the default" is exactly the evidence that
+    let the divergence sit unnoticed — the test that matters is the one at a value
+    where the two behaviours differ.
+    """
+    from tests.campaign_fixture import drive
+
+    at_one = drive(tmp_path / "every", golden_config())
+    assert [r["pool_composition"]["size"] for r in at_one.rows] == [1, 2], (
+        "at snapshot_every = 1 the pool must gain a member every iteration"
+    )
+
+    at_two = drive(tmp_path / "alternate", golden_config(league={"snapshot_every": 2}))
+    assert [r["pool_composition"]["size"] for r in at_two.rows] == [1, 1], (
+        "at snapshot_every = 2 iteration 0 takes no snapshot, so the pool the "
+        "iterations DRAW from stays at the anchor alone"
+    )
+    assert not (tmp_path / "alternate" / "snap-0.pt").exists(), "snap-0 was written anyway"
+    assert (tmp_path / "alternate" / "snap-1.pt").exists(), "the cadence iteration took none"
