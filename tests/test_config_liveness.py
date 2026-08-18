@@ -23,6 +23,12 @@ The worked pair, because it is the whole distinction:
 * `train.rehearsal_frac` — **failed** (until this round wired it). Legal range
   `[0, 1)`, every value passes validation, and none of them changed anything:
   *vacuously inert.*
+
+The registry has now pruned itself twice under real pressure: `rehearsal_frac`
+left it when fix 1 wired the lever, and `league.snapshot_every` left it when
+F-36's fix made the driver honour the cadence. Both times the staleness test
+caught it rather than a reader noticing — which is the point of having the
+second polarity at all.
 """
 
 from __future__ import annotations
@@ -55,14 +61,6 @@ EXEMPT: dict[str, str] = {
         "F-30 — the paired bootstrap needs per-problem outcomes on BOTH arms. The "
         "campaign arm now has them (F-33 routing); the baseline arm does not until "
         "Part-0d is re-run deterministically. Dead until that lands, then live."
-    ),
-    # --- honest anomaly, recorded rather than papered over --------------------
-    "league.snapshot_every": (
-        "NOT a clean exemption. `shakedown.py` honours it; the driver enrols "
-        "unconditionally every iteration. They agree ONLY because the default is "
-        "1 — correct by coincidence, not construction. Setting it to 5 would "
-        "change pool growth and therefore par escalation in the shakedown and not "
-        "in the campaign. Registered here so the next reader meets it."
     ),
     # --- unbacked: no page asked for these, so the disposition is -------------
     # --- delete-or-amend at M1-A4, never wire-by-default ---------------------
