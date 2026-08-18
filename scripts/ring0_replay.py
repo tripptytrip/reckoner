@@ -21,14 +21,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import random
 from pathlib import Path
 
 import torch
 
 from reckoner.campaign import ANCHOR, campaign_problems
 from reckoner.config import Config, validate
-from reckoner.dataset import anchored_data, training_problems
 from reckoner.evaluate import model_evaluator
 from reckoner.model import load_checkpoint
 from reckoner.pool import CheckpointPool
@@ -76,12 +74,16 @@ def main() -> int:
     }
     ok = got == EXPECTED
 
-    # The draw sequence, recounted independently of the pool's own bookkeeping.
-    rng = random.Random(0 * 7919 + 13)
-    reference = training_problems(
-        anchored_data("train_100k"), cfg.campaign.episodes_per_iteration, seed=0
-    )
-    drawn = sum(rng.random() < cfg.league.par_from_pool_frac for _ in reference)
+    # THE DRAW COUNT COMES FROM THE POOL'S COUNTERS, not from a standalone replay
+    # of the Bernoulli stream. The first version of this probe did the latter and
+    # reported 85 draws against 99 pool-par outcomes — minus fourteen fallbacks,
+    # which is impossible, and is how the probe announced its own defect.
+    # `campaign_problems` passes its generator INTO `pool.par_for_episode`, which
+    # consumes from it on every successful draw, so a standalone stream diverges
+    # after the first one and answers a different question. The counters are the
+    # faithful record, and they are what F-28 asked for.
+    stats_after = pool.stats.as_dict()
+    drawn = stats_after["pool_par_solved"] + stats_after["pool_par_unavailable"]
 
     print("\n  RING-0 REPLAY — the queue's halt gate\n")
     for key, want in EXPECTED.items():
@@ -89,9 +91,10 @@ def main() -> int:
         print(f"    {mark} {key:>10}: {got[key]:>5}  (rehearsal recorded {want})")
 
     print("\n  F-28 — was pool_par_fraction = 0.2475 sampling or structure?\n")
-    print(f"    draws attempted (Bernoulli 0.2 over 400) : {drawn}")
+    print(f"    draws taken (solved + unavailable)       : {drawn}")
     print(f"    par_source == 'pool'                     : {from_pool}")
     print(f"    fallbacks (drawn but not pool par)       : {drawn - from_pool}")
+    print("    expected draws, Binomial(400, 0.2)       : 80 +/- 8")
     for name in ("pool_par_unavailable_empty", "pool_par_unavailable_capped", "pool_par_solved"):
         print(f"    {name:<41}: {pool.stats.as_dict()[name]}")
 
