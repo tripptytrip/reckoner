@@ -108,6 +108,7 @@ def test_the_row_it_produces_validates_against_the_schema() -> None:
             "ladder_pass": "not a ladder iteration",
             "family_remaining": "not a ladder iteration, so no pass miss set exists",
             "novel_misses": "not a ladder iteration, so no pass miss set exists",
+            "pass_misses": "not a ladder iteration, so no pass miss set exists",
         },
     )
     assert validate_row(row) == [], "a clean iteration must raise no alarms"
@@ -320,6 +321,7 @@ def test_an_empty_absent_means_nothing_is_absent() -> None:
     row["ladder_pass"] = 0
     row["family_remaining"] = 24
     row["novel_misses"] = 0
+    row["pass_misses"] = 24
     assert validate_row(row) == [], "a row with nothing absent must validate"
 
 
@@ -334,6 +336,7 @@ def test_a_stated_absence_is_carried_through_verbatim() -> None:
             "ladder_pass": "not a ladder iteration",
             "family_remaining": "no pass miss set",
             "novel_misses": "no pass miss set",
+            "pass_misses": "no pass miss set",
         }
     )
     assert row["absent"]["pool_par_fraction"] == reason

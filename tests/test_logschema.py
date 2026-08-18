@@ -75,6 +75,7 @@ def good_row(**overrides) -> dict:
             "ladder_pass": "not a ladder iteration",
             "family_remaining": "not a ladder iteration, so no pass miss set exists",
             "novel_misses": "not a ladder iteration, so no pass miss set exists",
+            "pass_misses": "not a ladder iteration, so no pass miss set exists",
         },
     }
     row.update(overrides)

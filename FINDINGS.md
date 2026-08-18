@@ -2205,3 +2205,41 @@ ratio decides only how the pass runs. The frozen 24 are already keyed as
 `problem_key` strings in `runs/chunk11_misses_diagnostic.json`
 (`cross_reference_sims_1_vs_scripted.shared`), the same format `problem_key_of`
 emits, so the intersection is computable the moment a miss set exists.
+
+---
+
+## F-36 — The driver ignores `league.snapshot_every` and agrees with it only because the default is 1
+
+**Found:** 2026-08-18, building the live-config gate's exemption registry — the
+census listed the field REPORTED, and the question "reported by whom, and who
+acts on it?" had no good answer.
+
+`scripts/shakedown.py` honours it:
+
+```python
+if (n + 1) % cfg.league.snapshot_every == 0:
+    pool.enroll(...)
+```
+
+`campaign.py` does not — `pool.enroll(...)` runs unconditionally, every
+iteration. The default is **1**, so the two agree, and every measurement on the
+record is unaffected.
+
+**Correct by coincidence, not by construction** — the fourth appearance of that
+shape in this project, after the anchor's eviction (F-24), the generator's
+CLI-shadowed dataset parameters (F-33), and `shakedown.py`'s duplicate evaluator.
+
+Set `snapshot_every = 5` and the shakedown would enrol four fewer snapshots per
+five iterations while the campaign enrolled all five — a fingerprinted field
+steering one composition and not the other, changing pool growth and therefore
+**par escalation**, which is the mechanism M1's primary is denominated against.
+
+Registered in the live-config gate's registry rather than silently exempted,
+because the honest entry is "this is not a clean exemption": the field is
+*consumed*, just not by the composition that matters.
+
+**Not fixed in this round.** Making the driver honour it changes enrolment
+cadence at values other than 1 — behaviour, not restoration — and at the current
+value it changes nothing at all. It batches into M1-A4 with the dead-key
+dispositions, where the choice is: honour it in the driver, or delete it and let
+unconditional enrolment be the declared behaviour.

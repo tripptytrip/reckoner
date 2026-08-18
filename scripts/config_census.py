@@ -42,7 +42,14 @@ from reckoner.config import Config
 
 REPO = Path(__file__).resolve().parents[1]
 SOURCES = (REPO / "src" / "reckoner", REPO / "scripts")
-DOCS = tuple(REPO.glob("*.md"))
+#: SPECIFICATION documents only. `FINDINGS.md` is deliberately excluded: it
+#: records what was found, and a finding that *names* a dead key would otherwise
+#: mark that key spec-backed — so writing about the problem would reclassify it
+#: as a defect fix. The distinction the column exists to draw is whether a PAGE
+#: ASKED FOR the field, and only these pages ask for anything.
+DOCS = tuple(
+    d for d in REPO.glob("*.md") if d.name.startswith(("PREREG", "BRIEF", "plan", "SWEEP"))
+)
 
 #: Readers whose reads are NOT consumption. A range check, a fingerprint dump or
 #: a yaml round-trip touches every field by construction — counting them would
@@ -217,10 +224,13 @@ def main() -> int:
             }
         )
 
-    assert any(r["field"] == "train.rehearsal_frac" and r["status"] != "LIVE" for r in rows), (
-        "the census does not flag rehearsal_frac, the field F-31 proved dead — "
-        "it is not measuring consumption"
-    )
+    # The detector's reference-vector check lives in
+    # `tests/test_config_liveness.py`, against a SYNTHETIC known-dead field.
+    # It was originally asserted here against `train.rehearsal_frac`, the field
+    # F-31 proved dead by hand — and then this round wired that field, so the
+    # reference vector moved and the assertion fired on its own success. A
+    # detector validated against a live repo field is validated against a moving
+    # target; the synthetic case cannot be fixed out from under it.
 
     dead = [r for r in rows if r["status"] != "LIVE"]
     print(f"\n  CONFIG CENSUS — {len(rows)} fingerprinted fields\n")

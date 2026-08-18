@@ -384,6 +384,21 @@ ITERATION_FIELDS: tuple[Field, ...] = (
         absence="not a ladder iteration, so no pass miss set exists",
         since=4,
     ),
+    Field(
+        "pass_misses",
+        int,
+        "diagnostic",
+        "Total misses in the watchlist's pass — the denominator that makes "
+        "family_remaining and novel_misses a partition rather than two loose "
+        "counts. Present so the sum identity is STRUCTURAL rather than checked "
+        "by whoever remembers: `family_remaining + novel_misses == pass_misses`, "
+        "enforced at write time. Its real job is catching problem_key format "
+        "drift — a key format that stops matching empties the intersection "
+        "silently, and this identity is what says so.",
+        required=False,
+        absence="not a ladder iteration, so no pass miss set exists",
+        since=4,
+    ),
 )
 
 
@@ -615,10 +630,43 @@ def validate_row(row: dict[str, Any], fields: tuple[Field, ...] = ITERATION_FIEL
         if name in row:
             raise SchemaError(f"{name}: named in 'absent' but present in the row")
 
+    _check_watchlist_partition(row)
     _check_pinned_bins(row)
     _check_exact_par_cannot_be_beaten(row)
     _check_splits_sum(row)
     return _premise_zero_alarms(row, known)
+
+
+def _check_watchlist_partition(row: dict[str, Any]) -> None:
+    """`family_remaining + novel_misses == pass_misses`, at write time.
+
+    The two columns partition the pass's misses by whether they belong to the
+    frozen family, so their sum is the total by construction — which makes any
+    disagreement a defect rather than a surprise.
+
+    **The failure it is really for is key-format drift.** The intersection is
+    taken over `problem_key` strings; if that format ever moves, the intersection
+    silently empties, `family_remaining` reads 0, and everything still looks like
+    a valid row reporting good news. That field has already caused two incidents.
+    Here the identity breaks loudly instead.
+    """
+    present = [k for k in ("family_remaining", "novel_misses", "pass_misses") if k in row]
+    if not present:
+        return
+    if len(present) != 3:
+        raise SchemaError(
+            f"the watchlist columns are a partition and must appear together; got "
+            f"{sorted(present)}. A count without its denominator cannot be checked."
+        )
+    total = row["family_remaining"] + row["novel_misses"]
+    if total != row["pass_misses"]:
+        raise SchemaError(
+            f"watchlist partition broken: family_remaining "
+            f"{row['family_remaining']} + novel_misses {row['novel_misses']} = "
+            f"{total}, but the pass recorded {row['pass_misses']} misses. Most "
+            "likely the problem_key format drifted and the intersection emptied "
+            "silently — which is exactly what this identity exists to catch."
+        )
 
 
 def _premise_zero_alarms(row: dict[str, Any], known: dict[str, Field]) -> list[dict[str, Any]]:

@@ -330,8 +330,16 @@ def run_instruments(
     out["watchlist"] = {
         "family_remaining": len(misses[watch_at] & frozen),
         "novel_misses": len(misses[watch_at] - frozen),
+        "pass_misses": len(misses[watch_at]),
         "frozen_family_size": len(frozen),
         "budget": watch_at,
+        # The anchor's own readings, carried on every row so the column has a
+        # SCALE. Without them a campaign value of 18 means nothing: the anchor
+        # scores (24, 0) at 1 sim — the family was defined from that miss set —
+        # and (7, 0) at 48, its misses being a strict subset. Search rescues 17
+        # of the 24 between the two budgets, which is the number a campaign
+        # reading is really being compared against.
+        "anchor_reference": {"1": [24, 0], "48": [7, 0]},
     }
 
     # --- the primary: pooled beat-par on {7, 8, 10} --------------------------
@@ -430,6 +438,7 @@ def preflight(cfg: Config, model, scratch: Path) -> None:
             "ladder_pass": "the pre-flight runs no ladder pass",
             "family_remaining": "not a ladder iteration, so no pass miss set exists",
             "novel_misses": "not a ladder iteration, so no pass miss set exists",
+            "pass_misses": "not a ladder iteration, so no pass miss set exists",
         },
     )
     append_row(scratch / "iterations.jsonl", row, ITERATION_FIELDS)
@@ -680,7 +689,7 @@ def run(
             absent["ladder_pass"] = (
                 "not a ladder iteration (ladder runs on ladder.ladder_every cadence)"
             )
-            for column in ("family_remaining", "novel_misses"):
+            for column in ("family_remaining", "novel_misses", "pass_misses"):
                 absent[column] = "not a ladder iteration, so no pass miss set exists"
         if from_pool == 0 and not pool.members:
             absent["pool_par_fraction"] = (
@@ -725,6 +734,7 @@ def run(
             watch = summary["instruments"][-1]["watchlist"]
             row["family_remaining"] = watch["family_remaining"]
             row["novel_misses"] = watch["novel_misses"]
+            row["pass_misses"] = watch["pass_misses"]
         if "pool_par_fraction" not in absent:
             row["pool_par_fraction"] = round(from_pool / max(1, stats.episodes), 6)
 
