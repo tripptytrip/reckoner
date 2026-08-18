@@ -30,7 +30,7 @@ sys.path.insert(0, str(REPO / "tests"))
 
 from campaign_fixture import ANCHOR, golden_config  # noqa: E402
 
-from reckoner.campaign import run  # noqa: E402
+from reckoner.campaign import CADENCE, run  # noqa: E402
 
 if __name__ == "__main__":
     run_dir = Path(sys.argv[1])
@@ -43,7 +43,7 @@ if __name__ == "__main__":
 
     run(
         run_dir,
-        golden_config(campaign={"iterations": 3}),
+        golden_config(campaign={"iterations": 3}, **CADENCE),
         run_name="fixture",
         anchor=ANCHOR,
         on_commit=on_commit,

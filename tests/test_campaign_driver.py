@@ -276,3 +276,44 @@ def test_the_population_cap_is_inert_at_campaign_config() -> None:
             "now truncates the campaign's own instrument population, which makes "
             "it a treatment change rather than a defect fix"
         )
+
+
+def test_the_campaign_predicate_is_derived_from_the_config_not_supplied() -> None:
+    """D-A2 §2's split, both polarities — and the predicate's provenance.
+
+    `assert_eval_profile` takes the config a pass runs under and computes "is
+    this a campaign measurement?" itself. A `campaign=` argument would be a
+    caller-supplied claim about evidential status, which is F-19's currency tag
+    wearing a keyword: the caller is exactly who should not be answering *is this
+    a real measurement?*
+    """
+    import inspect
+
+    from reckoner.campaign import EVAL_FINGERPRINT, assert_eval_profile
+
+    signature = inspect.signature(assert_eval_profile)
+    assert list(signature.parameters) == ["cfg"], (
+        f"assert_eval_profile takes {list(signature.parameters)} — the campaign "
+        "predicate must be derived from the config, never passed by the caller"
+    )
+
+    # campaign config: the registered pin is asserted, and holds
+    assert assert_eval_profile(Config()) == EVAL_FINGERPRINT
+
+    # golden config: accepted, and NOT pinned to the campaign's value
+    got = assert_eval_profile(golden_config())
+    assert got != EVAL_FINGERPRINT
+
+
+def test_a_campaign_config_with_a_drifted_eval_profile_refuses(monkeypatch) -> None:
+    """The polarity that matters. If the eval profile ever drifts from the
+    registered value, every campaign pass must refuse — that is the half of
+    D-A2 §2 the split preserves."""
+    from reckoner import campaign as campaign_module
+
+    monkeypatch.setattr(campaign_module, "EVAL_FINGERPRINT", "0" * 64)
+    with pytest.raises(campaign_module.CampaignRefusal, match="not comparable"):
+        campaign_module.assert_eval_profile(Config())
+
+    # and golden is unaffected, because its numbers are never measurements
+    assert campaign_module.assert_eval_profile(golden_config())

@@ -145,18 +145,22 @@ def golden_config(**overrides) -> Config:
         campaign=replace(cfg.campaign, iterations=2, episodes_per_iteration=12),
         train=replace(cfg.train, train_steps_per_iter=2),
         search=replace(cfg.search, sims=4, gumbel_m=4),
-        # A CADENCE THAT FIRES, on a tiny instrument population. This was
-        # `ladder_every=99` — the cadence never ran, so no test could see the
-        # cadence path, and TWO campaign-blocking defects reached the pod through
-        # that hole: F-29's fabricated absence default (which needs an iteration
-        # where nothing is absent) and the run_pass root collision (which needs
-        # two legs in one pass). A gap registered twice produced its predicted
-        # defect twice; registration is a prediction, not a control.
-        ladder=replace(cfg.ladder, ladder_every=2, problems_per_pass=2),
+        # No cadence by DEFAULT, and a cadence available on request. The runs
+        # whose assertions need one — `golden`'s path coverage and the resume
+        # gate's three-log comparison — pass `cadence()` below; everything else
+        # skips a measurement it never inspects. A suite people skip is a suite
+        # that does not run, and that has beaten discipline more often here than
+        # any missing check has.
+        ladder=replace(cfg.ladder, ladder_every=99),
     )
     for group, changes in overrides.items():
         cfg = replace(cfg, **{group: replace(getattr(cfg, group), **changes)})
     return cfg
+
+
+#: The cadence overrides for callers that assert on the cadence path. Named so
+#: the two call sites cannot drift apart, and so a third one is a decision.
+CADENCE = {"ladder": {"ladder_every": 2, "problems_per_pass": 2}}
 
 
 # --------------------------------------------------------------------- profiles
@@ -179,7 +183,7 @@ def assert_campaign_profile(cfg: Config) -> str:
     return got
 
 
-def assert_eval_profile(ev: Config, *, campaign: bool) -> str:
+def assert_eval_profile(cfg: Config) -> str:
     """At **every** instrument pass, not once at startup (D-A2 §2).
 
     Two checks, and the split matters. The cadence measurements are comparable to
@@ -195,12 +199,21 @@ def assert_eval_profile(ev: Config, *, campaign: bool) -> str:
 
     The ruling in D-A2 §2 is preserved rather than weakened: every campaign pass
     still asserts the registered value, at the boundary where the profile acts.
+
+    **The predicate is DERIVED, never passed.** This takes the config the pass
+    runs under and computes both the profile and "is this a campaign
+    measurement?" itself, because *is this a real measurement* is exactly the
+    question F-19 proved a caller should not be trusted to answer. A `campaign=`
+    argument would be a caller-supplied claim about evidential status, which is
+    the currency-tag defect wearing a keyword.
     """
+    ev = eval_profile(cfg)
+    campaign = config_fingerprint(cfg) == CAMPAIGN_FINGERPRINT
     if ev.search.root_noise:
         raise CampaignRefusal(
-            "an instrument pass is running with root noise ON, so it is measuring "
-            "the self-play profile and not the eval profile. The measurement is "
-            "not comparable to any baseline, whoever is calling."
+            "`eval_profile` returned a config with root noise ON, so an instrument "
+            "pass would measure the self-play profile. The measurement is not "
+            "comparable to any baseline, whoever is calling."
         )
     got = config_fingerprint(ev)
     if campaign and got != EVAL_FINGERPRINT:
@@ -289,7 +302,7 @@ def run_instruments(
     **verified unmoved on exit**, rather than assumed.
     """
     ev = eval_profile(cfg)
-    fingerprint = assert_eval_profile(ev, campaign=config_fingerprint(cfg) == CAMPAIGN_FINGERPRINT)
+    fingerprint = assert_eval_profile(cfg)
     # F-22 at the seam every cadence measurement passes through. Named rather
     # than a bare `model_evaluator(...)` call kept for its side effect, because a
     # guard that reads as dead code is eventually deleted as dead code.

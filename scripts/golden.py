@@ -30,7 +30,7 @@ from pathlib import Path
 
 import torch
 
-from reckoner.campaign import ANCHOR, CAMPAIGN_FINGERPRINT, golden_config, run
+from reckoner.campaign import ANCHOR, CADENCE, CAMPAIGN_FINGERPRINT, golden_config, run
 from reckoner.config import config_fingerprint
 from reckoner.dataset import sha256_file
 from reckoner.logschema import ITERATION_FIELDS, read_rows
@@ -60,7 +60,7 @@ def main() -> int:
         shutil.rmtree(run_dir)
 
     started = time.perf_counter()
-    summary = run(run_dir, golden_config(), run_name="golden", anchor=ANCHOR)
+    summary = run(run_dir, golden_config(**CADENCE), run_name="golden", anchor=ANCHOR)
     elapsed = time.perf_counter() - started
 
     per_iteration = summary["iterations"]
@@ -105,7 +105,8 @@ def main() -> int:
         # campaign's fingerprint while golden config executed.
         (
             "rows record the config that produced them, not the campaign's",
-            {r["config_fingerprint"] for r in written} == {config_fingerprint(golden_config())},
+            {r["config_fingerprint"] for r in written}
+            == {config_fingerprint(golden_config(**CADENCE))},
             f"rows claim {written[0]['config_fingerprint'][:12]}",
         ),
         (
