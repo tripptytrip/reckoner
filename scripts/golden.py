@@ -23,6 +23,7 @@ is the shakedown's job, against pre-registered expectations.
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import time
 from pathlib import Path
@@ -33,6 +34,14 @@ from reckoner.campaign import ANCHOR, CAMPAIGN_FINGERPRINT, golden_config, run
 from reckoner.config import config_fingerprint
 from reckoner.dataset import sha256_file
 from reckoner.logschema import ITERATION_FIELDS, read_rows
+
+
+def read_rows_raw(path: Path) -> list[dict]:
+    """Lines, unvalidated — for artifacts the schema does not govern."""
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
 
 REPO = Path(__file__).resolve().parents[1]
 BUDGET_SECONDS = 180.0
@@ -109,6 +118,41 @@ def main() -> int:
             bool(written[0]["z_by_par_source"].get("pool"))
             and bool(written[0]["z_by_par_source"].get("bfs")),
             str(written[0]["z_by_par_source"]),
+        ),
+        # THE CADENCE PATH, exercised end to end (F-29 / the run_pass collision).
+        # golden ran `ladder_every = 99` for three chunks, so no test could reach
+        # a cadence iteration — and both campaign-blocking defects of the
+        # restoration round lived exactly there. These assertions are why the
+        # path is now walked rather than merely reachable.
+        (
+            "the cadence FIRED and wrote its instrument row",
+            len(read_rows_raw(run_dir / "instruments.jsonl")) == 1,
+            f"{len(read_rows_raw(run_dir / 'instruments.jsonl'))} instrument rows",
+        ),
+        (
+            "the two legs held distinct pass identities",
+            (run_dir / "ladder" / "no_regress").is_dir()
+            and (run_dir / "ladder" / "primary").is_dir(),
+            "a shared root silently skips the second leg's pass",
+        ),
+        (
+            "the ladder iteration carries its watchlist columns",
+            all(c in written[-1] for c in ("family_remaining", "novel_misses", "pass_misses")),
+            str(
+                [c for c in ("family_remaining", "novel_misses", "pass_misses") if c in written[-1]]
+            ),
+        ),
+        (
+            "and the watchlist partitions the pass's misses",
+            written[-1].get("family_remaining", 0) + written[-1].get("novel_misses", 0)
+            == written[-1].get("pass_misses", -1),
+            f"{written[-1].get('family_remaining')} + {written[-1].get('novel_misses')}"
+            f" == {written[-1].get('pass_misses')}",
+        ),
+        (
+            "non-cadence iterations declare the watchlist ABSENT with a reason",
+            "family_remaining" in (written[0].get("absent") or {}),
+            str(list(written[0].get("absent") or {})),
         ),
     ]
 

@@ -253,3 +253,26 @@ def test_the_two_cadence_legs_do_not_share_a_pass_identity() -> None:
         "the two legs must not share a pass root: run_pass keys completion on "
         f"(root, index) and both legs share the index. Found: {roots}"
     )
+
+
+def test_the_population_cap_is_inert_at_campaign_config() -> None:
+    """`ladder.problems_per_pass` became live so `golden` could run a cadence on a
+    tiny population. That is a defect fix only if it changes nothing at the
+    campaign's config — and it does not, because every suite and stratum file
+    holds exactly 200 rows and the cap is 200, so the slice is the identity.
+
+    Asserted rather than assumed: if a suite is ever regenerated at a different
+    size, this fails and the cap stops being inert."""
+    from reckoner.config import Config
+    from reckoner.dataset import read_suite
+
+    cap = Config().ladder.problems_per_pass
+    files = sorted(Path(__file__).resolve().parents[1].glob("runs/suites/*.jsonl"))
+    assert files, "no suites present"
+    for path in files:
+        rows = read_suite(path)
+        assert len(rows) <= cap, (
+            f"{path.name} holds {len(rows)} rows against a cap of {cap}: the cap "
+            "now truncates the campaign's own instrument population, which makes "
+            "it a treatment change rather than a defect fix"
+        )

@@ -154,15 +154,18 @@ def test_killed_and_resumed_is_indistinguishable_from_uninterrupted(
         assert [r.get("iteration") for r in got] == [r.get("iteration") for r in want], (
             f"{name}: a resumed run must not duplicate or drop a row (F-26)"
         )
-    # AND SAY WHICH OF THOSE COMPARISONS WAS REAL. `instruments.jsonl` does not
-    # exist at golden config — `ladder_every = 99`, so the cadence never fires —
-    # so its comparison above passes on two empty lists. An assertion that cannot
-    # fail must not be left looking like one that did: the door-level cover is
-    # `test_resume.py::test_resume_truncates_the_instrument_log_by_iteration...`,
-    # and this line is what would break if golden ever gained a cadence and this
-    # comment silently stopped being true.
+    # AND SAY WHICH OF THOSE COMPARISONS WAS REAL — the line that closed its own
+    # loop. It was written when `instruments.jsonl` could not exist here
+    # (`ladder_every = 99`, so the cadence never fired) and its comparison passed
+    # on two empty lists; the assertion existed so that an untestable claim could
+    # not go on looking like a tested one, and it named the exact event that
+    # should break it: "what would break if golden ever gained a cadence".
+    #
+    # Golden gained a cadence. It broke. All three logs are now genuinely
+    # compared, so F-26's truncation is exercised end to end here rather than
+    # only at the door.
     exercised = [name for name in LOGS if (uninterrupted / name).exists()]
-    assert exercised == ["iterations.jsonl", "value_switch.jsonl"], (
+    assert exercised == list(LOGS), (
         f"the set of logs this gate actually compares has changed: {exercised}"
     )
 

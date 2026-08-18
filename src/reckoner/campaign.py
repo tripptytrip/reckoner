@@ -145,7 +145,14 @@ def golden_config(**overrides) -> Config:
         campaign=replace(cfg.campaign, iterations=2, episodes_per_iteration=12),
         train=replace(cfg.train, train_steps_per_iter=2),
         search=replace(cfg.search, sims=4, gumbel_m=4),
-        ladder=replace(cfg.ladder, ladder_every=99),
+        # A CADENCE THAT FIRES, on a tiny instrument population. This was
+        # `ladder_every=99` — the cadence never ran, so no test could see the
+        # cadence path, and TWO campaign-blocking defects reached the pod through
+        # that hole: F-29's fabricated absence default (which needs an iteration
+        # where nothing is absent) and the run_pass root collision (which needs
+        # two legs in one pass). A gap registered twice produced its predicted
+        # defect twice; registration is a prediction, not a control.
+        ladder=replace(cfg.ladder, ladder_every=2, problems_per_pass=2),
     )
     for group, changes in overrides.items():
         cfg = replace(cfg, **{group: replace(getattr(cfg, group), **changes)})
@@ -172,15 +179,31 @@ def assert_campaign_profile(cfg: Config) -> str:
     return got
 
 
-def assert_eval_profile(cfg: Config) -> str:
-    """At **every** instrument pass, not once at startup.
+def assert_eval_profile(ev: Config, *, campaign: bool) -> str:
+    """At **every** instrument pass, not once at startup (D-A2 §2).
 
-    The cadence measurements are comparable to their baselines only if they
-    provably ran the eval profile, so the check belongs at the boundary where
-    that profile acts.
+    Two checks, and the split matters. The cadence measurements are comparable to
+    their baselines only if they provably ran the eval profile, so **the profile
+    must ACT** — that is verified on every pass, whoever is calling.
+
+    The *registered* pin is additionally asserted when the pass is a campaign
+    measurement. Golden runs this same seam as a liveness check (its numbers are
+    never compared to a baseline), and pinning it to the campaign's fingerprint
+    would make the shared composition unrunnable at golden config — which is
+    precisely how the cadence path came to have no test at all, and how two
+    campaign-blocking defects reached the pod.
+
+    The ruling in D-A2 §2 is preserved rather than weakened: every campaign pass
+    still asserts the registered value, at the boundary where the profile acts.
     """
-    got = config_fingerprint(cfg)
-    if got != EVAL_FINGERPRINT:
+    if ev.search.root_noise:
+        raise CampaignRefusal(
+            "an instrument pass is running with root noise ON, so it is measuring "
+            "the self-play profile and not the eval profile. The measurement is "
+            "not comparable to any baseline, whoever is calling."
+        )
+    got = config_fingerprint(ev)
+    if campaign and got != EVAL_FINGERPRINT:
         raise CampaignRefusal(
             f"eval profile fingerprint {got} != PREREG-m1's recorded "
             f"{EVAL_FINGERPRINT}; this pass is not comparable to its baseline."
@@ -266,7 +289,7 @@ def run_instruments(
     **verified unmoved on exit**, rather than assumed.
     """
     ev = eval_profile(cfg)
-    fingerprint = assert_eval_profile(ev)
+    fingerprint = assert_eval_profile(ev, campaign=config_fingerprint(cfg) == CAMPAIGN_FINGERPRINT)
     # F-22 at the seam every cadence measurement passes through. Named rather
     # than a bare `model_evaluator(...)` call kept for its side effect, because a
     # guard that reads as dead code is eventually deleted as dead code.
@@ -286,8 +309,14 @@ def run_instruments(
     # Recording is required independent of execution mode. Routing rather than
     # teaching `run_iteration` to emit rows keeps ONE implementation of
     # per-problem recording — F-33's lesson applied to F-33's own remedy.
+    # THE POPULATION CAP, per file. `ladder.problems_per_pass` was one of the
+    # census's dead keys; it is now the knob that lets `golden` exercise a cadence
+    # iteration end to end. **Provably inert at campaign config**: every suite and
+    # stratum file holds exactly 200 rows and the cap is 200, so the slice is the
+    # identity — verified in test_campaign_driver, not assumed.
+    cap = cfg.ladder.problems_per_pass
     suites = sorted(SUITES.glob("solve_in_*.jsonl"))
-    instrument = [suite_problem(r) for p in suites for r in read_suite(p)]
+    instrument = [suite_problem(r) for p in suites for r in read_suite(p)[:cap]]
     budgets = sorted(NO_REGRESS, reverse=True)
     arms = [
         ModelArm(model, name=f"model@{sims}", sims=sims, m=min(ev.search.gumbel_m, sims))
@@ -370,7 +399,7 @@ def run_instruments(
     arm = ModelArm(model, sims=48, m=16)
     problems, stratum_of = [], {}
     for k in SUCCESSOR_STRATA:
-        for row in read_suite(SUITES / f"scripted_in_{k}.jsonl"):
+        for row in read_suite(SUITES / f"scripted_in_{k}.jsonl")[:cap]:
             problem = suite_problem(row)
             problems.append(problem)
             stratum_of[problem_key_of(problem)] = f"scripted_in_{k}"

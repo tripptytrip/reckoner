@@ -51,12 +51,6 @@ EXEMPT: dict[str, str] = {
         "variation to observe. Evidence: test_a_pinned_invariant_refuses_variation."
     ),
     # --- spec-backed, blocked on work registered elsewhere --------------------
-    "ladder.problems_per_pass": (
-        "F-34 — the rung pass is dropped from M1: both candidate populations are "
-        "measured-saturated (smoke_v1 headroom is 12% of one CI half-width; the "
-        "suites are F-20). Carried to M2, where a population gets minted with "
-        "headroom demonstrated before freezing."
-    ),
     "ladder.bootstrap_resamples": (
         "F-30 — the paired bootstrap needs per-problem outcomes on BOTH arms. The "
         "campaign arm now has them (F-33 routing); the baseline arm does not until "
