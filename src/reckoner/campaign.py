@@ -293,7 +293,14 @@ def run_instruments(
         ModelArm(model, name=f"model@{sims}", sims=sims, m=min(ev.search.gumbel_m, sims))
         for sims in budgets
     ]
-    root = (run_dir or REPO / "runs") / "ladder"
+    # A PASS PER LEG, under distinct roots. The two legs share an iteration
+    # index, and `run_pass` keys completion on (root, index) — so a shared root
+    # meant the second leg found the first leg's DONE marker, skipped its own
+    # pass, and read zero rows for an arm name that pass never played. Caught by
+    # the equivalence gate rather than by a test, because `golden_config` sets
+    # `ladder_every = 99` and no test exercises a cadence iteration (F-29's
+    # registered gap, biting where it was registered).
+    root = (run_dir or REPO / "runs") / "ladder" / "no_regress"
 
     # BOTH ARMS ARE SUBJECTS, and that is a refusal rather than a default. Each
     # floor is a ONE-SIDED comparison against a frozen constant — 1188 and 1167 —
@@ -368,7 +375,7 @@ def run_instruments(
             problems.append(problem)
             stratum_of[problem_key_of(problem)] = f"scripted_in_{k}"
 
-    root = (run_dir or REPO / "runs") / "ladder"
+    root = (run_dir or REPO / "runs") / "ladder" / "primary"
     if not is_complete(root, iteration):
         run_pass(
             root,
@@ -398,6 +405,9 @@ def run_instruments(
     pooled_beat = sum(c["beat"] for c in per_stratum.values())
     pooled_n = sum(c["of"] for c in per_stratum.values())
     out["pair_scores"] = str(PassPaths(root, iteration).scores)
+    out["no_regress_pair_scores"] = str(
+        PassPaths((run_dir or REPO / "runs") / "ladder" / "no_regress", iteration).scores
+    )
 
     _assert_rng_unmoved(rng_entry)
     out["primary"] = {

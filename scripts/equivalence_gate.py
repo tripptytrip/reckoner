@@ -101,7 +101,7 @@ def main() -> int:
 
     # the seven misses, BY KEY rather than by count
     diag = json.loads(DIAGNOSTIC.read_text())
-    scores = read_pair_scores(args.out / "anchor" / "ladder", 0)
+    scores = read_pair_scores(args.out / "anchor" / "ladder" / "no_regress", 0)
     for budget in ("48", "1"):
         recorded = set(diag["per_budget"][budget]["misses"])
         measured = {

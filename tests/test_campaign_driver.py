@@ -224,3 +224,32 @@ def test_the_driver_honours_the_snapshot_cadence(tmp_path: Path) -> None:
     )
     assert not (tmp_path / "alternate" / "snap-0.pt").exists(), "snap-0 was written anyway"
     assert (tmp_path / "alternate" / "snap-1.pt").exists(), "the cadence iteration took none"
+
+
+def test_the_two_cadence_legs_do_not_share_a_pass_identity() -> None:
+    """The collision the equivalence gate caught, pinned as a test.
+
+    `run_pass` keys completion on `(root, index)` and both legs share the
+    iteration index. With a shared root the second leg found the first's DONE
+    marker, skipped its own pass, and then read zero rows for an arm name that
+    pass had never played — surfacing as a ZeroDivisionError on a denominator of
+    zero, a full cadence unit into the run.
+
+    No test caught it because `golden_config` sets `ladder_every = 99`, so the
+    cadence never fires in the suite — F-29's registered gap, biting exactly
+    where it was registered. This is the cheap half of closing it: the identities
+    must differ, asserted without paying for an instrument pass.
+    """
+    import inspect
+
+    from reckoner import campaign
+
+    source = inspect.getsource(campaign.run_instruments)
+    roots = [
+        line for line in source.splitlines() if '/ "ladder" /' in line or '/ "ladder" /' in line
+    ]
+    assert len(roots) >= 2, "expected a distinct pass root per cadence leg"
+    assert any("no_regress" in r for r in roots) and any("primary" in r for r in roots), (
+        "the two legs must not share a pass root: run_pass keys completion on "
+        f"(root, index) and both legs share the index. Found: {roots}"
+    )
