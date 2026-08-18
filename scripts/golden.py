@@ -66,6 +66,7 @@ def main() -> int:
     per_iteration = summary["iterations"]
     written = read_rows(run_dir / "iterations.jsonl", ITERATION_FIELDS)
     switch = (run_dir / "value_switch.jsonl").read_text().strip().splitlines()
+    instruments = read_rows_raw(run_dir / "instruments.jsonl")
     digests = {r["evaluator_checkpoint_sha256"] for r in written}
 
     checks: list[tuple[str, bool, str]] = [
@@ -137,23 +138,22 @@ def main() -> int:
             "a shared root silently skips the second leg's pass",
         ),
         (
-            "the ladder iteration carries its watchlist columns",
-            all(c in written[-1] for c in ("family_remaining", "novel_misses", "pass_misses")),
-            str(
-                [c for c in ("family_remaining", "novel_misses", "pass_misses") if c in written[-1]]
+            "the pass record carries a watchlist pair PER LEG",
+            sorted(instruments[0]["watchlist"]["by_budget"]) == ["1", "48"],
+            str(sorted(instruments[0]["watchlist"].get("by_budget", {}))),
+        ),
+        (
+            "and each leg's pair partitions that leg's own misses",
+            all(
+                c["family_remaining"] + c["novel_misses"] == c["pass_misses"]
+                for c in instruments[0]["watchlist"]["by_budget"].values()
             ),
+            str(instruments[0]["watchlist"]["by_budget"]),
         ),
         (
-            "and the watchlist partitions the pass's misses",
-            written[-1].get("family_remaining", 0) + written[-1].get("novel_misses", 0)
-            == written[-1].get("pass_misses", -1),
-            f"{written[-1].get('family_remaining')} + {written[-1].get('novel_misses')}"
-            f" == {written[-1].get('pass_misses')}",
-        ),
-        (
-            "non-cadence iterations declare the watchlist ABSENT with a reason",
-            "family_remaining" in (written[0].get("absent") or {}),
-            str(list(written[0].get("absent") or {})),
+            "and the anchor's reference rows ride with it, so the reading has scale",
+            instruments[0]["watchlist"]["anchor_reference"] == {"1": [24, 0], "48": [7, 0]},
+            str(instruments[0]["watchlist"].get("anchor_reference")),
         ),
     ]
 

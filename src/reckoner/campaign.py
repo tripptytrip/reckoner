@@ -381,23 +381,46 @@ def run_instruments(
             "floor_recomputed": no_regress_floor(1193 if sims == 48 else 1176, 1200),
         }
 
-    # THE WATCHLIST, at last computable (PREREG §5). Against the FROZEN reference,
-    # never re-derived: a family re-derived per pass conflates "the family shrank"
-    # with "the family's definition moved".
+    # THE WATCHLIST — A PAIR PER LEG, on the pass record (PREREG §5).
+    #
+    # Per pass, not at one budget: each leg has its own miss set, and the 48-sim
+    # reading is the one commensurate with the primary's budget. Computing it only
+    # at min(budgets) is what let a prediction registered at 48 sims be scored
+    # against a 1-sim number.
+    #
+    # It rides on the PASS RECORD rather than as budget-named iteration columns,
+    # because a budget encoded in a column name puts the budget in two homes — the
+    # config and the schema — where they can drift. "Computed per pass" already
+    # names the pass as the carrier, and the partition identity then holds where
+    # its inputs live.
+    #
+    # Against the FROZEN reference, never re-derived: a family re-derived per pass
+    # conflates "the family shrank" with "the family's definition moved".
     frozen = frozen_watchlist()
-    watch_at = min(budgets)  # the family was certified at sims = 1
+    watchlist: dict[str, dict] = {}
+    for sims in budgets:
+        missed = misses[sims]
+        family, novel = len(missed & frozen), len(missed - frozen)
+        if family + novel != len(missed):
+            raise CampaignRefusal(
+                f"watchlist partition broken at sims={sims}: {family} + {novel} != "
+                f"{len(missed)}. Most likely the problem_key format drifted and the "
+                "intersection emptied silently — the failure this identity exists to "
+                "catch, and the field that has caused two incidents already."
+            )
+        watchlist[str(sims)] = {
+            "family_remaining": family,
+            "novel_misses": novel,
+            "pass_misses": len(missed),
+        }
     out["watchlist"] = {
-        "family_remaining": len(misses[watch_at] & frozen),
-        "novel_misses": len(misses[watch_at] - frozen),
-        "pass_misses": len(misses[watch_at]),
+        "by_budget": watchlist,
         "frozen_family_size": len(frozen),
-        "budget": watch_at,
-        # The anchor's own readings, carried on every row so the column has a
-        # SCALE. Without them a campaign value of 18 means nothing: the anchor
-        # scores (24, 0) at 1 sim — the family was defined from that miss set —
-        # and (7, 0) at 48, its misses being a strict subset. Search rescues 17
-        # of the 24 between the two budgets, which is the number a campaign
-        # reading is really being compared against.
+        # The anchor's own readings, carried so the column has a SCALE. Without
+        # them a campaign value of 18 means nothing: the anchor scores (24, 0) at
+        # 1 sim — the family was defined from that miss set — and (7, 0) at 48,
+        # its misses being a strict subset. Search rescues 17 of the 24 between
+        # the budgets, which is what a campaign reading is really compared against.
         "anchor_reference": {"1": [24, 0], "48": [7, 0]},
     }
 
@@ -498,9 +521,6 @@ def preflight(cfg: Config, model, scratch: Path) -> None:
         absent={
             "pool_par_fraction": "the pre-flight's pool is empty by construction",
             "ladder_pass": "the pre-flight runs no ladder pass",
-            "family_remaining": "not a ladder iteration, so no pass miss set exists",
-            "novel_misses": "not a ladder iteration, so no pass miss set exists",
-            "pass_misses": "not a ladder iteration, so no pass miss set exists",
         },
     )
     append_row(scratch / "iterations.jsonl", row, ITERATION_FIELDS)
@@ -761,8 +781,6 @@ def run(
             absent["ladder_pass"] = (
                 "not a ladder iteration (ladder runs on ladder.ladder_every cadence)"
             )
-            for column in ("family_remaining", "novel_misses", "pass_misses"):
-                absent[column] = "not a ladder iteration, so no pass miss set exists"
         if from_pool == 0 and not pool.members:
             absent["pool_par_fraction"] = (
                 "league.par_from_pool_frac is 0, or no snapshot has been taken yet"
@@ -801,12 +819,6 @@ def run(
         row["pool_refusals"] = pool.stats.refusals
         if ladder_index is not None:
             row["ladder_pass"] = ladder_index
-            # PREREG §5's pair, emitted rather than derivable-in-principle —
-            # which is F-35's entire lesson.
-            watch = summary["instruments"][-1]["watchlist"]
-            row["family_remaining"] = watch["family_remaining"]
-            row["novel_misses"] = watch["novel_misses"]
-            row["pass_misses"] = watch["pass_misses"]
         if "pool_par_fraction" not in absent:
             row["pool_par_fraction"] = round(from_pool / max(1, stats.episodes), 6)
 

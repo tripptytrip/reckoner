@@ -171,9 +171,6 @@ def main() -> int:
                     "the shakedown probes the pool directly (E4) and draws no par from it"
                 ),
                 "ladder_pass": "the shakedown runs no ladder pass",
-                "family_remaining": "the shakedown runs no ladder pass",
-                "novel_misses": "the shakedown runs no ladder pass",
-                "pass_misses": "the shakedown runs no ladder pass",
             },
         )
         solve_by_depth.append({"iteration": n, "rates": row["solve_rate_by_depth"]})

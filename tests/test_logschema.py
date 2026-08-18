@@ -73,9 +73,6 @@ def good_row(**overrides) -> dict:
         "absent": {
             "pool_par_fraction": "league.par_from_pool_frac is 0 in the shakedown config",
             "ladder_pass": "not a ladder iteration",
-            "family_remaining": "not a ladder iteration, so no pass miss set exists",
-            "novel_misses": "not a ladder iteration, so no pass miss set exists",
-            "pass_misses": "not a ladder iteration, so no pass miss set exists",
         },
     }
     row.update(overrides)
