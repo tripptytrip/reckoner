@@ -54,8 +54,7 @@ def measure(label: str, checkpoint: Path, cfg: Config, root: Path, index: int) -
     model, _ = load_checkpoint(checkpoint, cfg)
     model.eval()
     print(f"\n  measuring {label} ({checkpoint.name}) ...")
-    out = run_instruments(model, cfg, iteration=index, anchor_beat=ANCHOR_BEAT, run_dir=root)
-    return out
+    return run_instruments(model, cfg, iteration=index, anchor_beat=ANCHOR_BEAT, run_dir=root)
 
 
 def main() -> int:
