@@ -143,3 +143,48 @@ steps, 19.6 ring-epochs matched to `f = 0.50`, no supervision — which decides
 whether round two's lever is rehearsal or epoch scaling.
 
 **This page lands when that returns, not before.**
+
+---
+
+## 6. `campaign.interop_threads` becomes EXERCISED (ruled 2026-08-19)
+
+**Decided, built, and the reproduction gate re-ran.**
+
+M1-A2 §4 classed interop as **OBSERVED** — *"licenses only 'this is what ran'"* —
+because it sat constant at 32 across both hosts and was undiscriminated. F-32
+added the check that the record's claim actually matched the runtime.
+
+The campaign host then changed. The new host defaults interop to **48**, and
+`assert_threads` **refused**:
+
+> interop threads are 48, but the licence recorded 32 and every measurement on
+> the record ran under that value. Unset is a value and OBSERVED is a claim: a
+> host that differs stands outside this evidence, not inside it.
+
+That is the assertion working. §4 also names the disposition, so no new rule was
+needed:
+
+> "Raising any of these is not a config tweak. It is a **new configuration whose
+> reproduction gate re-runs** — the set-growth law, standing at the thread knob."
+
+**Taken: apply the pin and re-run the gate.** Rejected alternatives, and why:
+
+| option | rejected because |
+|---|---|
+| leave it OBSERVED and amend §4 to record 48 | widens the claim after the fact; every prior measurement ran at 32 |
+| set it silently to 32 | converts an observation into a configuration with no gate — exactly what §4 forbids |
+
+### What changed, precisely
+
+**The field's value is unchanged at 32, so the config fingerprint does not move**
+— `ce41af96…` is still the registered value, verified. What changed is whether
+the runtime is *made to match* the record or merely *asked whether it happens
+to*. The pin is applied and then read back, so the returned record is what the
+runtime holds rather than what the caller hoped for.
+
+**Inert on the old host**, where ambient interop was already 32 — confirmed
+locally, where the same code returns the same record it always did.
+
+A pin that cannot take now refuses with the reason: torch fixes the interop pool
+at first parallel work, so a process that has already measured under the wrong
+value cannot be corrected into the record.

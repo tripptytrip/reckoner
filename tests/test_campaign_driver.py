@@ -317,3 +317,50 @@ def test_a_campaign_config_with_a_drifted_eval_profile_refuses(monkeypatch) -> N
 
     # and golden is unaffected, because its numbers are never measurements
     assert campaign_module.assert_eval_profile(golden_config())
+
+
+def test_the_interop_pin_is_applied_and_read_back() -> None:
+    """M1-A4 §6. Interop moved from OBSERVED to EXERCISED when the campaign host
+    changed and the new one defaulted to 48 against the licence's 32.
+
+    The pin is APPLIED and then read back, so the returned record is what the
+    runtime holds rather than what the caller hoped for — the distinction that
+    made the old version an unverified claim in a document whose whole purpose is
+    that its numbers were true.
+
+    **The field's VALUE is unchanged**, so the config fingerprint does not move.
+    What changed is whether the runtime is made to match the record or merely
+    asked whether it happens to.
+    """
+    import torch
+
+    from reckoner.campaign import CAMPAIGN_FINGERPRINT, assert_threads
+    from reckoner.config import config_fingerprint
+
+    cfg = Config()
+    record = assert_threads(cfg)
+
+    assert record["interop"] == cfg.campaign.interop_threads
+    assert torch.get_num_interop_threads() == cfg.campaign.interop_threads, (
+        "the record reports a value the runtime does not hold"
+    )
+    assert record["intra_op"] == cfg.campaign.intra_op_threads
+    assert config_fingerprint(cfg) == CAMPAIGN_FINGERPRINT, (
+        "applying the pin must not move the fingerprint — the value did not change"
+    )
+
+
+def test_a_set_omp_variable_still_refuses() -> None:
+    """The other pin's polarity, unchanged by M1-A4 §6: the OMP family was unset
+    throughout the licence, and unset is a value."""
+    import os
+
+    from reckoner.campaign import OMP_FAMILY, CampaignRefusal, assert_threads
+
+    name = OMP_FAMILY[0]
+    os.environ[name] = "4"
+    try:
+        with pytest.raises(CampaignRefusal, match="UNSET throughout the licence"):
+            assert_threads(Config())
+    finally:
+        del os.environ[name]

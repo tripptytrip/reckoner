@@ -225,7 +225,11 @@ def assert_eval_profile(cfg: Config) -> str:
 
 
 def assert_threads(cfg: Config) -> dict:
-    """The pins, applied and verified — including the recorded absence."""
+    """The pins, applied and verified — including the recorded absence.
+
+    Both thread pins are now APPLIED and then read back, so the returned record
+    is what the runtime holds rather than what the caller hoped for.
+    """
     torch.set_num_threads(cfg.campaign.intra_op_threads)
     present = {v: os.environ[v] for v in OMP_FAMILY if v in os.environ}
     if present:
@@ -234,18 +238,39 @@ def assert_threads(cfg: Config) -> dict:
             f"{present}. Unset is a value; setting it is a gated configuration "
             "change whose reproduction gate re-runs, not a tidy-up."
         )
-    # THE OBSERVED PIN, VERIFIED (F-32, related). M1-A2 §4 classes interop as
-    # OBSERVED rather than exercised — it "licenses only 'this is what ran'" — so
-    # it is deliberately NOT set here. But the record's claim was never checked
-    # against the runtime, which made it an unverified assertion in a document
-    # whose whole purpose is that its numbers were true. One line verifies it.
+    # INTEROP IS NOW EXERCISED, NOT OBSERVED (M1-A4 §6, ruled 2026-08-19).
+    #
+    # M1-A2 §4 classed it OBSERVED — "licenses only 'this is what ran'" — because
+    # it was constant at 32 across both hosts and undiscriminated. The campaign
+    # host then changed and the new one defaults to 48, so the assertion refused,
+    # correctly: a host that differs stands outside that evidence, not inside it.
+    #
+    # §4 names the disposition itself: "raising any of these is not a config
+    # tweak. It is a new configuration whose reproduction gate re-runs." So the
+    # pin is APPLIED here rather than merely checked, and the gate re-ran. The
+    # FIELD'S VALUE IS UNCHANGED at 32, so the config fingerprint does not move —
+    # what changed is whether the runtime is made to match the record or merely
+    # asked whether it happens to.
+    #
+    # On the old 64-core host this is inert: ambient interop was already 32.
+    wanted = cfg.campaign.interop_threads
+    if torch.get_num_interop_threads() != wanted:
+        try:
+            torch.set_num_interop_threads(wanted)
+        except RuntimeError as exc:  # set after the pool started — cannot be fixed here
+            raise CampaignRefusal(
+                f"interop threads are {torch.get_num_interop_threads()} and cannot be "
+                f"set to the licensed {wanted}: {exc}. torch fixes the interop pool at "
+                "first parallel work, so this must be set before anything runs — a "
+                "process that has already measured under the wrong value cannot be "
+                "corrected into the record."
+            ) from exc
     observed_interop = torch.get_num_interop_threads()
-    if observed_interop != cfg.campaign.interop_threads:
+    if observed_interop != wanted:
         raise CampaignRefusal(
-            f"interop threads are {observed_interop}, but the licence recorded "
-            f"{cfg.campaign.interop_threads} and every measurement on the record ran "
-            "under that value. Unset is a value and OBSERVED is a claim: a host that "
-            "differs stands outside this evidence, not inside it."
+            f"interop threads are {observed_interop} after being set to {wanted}. "
+            "The pin did not take, and a pin that does not take is worse than none: "
+            "it reports a value the runtime does not have."
         )
     return {
         "intra_op": torch.get_num_threads(),
