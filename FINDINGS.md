@@ -1079,7 +1079,7 @@ by side in `runs/ladder_smoke_result.json`. Both had already returned PASS.
 steps)`. The smoke pass supplied:
 
 ```python
-return float(result.solved) * 2 - 1, result.steps      # solved-flat, ±1
+return float(result.solved) * 2 - 1, result.steps  # solved-flat, ±1
 ```
 
 and the resulting `PairScore` was tagged `CURRENCY_Z`. So S6 — **the null run**,
@@ -2067,9 +2067,9 @@ The census flagged `generator.train_set_size`, `suite_problems_per_depth`,
 the tell is inside one file:
 
 ```python
-parser.add_argument("--seed",       default=CFG.seed)      # reads config
-parser.add_argument("--train",      default=100_000)       # hardcoded literal
-parser.add_argument("--suite-size", default=200)           # hardcoded literal
+parser.add_argument("--seed", default=CFG.seed)  # reads config
+parser.add_argument("--train", default=100_000)  # hardcoded literal
+parser.add_argument("--suite-size", default=200)  # hardcoded literal
 ```
 
 Each dataset's `meta.json` records a `config_fingerprint` — a claim that *this

@@ -65,6 +65,18 @@ runs/**
 !runs/paired_census*.json
 # Chunk-11 Part 0's headroom measurement and the ceiling arithmetic derived from it.
 !runs/chunk11_*.json
+# M1-A4's evidence. An amendment that cites artifacts nobody can retrieve is an
+# amendment arguing from memory, so the sweep table and Part-0d's reproduction
+# check are versioned with the page that reads them. A GLOB, per the widen-to-the-
+# class lesson met twice above: the next sweep will not be the last.
+!runs/sweep_*.json
+!runs/part0d_*.json
+# THE PRIMARY'S BASELINE ARM (F-30). These 600 per-problem rows are not evidence
+# ABOUT the campaign, they are an INPUT to it: PREREG-m1 §2 pairs the primary
+# against them, problem by problem, and the paired-difference bootstrap reads them
+# directly. They also carry an ANCHORS entry, because a load-bearing artifact whose
+# integrity is checked on one host is checked nowhere.
+!runs/part0d_paired/**
 # The test count, WRITTEN BY THE RUN rather than typed into a commit message.
 # F-16's rule ("compose the message after the run") broke one commit after it was
 # written, because message and run are convenient to send together and a rule that

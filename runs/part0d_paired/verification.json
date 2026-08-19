@@ -1,0 +1,24 @@
+{
+  "measured": {
+    "scripted_in_10": {
+      "beat": 32,
+      "of": 200
+    },
+    "scripted_in_7": {
+      "beat": 43,
+      "of": 200
+    },
+    "scripted_in_8": {
+      "beat": 26,
+      "of": 200
+    }
+  },
+  "pooled": 101,
+  "recorded": {
+    "scripted_in_10": 32,
+    "scripted_in_7": 43,
+    "scripted_in_8": 26
+  },
+  "reproduced": true,
+  "rows": 600
+}

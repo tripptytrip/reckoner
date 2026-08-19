@@ -1,0 +1,62 @@
+{
+  "arms": [
+    {
+      "delta_vs_anchor": -0.0757,
+      "depth_le_3_top1": 0.8942,
+      "holds_band": false,
+      "rehearsal_batches": 0,
+      "rehearsal_frac": 0.0,
+      "ring_epochs": 39.2,
+      "value_head_examples_per_step": 128
+    },
+    {
+      "delta_vs_anchor": -0.0944,
+      "depth_le_3_top1": 0.8755,
+      "holds_band": false,
+      "rehearsal_batches": 400,
+      "rehearsal_frac": 0.1,
+      "ring_epochs": 35.2,
+      "value_head_examples_per_step": 115
+    },
+    {
+      "delta_vs_anchor": -0.0952,
+      "depth_le_3_top1": 0.8747,
+      "holds_band": false,
+      "rehearsal_batches": 400,
+      "rehearsal_frac": 0.15,
+      "ring_epochs": 33.4,
+      "value_head_examples_per_step": 109
+    },
+    {
+      "delta_vs_anchor": -0.0879,
+      "depth_le_3_top1": 0.882,
+      "holds_band": false,
+      "rehearsal_batches": 400,
+      "rehearsal_frac": 0.25,
+      "ring_epochs": 29.4,
+      "value_head_examples_per_step": 96
+    },
+    {
+      "delta_vs_anchor": -0.022,
+      "depth_le_3_top1": 0.9479,
+      "holds_band": false,
+      "rehearsal_batches": 400,
+      "rehearsal_frac": 0.35,
+      "ring_epochs": 25.4,
+      "value_head_examples_per_step": 83
+    },
+    {
+      "delta_vs_anchor": -0.0081,
+      "depth_le_3_top1": 0.9618,
+      "holds_band": false,
+      "rehearsal_batches": 400,
+      "rehearsal_frac": 0.5,
+      "ring_epochs": 19.6,
+      "value_head_examples_per_step": 64
+    }
+  ],
+  "band": 0.968,
+  "control_expected": 0.8942,
+  "control_valid": true,
+  "selected": null
+}

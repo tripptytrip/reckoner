@@ -147,3 +147,70 @@ easier ones — genuinely strange, and worth its own look rather than a shrug.
 Registered because a prediction written after the number arrives is a
 description, and because this is the first reading of an instrument that has
 never produced one.
+
+---
+
+# Amendment — the sweep re-runs, extended, 2026-08-19
+
+**The first sweep's result stands as reported and is superseded as evidence.** It
+returned no arm holding the band, with the control reproducing `ckpt-0`'s 0.8942
+exactly. Three things change; **the rule and the band do not.**
+
+## 1. The confound the first sweep carried
+
+Supervised indices were drawn from the **same generator** as ring indices, so
+every extra supervised draw shifted the ring stream: two arms differing in `f`
+also saw different *ring sample sequences*. `f` changed the mixture and the data
+at once, and the low-`f` dip — 0.8755 at `f = 0.10`, **below** the `f = 0`
+control — could not be told from sampling noise.
+
+Fixed: supervised draws take their own generator, seeded off `seed`, constructed
+only when `n_sup > 0` so `f = 0.0` stays bit-identically inert.
+
+**A residual remains, and it is named rather than fixed.** Arms with different
+`f` still draw different *counts* of ring indices per step from one stream, so
+their sample sequences diverge. The clean fix — per-step seeding, making each
+arm's draws a prefix of the control's — would change `f = 0.0`'s behaviour and
+**break the inertness proof that makes the wiring a defect fix rather than a
+treatment change**. The governance property is worth more than the sharper
+comparison, so the residual stays and the variance arms below are what bound it.
+
+## 2. Variance, because the finding rests on 0.0062
+
+The whole result is a 0.0062 shortfall against an **unknown noise floor**. A
+second seed on the control and on the best arm bounds it: if seed spread is
+±0.005 the first sweep established nothing.
+
+## 3. Arms extended to 0.65 and 0.75
+
+*"The `f` that would clear the band is the `f` at which training barely moves the
+model"* was an **argument, not a measurement**. At `f = 0.75` the loop still
+draws 12,800 self-play samples over 1,305 fresh rows — **9.8 ring-epochs**, more
+than iteration 3 had when the damage was small.
+
+**The criterion cannot move.** Rule and band are frozen above and selection is
+mechanical, so extra arms can only find an answer.
+
+## 4. The mechanism arm — `f = 0.00` at 200 steps
+
+A **diagnostic, not a treatment**, so it is no one-lever violation, and it is
+excluded from candidacy by construction (selection reads only `steps == 400`,
+`seed == 0`).
+
+The first sweep's table shows top-1 tracking **ring-epochs**, not obviously the
+mixture:
+
+| ring-epochs | 33.4 | 29.4 | 25.4 | 19.6 |
+|---|---|---|---|---|
+| top-1 | 0.8747 | 0.8820 | 0.9479 | 0.9618 |
+
+`f = 0.00` at 200 steps gives **19.6 ring-epochs — identical to `f = 0.50`** —
+with no supervision at all. A matched pair differing in exactly one thing:
+
+* lands near **0.96** → epoch scaling is the mechanism, rehearsal is redundant,
+  and **lever 2 is round two's lever**;
+* lands near **0.89** → supervised anchoring is doing the work, and **lever 1
+  is**.
+
+One arm, ten minutes, and round two's lever is chosen by measurement rather than
+by anyone's intuition.

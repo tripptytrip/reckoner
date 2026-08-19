@@ -34,10 +34,28 @@ from reckoner.train import SupervisionSet, train_on_ring
 
 REPO = Path(__file__).resolve().parents[1]
 
-ARMS = (0.00, 0.10, 0.15, 0.25, 0.35, 0.50)
+#: (rehearsal_frac, steps, seed, note). Selection considers ONLY the registered
+#: protocol — steps == 400 at seed 0. The variance and mechanism arms are
+#: diagnostics and are excluded from candidacy by construction, so extra arms can
+#: find an answer and can never move the criterion.
+ARMS = (
+    (0.00, 400, 0, "control — must reproduce ckpt-0"),
+    (0.00, 400, 1, "variance: control, second seed"),
+    (0.10, 400, 0, ""),
+    (0.15, 400, 0, ""),
+    (0.25, 400, 0, ""),
+    (0.35, 400, 0, ""),
+    (0.50, 400, 0, ""),
+    (0.50, 400, 1, "variance: best arm, second seed"),
+    (0.65, 400, 0, ""),
+    (0.75, 400, 0, ""),
+    (0.00, 200, 0, "MECHANISM: 19.6 ring-epochs, matched to f=0.50, NO supervision"),
+)
+REGISTERED_STEPS = 400
 BAND = 0.968  # SWEEP-m1a4.md §3
 CONTROL = 0.8942  # ckpt-0, from the rehearsal
 ANCHOR_TOP1 = 0.9699
+MECHANISM_TWIN = 0.50  # the arm whose ring-epochs the mechanism arm matches
 
 
 def main() -> int:
@@ -61,35 +79,41 @@ def main() -> int:
     print(f"\n  SWEEP — rehearsal_frac, on ring-0 ({len(ring)} rows)")
     print(f"  band: top-1 >= {BAND}   control: f=0.00 must reproduce {CONTROL}")
     print(f"  anchor: {ANCHOR_TOP1}\n")
-    print(f"    {'f':>5} {'top-1':>8} {'delta':>8} {'ring-ep':>8} {'vh/step':>8}  holds band")
+    print(
+        f"    {'f':>5} {'steps':>6} {'seed':>5} {'top-1':>8} {'delta':>8} "
+        f"{'ring-ep':>8} {'vh/step':>8}  band note"
+    )
 
     rows = []
-    for frac in ARMS:
+    for frac, steps, seed, note in ARMS:
         arm_cfg = replace(cfg, train=replace(cfg.train, rehearsal_frac=frac))
         model, _ = load_checkpoint(ANCHOR, arm_cfg)
-        torch.manual_seed(0)
-        stats = train_on_ring(
-            model, ring, arm_cfg, steps=arm_cfg.train.train_steps_per_iter, seed=0
-        )
+        stats = train_on_ring(model, ring, arm_cfg, steps=steps, seed=seed)
         model.eval()
         clean = top_k_by_depth(model, held, arm_cfg, device="cpu", exclude=shared)
         top1 = clean["depth_le_3_top1"]
         batch = arm_cfg.train.batch_size
-        ring_ep = arm_cfg.train.train_steps_per_iter * round(batch * (1 - frac)) / len(ring)
+        ring_ep = steps * round(batch * (1 - frac)) / len(ring)
+        candidate = steps == REGISTERED_STEPS and seed == 0
         rows.append(
             {
                 "rehearsal_frac": frac,
+                "steps": steps,
+                "seed": seed,
+                "note": note,
                 "depth_le_3_top1": top1,
                 "delta_vs_anchor": round(top1 - ANCHOR_TOP1, 4),
                 "ring_epochs": round(ring_ep, 1),
                 "value_head_examples_per_step": round(batch * (1 - frac)),
                 "rehearsal_batches": stats.rehearsal_batches,
+                "candidate": candidate,
                 "holds_band": top1 >= BAND,
             }
         )
+        flag = "YES" if top1 >= BAND else "no"
         print(
-            f"    {frac:>5.2f} {top1:>8.4f} {top1 - ANCHOR_TOP1:>+8.4f} {ring_ep:>8.1f} "
-            f"{round(batch * (1 - frac)):>8}  {'YES' if top1 >= BAND else 'no'}"
+            f"    {frac:>5.2f} {steps:>6} {seed:>5} {top1:>8.4f} {top1 - ANCHOR_TOP1:>+8.4f} "
+            f"{ring_ep:>8.1f} {round(batch * (1 - frac)):>8}  {flag:<4} {note}"
         )
 
     control = rows[0]["depth_le_3_top1"]
@@ -99,7 +123,36 @@ def main() -> int:
         f"{'REPRODUCED' if valid else 'DIVERGED — THE SWEEP IS VOID'}"
     )
 
-    holding = [r for r in rows if r["holds_band"]]
+    # --- variance, before any arm-to-arm difference is read as signal --------
+    print("\n  VARIANCE — the noise floor the 0.0062 shortfall is measured against\n")
+    for frac in (0.00, MECHANISM_TWIN):
+        pair = [r for r in rows if r["rehearsal_frac"] == frac and r["steps"] == REGISTERED_STEPS]
+        if len(pair) == 2:
+            spread = abs(pair[0]["depth_le_3_top1"] - pair[1]["depth_le_3_top1"])
+            print(
+                f"    f={frac:.2f}: {pair[0]['depth_le_3_top1']:.4f} vs "
+                f"{pair[1]['depth_le_3_top1']:.4f}   seed spread {spread:.4f}"
+            )
+
+    # --- the mechanism arm: epochs or supervision? ---------------------------
+    mech = next((r for r in rows if r["steps"] != REGISTERED_STEPS), None)
+    twin = next((r for r in rows if r["rehearsal_frac"] == MECHANISM_TWIN and r["seed"] == 0), None)
+    if mech and twin:
+        print("\n  MECHANISM — same ring-epochs, supervision present vs absent\n")
+        print(
+            f"    f=0.50, 400 steps : {twin['depth_le_3_top1']:.4f}  "
+            f"({twin['ring_epochs']} epochs, supervision ON)"
+        )
+        print(
+            f"    f=0.00, 200 steps : {mech['depth_le_3_top1']:.4f}  "
+            f"({mech['ring_epochs']} epochs, supervision OFF)"
+        )
+        gap = twin["depth_le_3_top1"] - mech["depth_le_3_top1"]
+        print(f"    gap attributable to SUPERVISION: {gap:+.4f}")
+        print("    near zero -> epoch scaling is the mechanism, rehearsal redundant")
+        print("    large     -> supervised anchoring is the mechanism")
+
+    holding = [r for r in rows if r["holds_band"] and r["candidate"]]
     verdict = min(holding, key=lambda r: r["rehearsal_frac"]) if holding else None
     if verdict:
         print(

@@ -322,6 +322,17 @@ def train_on_ring(
     # rather than argued.
     n_sup, n_ring = rehearsal_split(cfg.train.batch_size, cfg)
     supervision = SupervisionSet(anchored_data("phase1_train")) if n_sup else None
+    # A SEPARATE GENERATOR for supervised draws, and it is the sweep's confound
+    # rather than a nicety. Drawing them from `rng` means every extra supervised
+    # index shifts the ring stream, so two arms differing in `f` also see
+    # different RING sample sequences — `f` would change the mixture AND the
+    # data, and no arm-to-arm comparison could separate them. The first sweep
+    # carried exactly that flaw, and its low-`f` dip could not be told from
+    # sampling noise.
+    #
+    # Seeded off `seed` so arms stay reproducible, and constructed only when
+    # `n_sup` is nonzero so `f = 0.0` remains bit-identically inert.
+    sup_rng = random.Random(seed * 7919 + 104729) if n_sup else None
 
     for step in range(steps):
         if not trainable:
@@ -364,7 +375,7 @@ def train_on_ring(
         # real episodes. Size-weighted so the pair reconstitutes one batch of
         # `batch_size` rather than becoming two full-weight batches.
         if n_sup and supervision is not None:
-            sup_idx = [rng.randrange(len(supervision)) for _ in range(n_sup)]
+            sup_idx = [sup_rng.randrange(len(supervision)) for _ in range(n_sup)]
             try:
                 sup = make_batch(supervision, sup_idx, cfg)
             except ValueError:
