@@ -720,3 +720,50 @@ the column cannot be forgotten by a new caller.
 
 **No gate contact.** No threshold, floor or primary is denominated in this
 column. It is the evidence that §6's denominator was what it claims.
+
+---
+
+# Amendment M1-A4 — 2026-08-21 — the fingerprint moves
+
+**Full text: `AMENDMENT-m1a4.md`.** Recorded here because M1-A2 §1's table is the
+frozen page's copy of the fingerprints, and a page whose recorded value has been
+superseded elsewhere is a page that lies to the next reader.
+
+| profile | M1-A2 recorded | **M1-A4 records** |
+|---|---|---|
+| **eval** (`root_noise=False`) | `314fbeb99b6640f6…` | **`c8aa1fccd1c97dd8…`** |
+| **campaign** (`root_noise=True`) | `ce41af96ee85f0a2…` | **`8443847bb8c41218…`** |
+
+**The superseded values are not deleted.** Every measurement taken through the
+rehearsal, the equivalence gate and Part-0d's re-run ran under `ce41af96…` /
+`314fbeb9…`, and those numbers remain readable only against the config that
+produced them. Verdicts do not retro-edit.
+
+## What moved it — one change, six decisions
+
+| decision | effect on the fingerprint |
+|---|---|
+| §5 `train.rehearsal_frac` 0.0 → **0.65** | **value change** |
+| §4 `ladder.sympy_step_budget`, `sympy_time_budget_s` **deleted** | **fields removed** |
+| §6 `campaign.interop_threads` OBSERVED → EXERCISED | role only, value unchanged |
+| §4 `ladder.problems_per_pass` → per-file population cap | role only, inert at 200 |
+| §2 `league.snapshot_every` ignored → honoured | role only, inert at 1 |
+| §3 watchlist per leg on the pass record | not config |
+
+**The batching rule is why this is one row and not five.** A fingerprint that
+moves five times carries five partial explanations; this one moves once, with a
+page that explains all of it.
+
+## What did NOT move, and why that is the point
+
+§4's census originally proposed deleting eight fields. Six were **kept**:
+`model.param_budget_min/max` are enforced by a guard test, and the four
+`generator.*` fields were **wired** to `generate.py` instead of deleted — which
+converts F-33's coincidental provenance agreement into a causal one, and is
+provably inert because the CLI defaults already equalled the config values.
+
+The census had reported all eight dead. It answers *"is this consumed by the
+campaign?"*, and its output was read as *"is this doing any work?"* — the same
+species of true-in-one-dimension claim this project has now catalogued nine
+times. The census's scope is fixed rather than footnoted: it reports
+**runtime-live** and **guard-live**, and only *neither* is a deletion candidate.

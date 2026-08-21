@@ -179,8 +179,21 @@ def preflight(sample: int, workers: int) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--train", type=int, default=100_000)
-    parser.add_argument("--suite-size", type=int, default=200)
+    # THE DECLARATION LIVES IN FINGERPRINTED CONFIG, not in an argument default
+    # (M1-A4 §4). These were hardcoded literals while `--seed` already read the
+    # config, so each dataset's meta.json recorded a config_fingerprint claiming
+    # that config produced it while the generator fields in that config were
+    # never read — a provenance claim true by coincidence rather than by cause
+    # (F-33).
+    #
+    # PROVABLY INERT at the current values: 100_000 == generator.train_set_size
+    # and 200 == generator.suite_problems_per_depth, both matching what the
+    # existing datasets' meta records. Asserted below so the equality cannot
+    # drift back into coincidence.
+    assert CFG.generator.train_set_size == 100_000, "the inertness claim moved"
+    assert CFG.generator.suite_problems_per_depth == 200, "the inertness claim moved"
+    parser.add_argument("--train", type=int, default=CFG.generator.train_set_size)
+    parser.add_argument("--suite-size", type=int, default=CFG.generator.suite_problems_per_depth)
     parser.add_argument("--eval-size", type=int, default=2_000)
     parser.add_argument("--seed", type=int, default=CFG.seed)
     parser.add_argument("--workers", type=int, default=24)

@@ -17,9 +17,10 @@ campaign scale" unsayable without a demonstration.
 
 The worked pair, because it is the whole distinction:
 
-* `search.perspective` — **exempt.** Legal range is exactly one value, enforced
-  by `validate`. Varying it within legal values is impossible: *vacuously
-  behavioural.*
+* `search.perspective` — **guard-live.** Legal range is exactly one value,
+  enforced by `validate` and asserted by a test, so varying it across its legal
+  range is impossible and varying it beyond that fails the guard. It needed an
+  exemption only while the census could not see guards.
 * `train.rehearsal_frac` — **failed** (until this round wired it). Legal range
   `[0, 1)`, every value passes validation, and none of them changed anything:
   *vacuously inert.*
@@ -45,40 +46,34 @@ from scripts.config_census import Walker, build, config_fields, reachable
 #: An entry is a claim, and the test below checks the claims it can check —
 #: `search.perspective`'s refusal is executed, not asserted.
 EXEMPT: dict[str, str] = {
-    # --- vacuously behavioural: the legal range is a single value -------------
-    "search.perspective": (
-        "pinned invariant — validate() admits only 'single', so there is no legal "
-        "variation to observe. Evidence: test_a_pinned_invariant_refuses_variation."
-    ),
     # --- spec-backed, blocked on work registered elsewhere --------------------
     "ladder.bootstrap_resamples": (
-        "F-30 — the paired bootstrap needs per-problem outcomes on BOTH arms. The "
-        "campaign arm now has them (F-33 routing); the baseline arm does not until "
-        "Part-0d is re-run deterministically. Dead until that lands, then live."
+        "F-30 — the paired bootstrap needs per-problem outcomes on BOTH arms. Both "
+        "now exist (the campaign arm from F-33's routing, the baseline arm from "
+        "Part-0d's deterministic re-run), so this becomes live the moment the "
+        "bootstrap is invoked on them. Dead until then, and no longer blocked."
     ),
-    # --- unbacked: no page asked for these, so the disposition is -------------
-    # --- delete-or-amend at M1-A4, never wire-by-default ---------------------
-    "generator.train_set_size": "unbacked; CLI-shadowed in generate.py (F-33). Delete or amend at M1-A4.",
-    "generator.suite_depths": "unbacked; CLI-shadowed in generate.py (F-33). Delete or amend at M1-A4.",
-    "generator.suite_problems_per_depth": "unbacked; CLI-shadowed (F-33). Delete or amend at M1-A4.",
-    "generator.max_bfs_depth": "unbacked; the datasets are built and frozen. Delete or amend at M1-A4.",
-    "model.param_budget_min": "unbacked; a sizing guide, never consulted at runtime. Delete or amend at M1-A4.",
-    "model.param_budget_max": "unbacked; a sizing guide, never consulted at runtime. Delete or amend at M1-A4.",
-    "ladder.sympy_step_budget": "unbacked; the sympy arm carries its own budget. Delete or amend at M1-A4.",
-    "ladder.sympy_time_budget_s": "unbacked; the sympy arm carries its own budget. Delete or amend at M1-A4.",
 }
+
+# The registry has now pruned itself three times under real pressure, each time
+# caught by the staleness test rather than by a reader: `rehearsal_frac` left when
+# fix 1 wired the lever, `league.snapshot_every` when F-36 made the driver honour
+# the cadence, and six more when the census learned to distinguish guard-live from
+# dead. A registry nobody prunes becomes a place to hide things.
 
 
 def _census() -> dict[str, str]:
     """``{qualified field: status}`` — the census, as the gate consumes it."""
     fields = config_fields()
-    reads, script_reads, calls, defined = build()
+    reads, script_reads, test_reads, calls, defined = build()
     live = reachable(calls, defined)
     out = {}
     for field, group in fields.items():
         scopes = reads.get(field, set())
         if scopes & live:
             status = "LIVE"
+        elif test_reads.get(field):
+            status = "GUARD"
         elif scopes:
             status = "DEAD"
         elif script_reads.get(field):
@@ -93,7 +88,9 @@ def test_every_fingerprinted_field_is_live_or_registered() -> None:
     """The gate. A new dead key fails at introduction, which is the only version
     of "not repeated" that is true going forward rather than retroactively."""
     census = _census()
-    unexplained = sorted(f for f, s in census.items() if s != "LIVE" and f not in EXEMPT)
+    unexplained = sorted(
+        f for f, s in census.items() if s not in ("LIVE", "GUARD") and f not in EXEMPT
+    )
     assert not unexplained, (
         "fingerprinted fields that change nothing and name no reason: "
         f"{unexplained}. Either wire the field, or register it in EXEMPT with the "
@@ -109,7 +106,7 @@ def test_the_registry_does_not_outlive_its_entries() -> None:
     This fired for real: the census's reference vector was `rehearsal_frac`, and
     wiring it in this round made the assertion fail on its own success."""
     census = _census()
-    stale = sorted(f for f in EXEMPT if census.get(f) == "LIVE")
+    stale = sorted(f for f in EXEMPT if census.get(f) in ("LIVE", "GUARD"))
     assert not stale, f"registered as inert, but now live: {stale}. Remove the entry."
 
 
@@ -155,4 +152,40 @@ def reachable_helper(cfg):
     assert "unreachable_helper" not in live, (
         "the detector reached a function nothing calls; it is counting references "
         "rather than consumption, which is the failure that hid F-31"
+    )
+
+
+def test_the_detector_classifies_a_guard_only_field_as_live() -> None:
+    """**The known-NEGATIVE reference vector**, and the fifth correction to this
+    census's scope — every one of them found by use rather than by review.
+
+    The census once reported eight fields dead and two were enforcing a guard:
+    `test_model.py` asserts the built model's parameter count against
+    `model.param_budget_min/max`. Excluding tests from *reachability* is right —
+    four passing assertions on a function nobody calls are not evidence of
+    consumption — but excluding them from *existence* is not, because varying a
+    field a guard reads does change what happens: the guard fails.
+
+    So the detector must classify a field read ONLY by a test as guard-live, and
+    only a field that is neither runtime-live nor guard-live is a deletion
+    candidate. A known-positive alone could never have caught this; it takes the
+    negative too, which is the argument for both-polarity vectors in one line.
+    """
+    source = """
+def test_the_model_fits_its_envelope(cfg):
+    assert cfg.model.param_budget_min <= built <= cfg.model.param_budget_max
+"""
+    walker = Walker(config_fields())
+    walker.visit(ast.parse(source))
+    assert walker.reads["param_budget_min"] == {"test_the_model_fits_its_envelope"}
+    assert walker.reads["param_budget_max"] == {"test_the_model_fits_its_envelope"}
+
+
+def test_the_guarded_fields_are_reported_as_guard_live() -> None:
+    """End to end on the real repo: `param_budget_min` is guard-live, not dead."""
+    census = _census()
+    assert census["model.param_budget_min"] == "GUARD", census["model.param_budget_min"]
+    assert census["model.param_budget_max"] == "GUARD"
+    assert census["model.param_budget_min"] not in ("DEAD", "UNREAD"), (
+        "a field a guard test enforces is not a deletion candidate"
     )

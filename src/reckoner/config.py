@@ -228,7 +228,14 @@ class TrainConfig:
 
     # [plan chunk 9] "rehearsal machinery ported (dormant, `rehearsal_frac: 0.0`
     # default — the lever exists before it's needed)".
-    rehearsal_frac: float = 0.0
+    # [M1-A4 §5] 0.65, taken MECHANICALLY by the rule frozen in SWEEP-m1a4.md:
+    # the smallest f whose gate-10b top-1 holds the band, on the worst seed.
+    # Three seeds at 0.65 all returned 0.9699 — the anchor's own count, 1192/1229
+    # — with zero spread, so the estimator question declared before the seeds
+    # existed turned out not to bite. Was 0.0 while `rehearsal_split` was
+    # computed and discarded (F-31); the wire and the value are separate
+    # decisions and were taken separately.
+    rehearsal_frac: float = 0.65
 
     # [chunk 8 — DECIDED by the timing slice, was provisional 512] The pre-flight
     # measured 113.6 / 124.3 / 117.1 / 105.1 examples/s at batch 64 / 128 / 256 /
@@ -325,12 +332,15 @@ class LadderConfig:
     bootstrap_resamples: int = 10_000
 
     # [provisional — chunk 10] Paired problem set size per ladder pass (the
-    # frozen-openings-book analog) and the sympy rung's budgets. sympy is a
-    # *rung*, never par [spec §3] — a CAS derivation that does not compile into
-    # our rule vocabulary cannot denominate a step count in our rules.
+    # frozen-openings-book analog). Since M1-A4 §4 it is also the per-file
+    # population cap that lets `golden` exercise a cadence iteration — inert at
+    # campaign scale, where every suite file holds exactly 200 rows.
+    #
+    # The sympy rung's budgets lived here and were DELETED by M1-A4 §4: they
+    # configured a rung F-34 dropped from M1, and nothing read them. When the
+    # sympy rung returns in M2 its budgets get declared at the site that consumes
+    # them, rather than riding as dead weight through a campaign fingerprint.
     problems_per_pass: int = 200
-    sympy_step_budget: int = 16
-    sympy_time_budget_s: float = 1.0
 
 
 @dataclass

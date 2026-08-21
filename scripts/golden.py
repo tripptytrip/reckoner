@@ -30,7 +30,15 @@ from pathlib import Path
 
 import torch
 
-from reckoner.campaign import ANCHOR, CADENCE, CAMPAIGN_FINGERPRINT, golden_config, run
+from reckoner.campaign import (
+    ANCHOR,
+    CADENCE,
+    CAMPAIGN_FINGERPRINT,
+    golden_config,
+    read_watchlist,
+    run,
+    watchlist_reference,
+)
 from reckoner.config import config_fingerprint
 from reckoner.dataset import sha256_file
 from reckoner.logschema import ITERATION_FIELDS, read_rows
@@ -139,21 +147,21 @@ def main() -> int:
         ),
         (
             "the pass record carries a watchlist pair PER LEG",
-            sorted(instruments[0]["watchlist"]["by_budget"]) == ["1", "48"],
-            str(sorted(instruments[0]["watchlist"].get("by_budget", {}))),
+            sorted(read_watchlist(instruments[0])) == ["1", "48"],
+            str(sorted(read_watchlist(instruments[0]))),
         ),
         (
             "and each leg's pair partitions that leg's own misses",
             all(
                 c["family_remaining"] + c["novel_misses"] == c["pass_misses"]
-                for c in instruments[0]["watchlist"]["by_budget"].values()
+                for c in read_watchlist(instruments[0]).values()
             ),
-            str(instruments[0]["watchlist"]["by_budget"]),
+            str(read_watchlist(instruments[0])),
         ),
         (
             "and the anchor's reference rows ride with it, so the reading has scale",
-            instruments[0]["watchlist"]["anchor_reference"] == {"1": [24, 0], "48": [7, 0]},
-            str(instruments[0]["watchlist"].get("anchor_reference")),
+            watchlist_reference(instruments[0]) == {"1": [24, 0], "48": [7, 0]},
+            str(watchlist_reference(instruments[0])),
         ),
     ]
 

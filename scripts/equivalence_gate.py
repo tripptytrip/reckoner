@@ -29,7 +29,14 @@ from pathlib import Path
 
 import torch
 
-from reckoner.campaign import ANCHOR, ANCHOR_BEAT, frozen_watchlist, run_instruments
+from reckoner.campaign import (
+    ANCHOR,
+    ANCHOR_BEAT,
+    frozen_watchlist,
+    read_watchlist,
+    run_instruments,
+    watchlist_reference,
+)
 from reckoner.config import Config, validate
 from reckoner.ladderpass import read_pair_scores
 from reckoner.model import load_checkpoint
@@ -118,7 +125,7 @@ def main() -> int:
     # reader was left on the old flat shape when that landed — the shape moved
     # and a consumer did not, which is the week's dominant species arriving in my
     # own script. The measurements were unaffected; only the report crashed.
-    anchor_watch = got["watchlist"]["by_budget"]
+    anchor_watch = read_watchlist(got)
     checks.append(
         (
             "anchor's watchlist reference rows are (24, 0) @1 and (7, 0) @48",
@@ -137,10 +144,10 @@ def main() -> int:
         print(f"    {'ok  ' if ok else 'FAIL'} {name}{'  — ' + detail if detail else ''}")
 
     if watch is not None:
-        by_budget = watch["by_budget"]
+        by_budget = read_watchlist({"watchlist": watch})
         print("\n  WATCHLIST — per leg, against the registered prediction\n")
         print(f"    frozen family    : {len(frozen_watchlist())}")
-        print(f"    anchor reference : {watch['anchor_reference']}")
+        print(f"    anchor reference : {watchlist_reference({'watchlist': watch})}")
         for budget in sorted(by_budget, key=int, reverse=True):
             cell = by_budget[budget]
             partition = cell["family_remaining"] + cell["novel_misses"] == cell["pass_misses"]

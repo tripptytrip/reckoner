@@ -2243,3 +2243,63 @@ cadence at values other than 1 — behaviour, not restoration — and at the cur
 value it changes nothing at all. It batches into M1-A4 with the dead-key
 dispositions, where the choice is: honour it in the driver, or delete it and let
 unconditional enrolment be the declared behaviour.
+
+---
+
+## F-37 — Catastrophic forgetting saturates fast, which forecloses a whole class of remedy
+
+**Measured:** 2026-08-21, the sweep verification (`runs/sweep_verify.json`).
+
+The mechanism arm was built to test whether rehearsal works by *reducing
+ring-epochs*. It also, without being designed for it, controlled the obvious
+confound — and the control is what carries this finding.
+
+| arm | ring-epochs | optimiser steps | gate-10b hits |
+|---|---:|---:|---:|
+| `f = 0.00`, 400 steps | 39.2 | 400 | **1099 / 1229** |
+| `f = 0.00`, 200 steps | 19.6 | 200 | **1099 / 1229** |
+
+**Identical hits from half the training.** The parameter digests *differ*
+(`994fc3c3…` against `100da07f…`), so the steps argument took and the weights
+genuinely moved — this is not a knob that failed to fire. Top-1 is simply
+**insensitive** to halving the epochs in this range.
+
+### What it forecloses
+
+If 200 steps and 400 steps do identical harm, **forgetting is essentially
+immediate rather than cumulative.** That rules out an entire family of otherwise
+attractive designs:
+
+* "run iteration 0 clean, turn rehearsal on afterwards" — by the time iteration 0
+  finishes, the damage is already complete;
+* "ramp `f` up as the ring grows" — the ramp arrives after the event it was
+  meant to prevent.
+
+**The supervised mixture has to be present from the first steps of iteration 0.**
+
+It also suggests the damage may complete in far fewer than 200 steps, which is a
+cheap probe if that ever matters — bisecting the step count against gate 10b
+costs minutes, not the hours a full arm costs.
+
+### And it kills the epoch hypothesis cleanly
+
+At **matched** ring-epochs of 19.6, with the only difference being whether
+supervision is present:
+
+| | hits |
+|---|---:|
+| `f = 0.50`, 400 steps, supervision ON | **1180** |
+| `f = 0.00`, 200 steps, supervision OFF | **1099** |
+
+**Supervision buys +81 hits; epochs buy 0.** Epoch scaling drops as a lever;
+rehearsal fraction is the lever. Registered as F-27's `escalation-outruns-learner`
+watch item stays open but is not this.
+
+### A note on how nearly this was misread
+
+The verification script printed *"the 4dp match is coincidence, and the arm
+stands"* — comparing only the rounded ratios. The **raw counts are also
+identical**, so it is not a rounding artefact at all; it is insensitivity, which
+is the finding. Reporting top-1 as a raw count beside the ratio is what made the
+difference visible, and it was added precisely because an implausible
+intermediate deserves checking rather than believing.

@@ -14,7 +14,18 @@ Method
 3. Compute the reachable set from production entry points by fixpoint. **Tests
    are not entry points** — that is the whole point: four passing assertions on a
    function nobody calls are not evidence that a field is consumed.
-4. A field is LIVE if some reading site sits in a reachable function.
+4. A field is **runtime-live** if some library reading site sits in a reachable
+   function, and **guard-live** if a test asserts on it. Only a field that is
+   NEITHER is a deletion candidate.
+
+   The two classes exist because this census once reported eight fields as dead
+   and two of them were enforcing a guard: `test_model.py` asserts the built
+   model's parameter count against `model.param_budget_min/max`. Excluding tests
+   from *reachability* is right — four passing assertions on a function nobody
+   calls are not evidence of consumption — but excluding them from *existence* is
+   not, because varying a field that a guard reads does change what happens: the
+   guard fails. The census answers "is this consumed by the campaign?"; its
+   output was read as "is this doing any work?", and those differ.
 
 Two honest limits, stated rather than hidden:
 
@@ -41,7 +52,7 @@ from pathlib import Path
 from reckoner.config import Config
 
 REPO = Path(__file__).resolve().parents[1]
-SOURCES = (REPO / "src" / "reckoner", REPO / "scripts")
+SOURCES = (REPO / "src" / "reckoner", REPO / "scripts", REPO / "tests")
 #: SPECIFICATION documents only. `FINDINGS.md` is deliberately excluded: it
 #: records what was found, and a finding that *names* a dead key would otherwise
 #: mark that key spec-backed — so writing about the problem would reclassify it
@@ -127,8 +138,10 @@ class Walker(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def build() -> tuple[dict[str, set[str]], dict[str, set[str]], dict[str, set[str]], set[str]]:
-    """``(library_reads, script_reads, calls, defined)``.
+def build() -> tuple[
+    dict[str, set[str]], dict[str, set[str]], dict[str, set[str]], dict[str, set[str]], set[str]
+]:
+    """``(library_reads, script_reads, test_reads, calls, defined)``.
 
     Library and script reads are separated because **reporting a value is not
     acting on it.** `shakedown.py` copies `rehearsal_frac` into its results JSON;
@@ -140,6 +153,7 @@ def build() -> tuple[dict[str, set[str]], dict[str, set[str]], dict[str, set[str
     fields = config_fields()
     reads: dict[str, set[str]] = defaultdict(set)
     script_reads: dict[str, set[str]] = defaultdict(set)
+    test_reads: dict[str, set[str]] = defaultdict(set)
     calls: dict[str, set[str]] = defaultdict(set)
     methods: dict[str, set[str]] = defaultdict(set)
     defined: set[str] = set()
@@ -154,9 +168,8 @@ def build() -> tuple[dict[str, set[str]], dict[str, set[str]], dict[str, set[str
                     defined.add(node.name)
             w = Walker(fields)
             w.visit(tree)
-            in_library = root.name == "reckoner"
+            target = {"reckoner": reads, "scripts": script_reads, "tests": test_reads}[root.name]
             for field, scopes in w.reads.items():
-                target = reads if in_library else script_reads
                 target[field] |= scopes - GUARD_READERS
             for scope, names in w.calls.items():
                 calls[scope] |= names
@@ -168,7 +181,7 @@ def build() -> tuple[dict[str, set[str]], dict[str, set[str]], dict[str, set[str
     # __init__, and an object built by reachable code has reachable methods.
     for cls, names in methods.items():
         calls[cls] |= names
-    return reads, script_reads, calls, defined
+    return reads, script_reads, test_reads, calls, defined
 
 
 def reachable(calls: dict[str, set[str]], defined: set[str]) -> set[str]:
@@ -197,7 +210,7 @@ def main() -> int:
     args = parser.parse_args()
 
     fields = config_fields()
-    reads, script_reads, calls, defined = build()
+    reads, script_reads, test_reads, calls, defined = build()
     live_scopes = reachable(calls, defined)
 
     rows = []
@@ -205,8 +218,11 @@ def main() -> int:
         scopes = reads.get(field, set())
         reaching = scopes & live_scopes
         reported = sorted(script_reads.get(field, set()))
+        guarded = sorted(test_reads.get(field, set()))
         if reaching:
-            status = "LIVE"
+            status = "LIVE"  # runtime-live: the campaign acts on it
+        elif guarded:
+            status = "GUARD"  # a test asserts on it; varying it fails the guard
         elif scopes:
             status = "DEAD"  # read in the library, from unreachable code
         elif reported:
@@ -220,6 +236,7 @@ def main() -> int:
                 "library_readers": sorted(scopes),
                 "reachable_readers": sorted(reaching),
                 "reported_in_scripts": reported,
+                "guarded_in_tests": guarded,
                 "spec_backing": spec_backing(field),
             }
         )
@@ -232,9 +249,10 @@ def main() -> int:
     # detector validated against a live repo field is validated against a moving
     # target; the synthetic case cannot be fixed out from under it.
 
-    dead = [r for r in rows if r["status"] != "LIVE"]
+    dead = [r for r in rows if r["status"] not in ("LIVE", "GUARD")]
     print(f"\n  CONFIG CENSUS — {len(rows)} fingerprinted fields\n")
-    print(f"    LIVE  : {len(rows) - len(dead)}")
+    print(f"    LIVE  : {sum(1 for r in rows if r['status'] == 'LIVE')}  (runtime)")
+    print(f"    GUARD : {sum(1 for r in rows if r['status'] == 'GUARD')}  (a test asserts on it)")
     print(
         f"    DEAD  : {sum(1 for r in dead if r['status'] == 'DEAD')}  (read, but only from unreachable code)"
     )
@@ -246,12 +264,16 @@ def main() -> int:
         print(f"\n  {'field':<38} {'status':<9} {'spec-backed':<12} read in")
         for r in dead:
             backing = "YES" if r["spec_backing"] else "no"
-            where = ", ".join(r["library_readers"] or r["reported_in_scripts"]) or "-"
+            where = (
+                ", ".join(r["library_readers"] or r["guarded_in_tests"] or r["reported_in_scripts"])
+                or "-"
+            )
             print(f"    {r['field']:<38} {r['status']:<9} {backing:<12} {where}")
         print(
             "\n  spec-backed dead key  -> DEFECT FIX (the page specifies it; the wire is missing)"
         )
-        print("  unbacked dead key     -> CHANGE (wiring it alters behaviour no page asked for):")
+        print("  ONLY a field that is neither runtime-live nor guard-live is a candidate.")
+        print("  unbacked dead key     -> CHANGE (wiring alters behaviour no page asked for):")
         print("                           delete or amend, never wire-by-default")
     args.out.write_text(json.dumps(rows, indent=2) + "\n")
     print(f"\n  wrote {args.out}")

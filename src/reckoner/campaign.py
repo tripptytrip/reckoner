@@ -77,12 +77,20 @@ from reckoner.vocab import VOCAB_VERSION
 REPO = Path(__file__).resolve().parents[2]
 SUITES = REPO / "runs" / "suites"
 
-# --- the two fingerprints, recorded in PREREG-m1 §M1-A2 §1 -------------------
+# --- the two fingerprints, recorded in PREREG-m1 §M1-A2 §1, MOVED by M1-A4 ----
+# M1-A4 moved the campaign config ONCE, carrying every decision on that page:
+# rehearsal_frac 0.0 -> 0.65, the two `ladder.sympy_*` deletions, and three role
+# changes at unchanged value (interop EXERCISED, problems_per_pass as the
+# population cap, snapshot_every honoured). The batching rule exists so a
+# fingerprint moves once with a page explaining all of it.
+#
+#   was ce41af96ee85f0a2… / 314fbeb99b6640f6…  (through the rehearsal and
+#                                               the equivalence gate)
 # The driver runs TWO profiles and therefore makes TWO assertions, each pinned
 # where its profile acts (D-A2 §2). A single startup check would compare one
 # profile's value against a run that also uses the other.
-CAMPAIGN_FINGERPRINT = "ce41af96ee85f0a29c90db508ef19c21e11946c95318b8957f5800425e61bb0b"
-EVAL_FINGERPRINT = "314fbeb99b6640f65fc1bc05082113de1647a01781ed93aadf6ad13e7a35f139"
+CAMPAIGN_FINGERPRINT = "8443847bb8c41218dc93a13b4401929ef2151bec3e7947041cfed99ea9903c6d"
+EVAL_FINGERPRINT = "c8aa1fccd1c97dd84aa5d636356a7a54d08302146324bd9e43319f4dd2599e10"
 
 #: PREREG-m1 §4: both indistinguishability floors, on the 1,200-problem instrument.
 NO_REGRESS = {48: 1188, 1: 1167}
@@ -104,6 +112,37 @@ def _enrols_at(iteration: int, cfg: Config) -> bool:
     reconstruct a pool the run never had, which is F-23 wearing F-36's clothes.
     """
     return (iteration + 1) % cfg.league.snapshot_every == 0
+
+
+def read_watchlist(instrument: dict) -> dict[str, dict]:
+    """**The** reader for a pass record's watchlist: ``{budget: cell}``.
+
+    Mono-instanced after the shape moved to a pair per leg and three consumers
+    had to move with it — `campaign` wrote it, `golden` read it, and
+    `equivalence_gate` did not, so the gate completed both measurements and then
+    crashed in its reporting three hours in. One accessor means a future change
+    breaks at the reader rather than at report time, which is the same move that
+    mono-instancing `read_anchors` made — and that exposed a latent defect too.
+
+    The partition is re-checked **here**, not only where the record is written: a
+    reader that trusts its input is a reader that will one day report a silently
+    emptied intersection as good news.
+    """
+    by_budget = instrument["watchlist"]["by_budget"]
+    for budget, cell in by_budget.items():
+        total = cell["family_remaining"] + cell["novel_misses"]
+        if total != cell["pass_misses"]:
+            raise CampaignRefusal(
+                f"watchlist partition broken at sims={budget} on read: "
+                f"{cell['family_remaining']} + {cell['novel_misses']} = {total}, but "
+                f"the pass recorded {cell['pass_misses']} misses."
+            )
+    return by_budget
+
+
+def watchlist_reference(instrument: dict) -> dict[str, list[int]]:
+    """The anchor's own readings, carried on the record so a value has a SCALE."""
+    return instrument["watchlist"]["anchor_reference"]
 
 
 def frozen_watchlist() -> set[str]:

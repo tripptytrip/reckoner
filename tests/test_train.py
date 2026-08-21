@@ -176,14 +176,28 @@ def test_training_is_reproducible_from_seed() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_rehearsal_is_dormant_at_the_default() -> None:
-    """`rehearsal_frac: 0.0` must change nothing in the training path.
+def test_rehearsal_is_dormant_at_zero() -> None:
+    """`rehearsal_frac = 0.0` must change nothing in the training path.
 
-    "Dormant" untested means "untested" — the accepting case is that the split
-    is a no-op, and it has to be asserted like any other.
+    "Dormant" untested means "untested" — the accepting case is that the split is
+    a no-op, and it has to be asserted like any other.
+
+    **This was `..._at_the_default` until M1-A4 §5 moved the default to 0.65.**
+    The renaming matters: the property worth testing is that ZERO is inert, which
+    is the governance condition behind F-31's wiring being a defect fix rather
+    than a treatment change. Tying it to "the default" made it a test of a value
+    that an amendment was always going to move, and it would have read as the
+    lever breaking rather than as the default changing.
     """
-    assert CFG.train.rehearsal_frac == 0.0
-    assert rehearsal_split(128, CFG) == (0, 128)
+    zero = replace(CFG, train=replace(CFG.train, rehearsal_frac=0.0))
+    assert rehearsal_split(128, zero) == (0, 128)
+
+
+def test_the_default_is_the_amended_value() -> None:
+    """M1-A4 §5. Separate from the dormancy test above, because "zero is inert"
+    and "the default is 0.65" are different claims and only one of them moves."""
+    assert CFG.train.rehearsal_frac == 0.65
+    assert rehearsal_split(128, CFG) == (83, 45)
 
 
 def test_rehearsal_splits_when_armed() -> None:

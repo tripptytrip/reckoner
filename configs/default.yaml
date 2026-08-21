@@ -89,7 +89,7 @@ train:
   # [plan chunk 9] on from day one: the checker, not the model's own Q, decides
   # solved, so the blend's self-referential hazard is structurally absent here.
   value_q_mse_weight: 0.5
-  rehearsal_frac: 0.0     # [plan chunk 9] dormant; the lever exists before it's needed
+  rehearsal_frac: 0.65     # [M1-A4 §5] the sweep's value; wire and value were separate decisions
   batch_size: 128         # [chunk 8 — DECIDED by the timing slice; 512 was provisional]
   ring_holdout_frac: 0.1  # [chunk 9] switch-criterion slice; held out from training,
                           # deliberately IN-DISTRIBUTION (valuegate.evaluate_head)
@@ -131,8 +131,6 @@ ladder:
   ladder_every: 5           # [plan chunk 11] campaign M1 runs at --ladder-every 5
   bootstrap_resamples: 10000  # [inherited law] paired-difference bootstrap
   problems_per_pass: 200    # [provisional — chunk 10]
-  sympy_step_budget: 16     # [provisional — chunk 10] sympy is a RUNG, never par
-  sympy_time_budget_s: 1.0  # [provisional — chunk 10]
 
 # --- the campaign [M1-A2] ----------------------------------------------------
 # Extent, treatment size, and the thread pins. These were absent, which is why

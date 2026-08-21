@@ -105,7 +105,7 @@ def test_pinned_single_agent_perspective() -> None:
 def test_pinned_train_values() -> None:
     t = TrainConfig()
     assert t.value_q_mse_weight == 0.5  # chunk 9: on by default
-    assert t.rehearsal_frac == 0.0  # chunk 9: dormant lever
+    assert t.rehearsal_frac == 0.65  # M1-A4 §5: the sweep's value, taken mechanically
 
 
 def test_pinned_generator_and_ladder_values() -> None:
