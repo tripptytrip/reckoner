@@ -114,12 +114,21 @@ def main() -> int:
                 f"{len(measured)} measured, {len(measured & recorded)} shared",
             )
         )
-    anchor_watch = got["watchlist"]
+    # The watchlist is now a PAIR PER LEG under `by_budget` (M1-A4 §3). This
+    # reader was left on the old flat shape when that landed — the shape moved
+    # and a consumer did not, which is the week's dominant species arriving in my
+    # own script. The measurements were unaffected; only the report crashed.
+    anchor_watch = got["watchlist"]["by_budget"]
     checks.append(
         (
-            "anchor's watchlist reference row is (24, 0)",
-            (anchor_watch["family_remaining"], anchor_watch["novel_misses"]) == (24, 0),
-            f"({anchor_watch['family_remaining']}, {anchor_watch['novel_misses']})",
+            "anchor's watchlist reference rows are (24, 0) @1 and (7, 0) @48",
+            (anchor_watch["1"]["family_remaining"], anchor_watch["1"]["novel_misses"]) == (24, 0)
+            and (anchor_watch["48"]["family_remaining"], anchor_watch["48"]["novel_misses"])
+            == (7, 0),
+            f"@1 ({anchor_watch['1']['family_remaining']}, "
+            f"{anchor_watch['1']['novel_misses']})  "
+            f"@48 ({anchor_watch['48']['family_remaining']}, "
+            f"{anchor_watch['48']['novel_misses']})",
         )
     )
 
@@ -128,18 +137,22 @@ def main() -> int:
         print(f"    {'ok  ' if ok else 'FAIL'} {name}{'  — ' + detail if detail else ''}")
 
     if watch is not None:
-        print("\n  WATCHLIST — first reading, against the registered prediction\n")
-        print(f"    frozen family        : {len(frozen_watchlist())}")
-        print("    anchor reference     : (24, 0) @1 sim, (7, 0) @48")
-        for column, predicted in PREDICTED_WATCHLIST.items():
-            actual = watch[column]
-            mark = "as predicted" if actual == predicted else f"PREDICTED {predicted}"
-            print(f"    {column:<20} : {actual:>4}   {mark}")
-        print(
-            f"    partition            : {watch['family_remaining']} + {watch['novel_misses']}"
-            f" == {watch['pass_misses']} -> "
-            f"{watch['family_remaining'] + watch['novel_misses'] == watch['pass_misses']}"
-        )
+        by_budget = watch["by_budget"]
+        print("\n  WATCHLIST — per leg, against the registered prediction\n")
+        print(f"    frozen family    : {len(frozen_watchlist())}")
+        print(f"    anchor reference : {watch['anchor_reference']}")
+        for budget in sorted(by_budget, key=int, reverse=True):
+            cell = by_budget[budget]
+            partition = cell["family_remaining"] + cell["novel_misses"] == cell["pass_misses"]
+            note = ""
+            if budget == "48":
+                note = f"   (registered call: {PREDICTED_WATCHLIST['family_remaining']} / "
+                note += f"~{PREDICTED_WATCHLIST['novel_misses']})"
+            print(
+                f"    @{budget:>2} sims : family {cell['family_remaining']:>3}  "
+                f"novel {cell['novel_misses']:>4}  of {cell['pass_misses']:>4} misses  "
+                f"partition {partition}{note}"
+            )
 
     (args.out / "gate.json").write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
     failed = [n for n, ok, _ in checks if not ok]
