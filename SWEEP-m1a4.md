@@ -214,3 +214,67 @@ with no supervision at all. A matched pair differing in exactly one thing:
 
 One arm, ten minutes, and round two's lever is chosen by measurement rather than
 by anyone's intuition.
+
+---
+
+# Amendment — the estimator, declared before the seeds exist, 2026-08-21
+
+**Written while the 0.65 and 0.75 seeds are running and their values do not yet
+exist.** The verification job was launched at `b263613`; this page is amended
+before its output is read.
+
+## The gap the frozen rule left
+
+§2 says *"the smallest `f` whose gate-10b top-1 holds the band"* and **never named
+an estimator.** With one seed per arm that ambiguity was invisible. With three
+seeds at `f = 0.65` it decides the answer — worst, mean and best can disagree,
+and choosing among them after seeing them is choosing the answer.
+
+## Declared: the WORST seed at that `f` must hold the band
+
+**Derived from §8, not from the data.** The campaign runs a **single seed**, and
+§8's no-regress breach is a hard **BLOCKED**. So an `f` that holds on some seeds
+and fails on others is an `f` that can halt the campaign at its first cadence
+unit. **Worst-case is the decision-relevant statistic precisely when the
+downstream consequence is a halt** — the same asymmetry that set the band
+conservatively in §3.1.
+
+### It cannot be a back-fit, and here is the arithmetic
+
+`f = 0.50` is the only multi-seed arm already observed: 0.9601 and 0.9691.
+
+| estimator | value | holds the 0.968 band? |
+|---|---|---|
+| **worst** | 0.9601 | **no** |
+| mean | 0.9646 | no |
+| best | 0.9691 | yes |
+
+Worst-case and mean both **reject** 0.50; only best-case would have accepted it.
+So declaring worst-case **cannot rescue an arm already observed to fail**, and
+changes no disposition the table already contains. The one estimator that would
+have changed an answer is the one not chosen.
+
+## Branches, pre-stated
+
+**The steps knob**
+
+* **digests identical** → the mechanism arm is **void**, the epoch falsification
+  is **withdrawn**, and it is a **live-config gate miss in its own right**: the
+  census marked the steps field live on evidence from a call site other than the
+  sweep's, which is a finding worth its own line.
+* **digests differ** → the falsification **stands**, epoch scaling drops as a
+  lever, and **rehearsal fraction is the lever**.
+
+**The selected `f`**
+
+* `f = 0.65`'s **worst** seed holds → the rule takes **0.65**, mechanically.
+* else `f = 0.75`'s worst seed holds → **0.75**.
+* neither → **§5's second branch fires after all**, this time on an adequate
+  estimate rather than an extrapolation.
+
+**Movement**
+
+Does **not** change the selected `f`; selection stays mechanical. The number goes
+on M1-A4's page regardless. If movement at the selected `f` is near zero, that
+may change **whether M1 launches as specified** — a separate ruling, made on the
+number, **never folded into the band**.
