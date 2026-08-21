@@ -99,8 +99,14 @@ def config_fields() -> dict[str, str]:
 class Walker(ast.NodeVisitor):
     """Per-function: which config fields are read, which functions are called."""
 
-    def __init__(self, fields: dict[str, str]) -> None:
+    def __init__(self, fields: dict[str, str], modules: frozenset[str] = frozenset()) -> None:
         self.fields = fields
+        #: Names bound to imported MODULES in this file. A call like
+        #: `subprocess.run(...)` is a stdlib call, not a call to a local function
+        #: named `run` — and binding the two together pulled the whole campaign
+        #: loop into the measurement closure through `git_sha`, which is how the
+        #: inertness proof first returned a verdict it could not support.
+        self.modules = modules
         self.reads: dict[str, set[str]] = defaultdict(set)
         self.calls: dict[str, set[str]] = defaultdict(set)
         self.methods: dict[str, set[str]] = defaultdict(set)
@@ -132,7 +138,13 @@ class Walker(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:  # noqa: N802
         func = node.func
-        name = getattr(func, "id", None) or getattr(func, "attr", None)
+        name = getattr(func, "id", None)
+        if name is None and isinstance(func, ast.Attribute):
+            # `mod.fn()` where `mod` is an imported module is NOT a local call.
+            # `self.fn()` and `obj.fn()` still bind, because those are real edges.
+            base = getattr(func.value, "id", None)
+            if base not in self.modules:
+                name = func.attr
         if name:
             self.calls[self.scope].add(name)
         self.generic_visit(node)
@@ -166,7 +178,12 @@ def build() -> tuple[
             for node in ast.walk(tree):
                 if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                     defined.add(node.name)
-            w = Walker(fields)
+            modules = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        modules.add(alias.asname or alias.name.split(".")[0])
+            w = Walker(fields, frozenset(modules))
             w.visit(tree)
             target = {"reckoner": reads, "scripts": script_reads, "tests": test_reads}[root.name]
             for field, scopes in w.reads.items():

@@ -189,3 +189,52 @@ def test_the_guarded_fields_are_reported_as_guard_live() -> None:
     assert census["model.param_budget_min"] not in ("DEAD", "UNREAD"), (
         "a field a guard test enforces is not a deletion candidate"
     )
+
+
+# ------------------------------ the inertness prover's known positives
+
+
+#: Fields unambiguously ON the measurement path. The prover MUST report each as
+#: read inside the instrument seam's closure.
+MEASUREMENT_FIELDS = ("sims", "gumbel_m", "step_cap", "root_noise", "problems_per_pass")
+
+
+def test_the_inertness_prover_can_still_say_no() -> None:
+    """**The known positives**, required before any inertness verdict is trusted.
+
+    The prover decides whether a configuration change can have touched
+    measurement — and therefore whether a three-hour equivalence gate must
+    re-run. Its first verdict was `NOT inert`, produced by an **always-firing
+    bound**: `git_sha` calls `subprocess.run`, the resolver bound that to
+    `campaign.run`, and the whole training loop entered the measurement closure.
+    Any `subprocess.run` anywhere would have produced that verdict for any field
+    — a verdict independent of its input, which carries no information.
+
+    The fix (module-qualified calls no longer bind to local names) was made in the
+    direction that **saves three hours**, and the corrected tool is then used to
+    justify not spending them. So it must be shown to still say *no*: a tool that
+    can only say yes is the same broken instrument as one that could only say no.
+    """
+    from scripts.prove_measurement_inert import measurement_closure
+
+    closure, reads = measurement_closure()
+    for field in MEASUREMENT_FIELDS:
+        inside = reads.get(field, set()) & closure
+        assert inside, (
+            f"{field!r} is on the measurement path and the prover cannot see it — "
+            "the resolver has overshot from over-connection into under-connection, "
+            "and every inertness verdict it has produced is void"
+        )
+
+
+def test_the_inertness_prover_still_says_yes_where_it_should() -> None:
+    """The other polarity. `rehearsal_frac` is read only by `train_on_ring`, which
+    the instrument seam never reaches — that is what licensed M1-A4's fingerprint
+    move without re-running the gate."""
+    from scripts.prove_measurement_inert import measurement_closure
+
+    closure, reads = measurement_closure()
+    assert not (reads.get("rehearsal_frac", set()) & closure), (
+        "rehearsal_frac now reads inside the measurement closure; M1-A4's "
+        "measurement-inertness claim no longer holds and the gate must re-run"
+    )

@@ -37,7 +37,7 @@ from reckoner.campaign import (
     run_instruments,
     watchlist_reference,
 )
-from reckoner.config import Config, validate
+from reckoner.config import Config, config_fingerprint, validate
 from reckoner.ladderpass import read_pair_scores
 from reckoner.model import load_checkpoint
 
@@ -66,6 +66,16 @@ def measure(label: str, checkpoint: Path, cfg: Config, root: Path, index: int) -
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--as-of",
+        required=True,
+        help="the campaign fingerprint the ARTIFACTS were produced under, QUOTED "
+        "from the record and never recomputed. Never defaulted: an artifact and a "
+        "gate must agree on which configuration they are discussing, and a default "
+        "would let them disagree silently. If it is not the live fingerprint, any "
+        "result is labelled HISTORICAL VERIFICATION — valid evidence about that "
+        "config, inadmissible about this one.",
+    )
     parser.add_argument("--ckpt4", type=Path, default=REPO / "runs" / "m1_rehearsal" / "ckpt-4.pt")
     parser.add_argument("--out", type=Path, default=REPO / "runs" / "equivalence_gate")
     args = parser.parse_args()
@@ -74,6 +84,17 @@ def main() -> int:
     validate(cfg)
     torch.set_num_threads(cfg.campaign.intra_op_threads)
     args.out.mkdir(parents=True, exist_ok=True)
+
+    live = config_fingerprint(cfg)
+    historical = args.as_of != live
+    if historical:
+        print(f"\n  HISTORICAL VERIFICATION — artifacts from {args.as_of[:12]}...")
+        print(f"  The live config is {live[:12]}...; results below are evidence about")
+        print("  the OLD configuration and are inadmissible about the current one.")
+        print("  M1-A4 proved this move measurement-inert (runs/measurement_inertness.json),")
+        print("  which is why re-running was a choice rather than an obligation.")
+    else:
+        print(f"\n  CURRENT VERIFICATION — {live[:12]}... matches the live config.")
 
     checks: list[tuple[str, bool, str]] = []
     results: dict = {}
@@ -161,6 +182,9 @@ def main() -> int:
                 f"partition {partition}{note}"
             )
 
+    results["as_of"] = args.as_of
+    results["live_fingerprint"] = live
+    results["verification_class"] = "historical" if historical else "current"
     (args.out / "gate.json").write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
     failed = [n for n, ok, _ in checks if not ok]
     if failed:
