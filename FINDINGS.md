@@ -2303,3 +2303,128 @@ identical**, so it is not a rounding artefact at all; it is insensitivity, which
 is the finding. Reporting top-1 as a raw count beside the ratio is what made the
 difference visible, and it was added precisely because an implausible
 intermediate deserves checking rather than believing.
+
+---
+
+## F-38 — A watchdog whose only output is a kill is indistinguishable from a healthy run
+
+**Found:** 2026-08-22, when attempt 2's rehearsal ran to iteration 19 instead of
+stopping at 4. The `stop_at_4` watchdog was never launched.
+
+Attempt 2 launched **two** processes with authority over the run:
+
+| process | authority | evidence it is alive |
+|---|---|---|
+| checkpoint watcher | kill on band breach | **reports at every checkpoint**, writes `checkpoint_watch.json` after each verdict |
+| `stop_at_4` watchdog | kill at `LATEST = 4` | **none — its only output is the kill** |
+
+The checkpoint watcher was *required* to have a liveness marker, on the reasoning
+that *"silent absence should not be indistinguishable from silent vigilance"*.
+That requirement was never extended to its sibling. **Set-growth again: a
+property demanded of one member of a family and never asserted of the family.**
+
+**The asymmetry is what hid it.** A watcher that reports every checkpoint is
+self-evidencing — its silence is visible immediately. A watchdog that only acts
+at a threshold looks *exactly* like a healthy run until the moment it fails to
+act, and by then the thing it was guarding has already happened.
+
+### The rule
+
+> **Every process with authority over a run carries a liveness marker, and the
+> launch verifies against a supervisor set declared UPSTREAM and FROZEN** — on
+> the expectations page or beside the fingerprint in config.
+
+A count is the part that closes it: markers make each process's *death*
+detectable, and the count makes a process that was never *born* detectable —
+which is the failure that actually occurred. No marker was missing; one was never
+created.
+
+**But the count must not be the launcher's own tally.** A launcher counting its
+own launches is the self-referential check family — third member after the
+`pgrep -f` self-match and `$?` read through a pipe — because **the forgetting
+that omits a watchdog is the same forgetting that omits it from the count.** The
+declared set lives upstream and frozen, and launch verifies against *that*. Then
+a missing supervisor is a mismatch against a page committed before the run, which
+is the mechanism that already catches everything else here.
+
+### What it cost, and what it did not
+
+Six hours and roughly $6. **It did not cost the rehearsal**, which is the part
+worth being precise about: the rehearsal was never a separate program. It is the
+campaign with an external stop — built as a watchdog rather than an
+`iterations = 5` config precisely because `iterations` is fingerprinted, so a
+config rehearsal would have run at a *different fingerprint from the thing it was
+rehearsing*. Iterations 0–4 on the volume **are** the rehearsal: same program,
+same seed, same fingerprint, same commit order.
+
+A gate does two jobs — it **verifies**, and it **interlocks**. The omission
+destroyed the interlock and left the verification untouched, and no re-run can
+restore an interlock in front of a run that has already happened.
+
+**The watcher that guarded measurement integrity was armed for all 20
+iterations. The one that was forgotten guarded the budget.**
+
+---
+
+## F-39 — M1's gain is mostly faster-at-par, not better; and one stratum went backwards
+
+**Measured:** 2026-08-22, from the campaign pass's own `pair_scores` step counts
+against Part-0d's, on problems both arms solve. `solved := steps < step_cap (24)`.
+
+The pooled primary separates — 101 → 209 of 600, mean difference **0.18**, CI
+**[0.1367, 0.2217]**, excludes zero, unsaturated, 600 pairs. **The decomposition
+is the finding.**
+
+| stratum | anchor | campaign | mean diff | CI | separates | shorter / equal / longer | new solves |
+|---|---:|---:|---:|---|:--:|---|---:|
+| `scripted_in_7` | 43 | **35** | **−0.0400** | [−0.0900, +0.0050] | **no** | 8 / 174 / **18** | **0** |
+| `scripted_in_8` | 26 | 85 | +0.2950 | [+0.2150, +0.3750] | yes | 71 / 111 / 15 | 1 |
+| `scripted_in_10` | 32 | 89 | +0.2850 | [+0.2050, +0.3650] | yes | 70 / 104 / 17 | 5 |
+
+**149 shorter against 50 longer**, and **zero anchor-only** — nothing the anchor
+solved became unsolvable. So the gain is overwhelmingly **shorter paths to the
+same solutions**: amortization against loose scripted par rather than capability
+against tight par.
+
+**With a measured exception.** Six problems (1 + 5) are solved by the campaign and
+not by the anchor. The prediction was that a pure faster-at-par reading would show
+none, so the hypothesis holds in bulk and is not clean.
+
+### Stratum 7 is the decomposition, not a blemish
+
+The two strata that separate carry looser scripted par. The one that declines has
+true par 5–6, where **beating par requires an actually shorter proof rather than
+a tighter walk to the same place.** Its numbers say it directly: 8 shorter against
+18 longer, and **zero** new solves.
+
+The residual leans the same way — 7 misses at 48 sims and 25 at 1, unchanged from
+the anchor's but for a single new one across twenty iterations.
+
+**Consequence for M2**, registered before M2 designs itself around the +0.18: the
+campaign made the model **faster at par**, not materially more capable. Those
+license different next rounds, and the pooled number alone cannot tell them apart.
+
+---
+
+## F-40 — Registration must follow CITATION, not creation
+
+**Found:** 2026-08-22. Attempt 1's ring became load-bearing the moment attempt 2's
+expectations page named it the counterfactual arm — and it was never registered,
+so it died with the pod and the comparison it was cited for is permanently
+unavailable.
+
+ANCHORS registers **at birth**, which is right for artifacts that are load-bearing
+when written. It cannot cover an artifact that becomes load-bearing **later**, by
+being cited: the citation arrives after the birth, and nothing re-examines the
+registry when a page names a new comparand.
+
+> **An artifact named as a comparand on any page is registered at the moment of
+> that citation, not at its creation.**
+
+Sibling of the retrofit census: the same shape, one layer out. What was measured
+under one purpose is later relied on for another, and the discipline attached to
+the first purpose does not follow.
+
+**Standing action:** sweep the pages for anything cited as a comparand that is not
+on the volume, and register what remains. What is already lost is recorded as
+lost — attempt 1's ring, and with it the between-run par-escalation magnitude.
