@@ -2386,9 +2386,27 @@ solved became unsolvable. So the gain is overwhelmingly **shorter paths to the
 same solutions**: amortization against loose scripted par rather than capability
 against tight par.
 
-**With a measured exception.** Six problems (1 + 5) are solved by the campaign and
-not by the anchor. The prediction was that a pure faster-at-par reading would show
-none, so the hypothesis holds in bulk and is not clean.
+**The apparent exception dissolves on inspection.** Six problems (1 + 5) are
+solved by the campaign and not by the anchor — but **all six solve at *exactly*
+par** (8, 10, 10, 10, 10, 10). Beat-par requires `steps < par`, so every one
+scores `z = 0` and **contributes nothing to the primary.** The measured gain is
+therefore **100% shorter paths on problems both arms already solve**, with no
+capability component in it at all.
+
+Replaying the anchor on those six at rising budgets separates them further:
+
+| | `sims = 1` | `sims = 48` | `sims = 192` |
+|---|---|---|---|
+| 3 of 6 | — | — | **solved, in 7 / 9 / 9 steps** |
+| 3 of 6 | — | — | — |
+
+**Three fall to more search**, so they are *ordering*: the solution was always
+reachable and the campaign found it with a better prior — the same amortization
+story in a different coat. Only three resist 4× the budget, and even those score
+zero on the primary because they land on par.
+
+Five of the six are in `scripted_in_10`, the loosest par in the set, where a solve
+is reachable by a walk the anchor's ordering never took.
 
 ### Stratum 7 is the decomposition, not a blemish
 
@@ -2399,6 +2417,16 @@ a tighter walk to the same place.** Its numbers say it directly: 8 shorter again
 
 The residual leans the same way — 7 misses at 48 sims and 25 at 1, unchanged from
 the anchor's but for a single new one across twenty iterations.
+
+### Reconciling two tables a careful reader will read as contradictory
+
+**Zero anchor-only solves in the 600, and one novel miss in the 1,200.** These are
+different populations measured by different instruments: the 600 are the scripted
+strata `{7, 8, 10}` at `sims = 48` (the primary), and the 1,200 are the exact-par
+suites `solve_in_1..6` at both budgets (the no-regress floors). The single novel
+miss is a suite problem at `sims = 1`; it is not in the primary's population and
+could not appear in its table. Nothing regressed on either instrument — one
+problem moved on one of them.
 
 **Consequence for M2**, registered before M2 designs itself around the +0.18: the
 campaign made the model **faster at par**, not materially more capable. Those
